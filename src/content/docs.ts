@@ -18,10 +18,25 @@ export const OWNER_POWERS: OwnerPower[] = [
     power: 'Change the daily payout rate, 1% to 25%',
     contract: 'Treasury',
     delay: 'From the next day',
-    worstCase: 'Payouts slow to 1% or speed up to 25% of the balance per day; the ETH still goes only to stakers.',
+    worstCase:
+      'Payouts slow to 1% or speed up to 25% of the balance per day; the ETH still goes only to the current staking contract and the owner’s 10% reserve.',
   },
   { power: 'Withdraw the ETH owner reserve', contract: 'Treasury', delay: 'None', worstCase: 'Nothing beyond the 10% reserve; this is owner income.' },
   { power: 'Withdraw the TOWN claim fees', contract: 'Treasury', delay: 'None', worstCase: 'None; this is owner income.' },
+  {
+    power: 'Replace the staking contract the Treasury pays',
+    contract: 'Treasury',
+    delay: '2 days, announced on chain; cancellable',
+    worstCase:
+      'Future payouts go to a contract the owner chose; what it does with them is up to its code, so a bad choice can send the stakers’ future ETH anywhere. ETH already paid out and every stake are untouched; stakers get 2 days’ notice.',
+  },
+  {
+    power: 'Pause the daily payout',
+    contract: 'Treasury',
+    delay: '2 days, announced on chain; cancellable; unpausing is immediate',
+    worstCase:
+      'Payouts stop until the owner unpauses; the ETH waits in the Treasury and is paid out afterwards. Nothing goes to the owner beyond the 10% reserve.',
+  },
   { power: 'Launch, once', contract: 'Launcher', delay: 'None', worstCase: 'The launch happens at a time the owner did not intend; it cannot be repeated.' },
   {
     power: 'Set a fallback ETH/USD price for vault purchases',
@@ -49,7 +64,7 @@ export const OWNER_CANNOT: string[] = [
   'mint TOWN',
   'change any fee',
   'pause trading',
-  'upgrade or replace any contract',
+  'upgrade any contract',
   'touch the 500,000,000 TOWN rebate reserve',
   'take treasury ETH beyond the 10% owner reserve',
   'move anyone’s staked TOWN',
@@ -65,7 +80,11 @@ export const THINGS_TO_KNOW: { title: string; body: string }[] = [
   { title: 'Rebates are a ceiling', body: 'At most 4.75% of what you buy; less on busy days, and less or nothing near the end of the reserve.' },
   { title: 'Gas costs real money', body: 'Every buy, claim and vault action costs Ethereum gas, which can be more than a small reward.' },
   { title: 'The vault price is paid once', body: 'It goes to the treasury and is not refunded when you unstake; unstaking gives back your TOWN.' },
-  { title: 'The contracts cannot be changed', body: 'No upgrades and no pause, so a flaw could never be fixed.' },
+  { title: 'The contracts cannot be changed', body: 'No upgrades, and trading never pauses, so a flaw could never be fixed.' },
+  {
+    title: 'Payouts can be paused or re-pointed',
+    body: 'The owner can pause the stakers’ payouts or send them to a new staking contract, with 2 days’ notice, shown on the Stats page.',
+  },
   {
     title: 'Vault prices use Chainlink',
     body: 'If the ETH/USD feed is unhealthy, the owner’s fallback price is used for up to 7 days; with neither, opening and upgrading vaults pause.',

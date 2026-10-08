@@ -146,3 +146,8 @@ export const claimWethTx = (n: Network) => staking(n, 'claim');
 export function pokeTx(n: Network): TxRequest {
   return { address: n.deployment!.contracts.Treasury, abi: TREASURY_ABI as Abi, functionName: 'poke' };
 }
+
+/** Put an announced staking contract in use once its 2-day wait has passed: `Treasury.applyStaking()`, open to anyone (CR-46). */
+export function applyStakingTx(n: Network): TxRequest {
+  return { address: n.deployment!.contracts.Treasury, abi: TREASURY_ABI as Abi, functionName: 'applyStaking' };
+}

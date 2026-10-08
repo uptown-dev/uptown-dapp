@@ -68,6 +68,16 @@ export function fmtDuration(seconds: number): string {
   return h % 24 ? `${dLabel} ${h % 24} h` : dLabel;
 }
 
+/** Time left until a moment, rounded up to the minute so a 2-day wait read a second later still says "2 days". */
+export function fmtUntil(seconds: number): string {
+  return fmtDuration(Math.ceil(Math.max(0, seconds) / 60) * 60);
+}
+
+/** A whole number of days as an adjective ("2-day"); other lengths in words. */
+export function fmtDelay(seconds: number): string {
+  return seconds % 86_400 === 0 ? `${seconds / 86_400}-day` : fmtDuration(seconds);
+}
+
 /** Minutes and seconds: 540 -> "9:00". */
 export function fmtClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));

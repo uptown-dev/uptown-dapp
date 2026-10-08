@@ -184,13 +184,14 @@ function Down({ x, y1, y2, kind, lines }: { x: number; y1: number; y2: number; k
   );
 }
 
-export function FlowGraphic() {
+/** `floor` is the burn floor in whole TOWN, as text: TownHook.BURN_FLOOR() (CR-45). */
+export function FlowGraphic({ floor }: { floor: string }) {
   return (
     <svg
       viewBox="0 0 360 434"
       class="flow-graphic"
       role="img"
-      aria-label="Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet; on a sell it burns 2% of the TOWN sold, until the supply is 1,000,000 TOWN. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim up to 5% of the TOWN they bought from the reserve, from the day after next."
+      aria-label={`Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet; on a sell it burns 2% of the TOWN sold, until the supply is ${floor} TOWN. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim up to 5% of the TOWN they bought from the reserve, from the next day.`}
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -222,11 +223,11 @@ export function FlowGraphic() {
       <Down x={244} y1={172} y2={226} kind="town" lines={['2% of TOWN', 'on sells']} />
       <Node x={8} y={230} w={108} title="Treasury" sub={['90% to stakers', '10% owner']} />
       <Node x={126} y={230} w={108} title="Buy tally" sub={['TOWN per wallet,', 'per day']} />
-      <Node x={244} y={230} w={108} title="Burned" sub={['until supply is', '1,000,000 TOWN']} cls="fg-burn" />
+      <Node x={244} y={230} w={108} title="Burned" sub={['until supply is', floor]} cls="fg-burn" />
 
       {/* Treasury to stakers, tally to rebates */}
       <Down x={8} y1={300} y2={354} kind="eth" lines={['daily,', 'as WETH']} />
-      <Down x={126} y1={300} y2={354} kind="town" lines={['from the day', 'after next']} />
+      <Down x={126} y1={300} y2={354} kind="town" lines={['from the', 'next day']} />
       <Node x={8} y={358} w={108} title="Stakers" sub={['streamed over', '7 days']} />
       <Node x={126} y={358} w={108} title="Rebates" sub={['up to 5% of buys,', 'from the reserve']} />
 

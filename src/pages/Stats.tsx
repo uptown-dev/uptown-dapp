@@ -1,9 +1,9 @@
 import { useApp, useChain, useTx, Card, Fig, Figures, Notice, PageHead, TxStatus, Verify } from '../components/ui';
-import { pokeTx } from '../lib/actions';
+import { applyStakingTx, pokeTx } from '../lib/actions';
 import { TIERS } from '../data/types';
-import { budgetState, burned, daysUntil, forStakers, hookFeesReceived, leftToBurn, reserveUnscheduled } from '../lib/derive';
-import { dayName, fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown } from '../lib/format';
-import { contractUrl, positionUrl, tokenUrl } from '../lib/network';
+import { budgetState, burned, daysUntil, forStakers, hookFeesReceived, leftToBurn, pausePending, reserveUnscheduled, stakingChangeReady, stakingReplaced } from '../lib/derive';
+import { dayName, fmtBps, fmtDate, fmtDateTime, fmtDelay, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUntil, shortAddress } from '../lib/format';
+import { codeUrl, contractUrl, positionUrl, tokenUrl } from '../lib/network';
 
 export function Stats() {
   return (
@@ -27,6 +27,8 @@ function Treasury() {
   const b = budgetState(chain);
   const c = t.currentCycle;
   const wait = t.nextDistributionTime - chain.blockTimestamp;
+  // While paused (CR-46) a budget is shown only if this day had already rolled and paid before the pause.
+  const paidBeforePause = b.kind === 'paused' && t.lastDistributedCycle === c;
   return (
     <Card title="Treasury">
       <Figures cols={3}>
@@ -41,19 +43,44 @@ function Treasury() {
         />
         <Fig
           label={`${dayName(c)} budget`}
-          value={b.kind === 'waiting' ? `≈ ${fmtEth(b.estimate)}` : fmtEth(b.amount)}
-          unit="ETH"
+          value={b.kind === 'paused' ? (paidBeforePause ? fmtEth(t.budget) : 'None') : b.kind === 'waiting' ? `≈ ${fmtEth(b.estimate)}` : fmtEth(b.amount)}
+          unit={b.kind === 'paused' && !paidBeforePause ? undefined : 'ETH'}
           view={b.kind === 'waiting' ? 'derived: (balance - ownerEthAvailable) × spendBps' : 'Treasury.budget'}
           accent
-          note={b.kind === 'paid' ? 'Paid to stakers.' : b.kind === 'below-minimum' ? 'Under 0.001 ETH: waits for a later day.' : 'Not yet triggered.'}
+          note={
+            b.kind === 'paused'
+              ? paidBeforePause
+                ? 'Paid to stakers before the pause.'
+                : 'Paused: the stakers’ share waits in the treasury.'
+              : b.kind === 'paid'
+                ? 'Paid to stakers.'
+                : b.kind === 'below-minimum'
+                  ? 'Under 0.001 ETH: waits for a later day.'
+                  : 'Not yet triggered.'
+          }
         />
         <Fig
           label="Next payout"
-          value={b.kind === 'waiting' ? 'Now' : `in ${fmtDuration(wait)}`}
+          value={b.kind === 'paused' ? 'Paused' : b.kind === 'waiting' ? 'Now' : `in ${fmtDuration(wait)}`}
           view="Treasury.nextDistributionTime"
-          note={b.kind === 'waiting' ? 'Anyone can trigger it.' : `${fmtDateTime(t.nextDistributionTime)}, the start of ${dayName(c + 1)}`}
+          note={
+            b.kind === 'paused'
+              ? 'No payout until the owner unpauses.'
+              : b.kind === 'waiting'
+                ? 'Anyone can trigger it.'
+                : `${fmtDateTime(t.nextDistributionTime)}, the start of ${dayName(c + 1)}`
+          }
         />
       </Figures>
+      {b.kind === 'paused' && (
+        <Notice kind="warn" title="Payouts are paused by the owner">
+          <p>
+            Since <span class="num">{fmtDateTime(t.pauseEffectiveAt)}</span> the treasury pays nothing to stakers. ETH keeps arriving, the owner’s 10% keeps
+            counting, and the stakers’ share waits in the treasury. The owner can unpause at any moment, with no wait; the next trigger then pays out at the
+            daily rate as usual. Trading, staking and claiming keep working.
+          </p>
+        </Notice>
+      )}
       {b.kind === 'below-minimum' && (
         <Notice kind="info" title="Today’s budget is under the minimum">
           <p>
@@ -73,22 +100,25 @@ function Treasury() {
           type="button"
           class="btn btn-secondary"
           disabled={tx.busy || b.kind !== 'waiting'}
+          title={b.kind === 'paused' ? 'Payouts are paused by the owner' : undefined}
           onClick={() =>
             void tx.run('Trigger payout', () => pokeTx(network), () =>
               `${dayName(c)} is triggered. The figures above show its budget and whether it was paid to stakers (only at 0.001 ETH or more).`,
             )
           }
         >
-          {tx.busy ? 'Triggering…' : b.kind === 'waiting' ? 'Trigger payout' : 'Already triggered today'}
+          {tx.busy ? 'Triggering…' : b.kind === 'paused' ? 'Payouts are paused by the owner' : b.kind === 'waiting' ? 'Trigger payout' : 'Already triggered today'}
         </button>
       </div>
-      {b.kind !== 'waiting' && (
+      {b.kind === 'paused' && <p class="small muted poke-why">Triggering does nothing while the payouts are paused, so the button is off.</p>}
+      {b.kind !== 'waiting' && b.kind !== 'paused' && (
         <p class="small muted poke-why">
           {dayName(c)} was already triggered{b.kind === 'paid' ? ' and paid' : ''}. The next payout can be triggered from{' '}
           <span class="num">{fmtDateTime(t.nextDistributionTime)}</span>.
         </p>
       )}
       <TxStatus tx={tx} />
+      <OwnerChanges />
       <Verify
         links={[
           { label: 'balance', what: 'the Treasury’s ETH balance', href: contractUrl(network, 'Treasury') },
@@ -96,6 +126,104 @@ function Treasury() {
         ]}
       />
     </Card>
+  );
+}
+
+/**
+ * CR-46: the staking contract the treasury pays, and every owner change announced and not yet in
+ * effect (a staking replacement, a pause), each with the date it can take effect. A replacement can
+ * be applied by anyone once its 2-day wait has passed.
+ */
+function OwnerChanges() {
+  const chain = useChain();
+  const { network } = useApp();
+  const tx = useTx();
+  const t = chain.treasury;
+  const now = chain.blockTimestamp;
+  const townStaking = network.deployment?.contracts.TownStaking;
+  const replaced = stakingReplaced(chain, townStaking);
+  const pauseAt = pausePending(chain);
+  const ready = stakingChangeReady(chain);
+  const delay = fmtDuration(t.OWNER_DELAY);
+  const none = t.pendingStaking === null && pauseAt === null;
+  return (
+    <div class="owner-changes">
+      <div class="staking-target">
+        <p class="poke-title">Staking contract the treasury pays</p>
+        <p class="staking-target-line">
+          <span>{replaced ? 'A replacement contract' : 'TownStaking'}</span>{' '}
+          <code data-view="Treasury.staking" title={t.staking}>
+            {shortAddress(t.staking)}
+          </code>{' '}
+          <Verify
+            inline
+            links={[
+              { label: 'contract', what: 'the staking contract the treasury pays', href: codeUrl(network, t.staking) },
+              { label: 'setting', what: 'the Treasury’s staking setting', href: contractUrl(network, 'Treasury', 'read') },
+            ]}
+          />
+        </p>
+        {replaced && (
+          <p class="small muted">
+            The owner replaced TownStaking. Every payout from now on goes to this contract; what TownStaking already received keeps streaming there.
+          </p>
+        )}
+      </div>
+      <div class="pending-changes">
+        <p class="poke-title">Pending owner changes</p>
+        <p class="small muted">
+          The owner can point the payouts at a new staking contract, or pause them, each only after a public wait of {delay}. Every announced change is
+          listed here.
+        </p>
+        {none ? (
+          <p class="pending-none" data-view="Treasury.pendingStaking, Treasury.pauseEffectiveAt">
+            None
+          </p>
+        ) : (
+          <ul class="pending-list">
+            {t.pendingStaking !== null && (
+              <li class="pending-item" data-view="Treasury.pendingStaking, Treasury.stakingEffectiveAt">
+                <p class="pending-title">
+                  New staking contract <code title={t.pendingStaking}>{shortAddress(t.pendingStaking)}</code>
+                  {townStaking && t.pendingStaking.toLowerCase() === townStaking.toLowerCase() ? ' (TownStaking again)' : ''}{' '}
+                  <Verify inline links={[{ what: 'the announced staking contract’s code', href: codeUrl(network, t.pendingStaking) }]} />
+                </p>
+                <p class="small muted">
+                  {ready ? 'Can be applied now' : `Can be applied from ${fmtDateTime(t.stakingEffectiveAt)} (in ${fmtUntil(t.stakingEffectiveAt - now)})`}, by
+                  anyone. From then on every payout goes to it; ETH already paid keeps streaming where it is, and no stake moves.
+                </p>
+                <div class="pending-action">
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-small"
+                    disabled={tx.busy || !ready}
+                    onClick={() =>
+                      void tx.run('Apply', () => applyStakingTx(network), () => 'The new staking contract is in use: every payout from now on goes to it.')
+                    }
+                  >
+                    {tx.busy ? 'Applying…' : 'Apply'}
+                  </button>
+                  {!ready && <span class="small muted">Not yet: the {fmtDelay(t.OWNER_DELAY)} wait has not passed.</span>}
+                </div>
+              </li>
+            )}
+            {pauseAt !== null && (
+              <li class="pending-item" data-view="Treasury.pauseEffectiveAt">
+                <p class="pending-title">Pause of the payouts</p>
+                <p class="small muted">
+                  Takes effect on {fmtDateTime(pauseAt)} (in {fmtUntil(pauseAt - now)}) unless the owner cancels it. While paused, the stakers’ share waits in
+                  the treasury.
+                </p>
+              </li>
+            )}
+          </ul>
+        )}
+        {/* Outside the list, so the result stays visible when the applied change leaves it. */}
+        <div class="pending-status">
+          <TxStatus tx={tx} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -120,7 +248,8 @@ function EthFlows() {
             Another <span class="num">{fmtEth(unbooked)}</span> ETH has arrived and is counted at the next treasury action.{' '}
           </>
         )}
-        ETH leaves the treasury only two ways: payouts to stakers and the owner’s 10% reserve. “From buy fees” also counts any other ETH sent in.
+        ETH leaves the treasury only two ways: to the current staking contract and the owner’s 10% reserve. “From buy fees” also counts any other ETH sent
+        in.
       </p>
       <Verify
         links={[
@@ -147,7 +276,9 @@ function TownTotals() {
         <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="TOWN" view="BuyerRewards.totalPaidToBuyers" accent />
         <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" view="BuyerRewards.totalFeesToTreasury" />
       </Figures>
-      <p class="small faint card-foot">Burned counts sell fees and any voluntary burns. The burn stops at 1,000,000 TOWN of supply.</p>
+      <p class="small faint card-foot">
+        Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> TOWN of supply.
+      </p>
       <Verify
         links={[
           { label: 'total supply', what: 'TOWN’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },

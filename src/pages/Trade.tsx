@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { parseEther, parseUnits } from 'viem';
 import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus } from '../components/ui';
 import { ArrowDownIcon, ExternalIcon } from '../components/icons';
-import { afterClaimFee, antiSnipeActive, antiSnipeSecondsLeft, buyFee, minReceived, rebateRateBps } from '../lib/derive';
+import { afterClaimFee, antiSnipeActive, claimOpensOn, antiSnipeSecondsLeft, buyFee, minReceived, rebateRateBps } from '../lib/derive';
 import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtTown, fmtUnits, shortAddress } from '../lib/format';
 import { uniswapSellUrl } from '../lib/network';
 import { quoteBuy, quoteSell } from '../lib/reads';
@@ -119,8 +119,8 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
             separately.
           </li>
           <li>
-            <strong>Fees on a sell.</strong> 2% of the TOWN sold is burned (nothing once the supply has fallen to 1,000,000
-            TOWN), plus the 0.5% pool fee. The estimate already includes both. Selling changes nothing about rebates.
+            <strong>Fees on a sell.</strong> 2% of the TOWN sold is burned (nothing once the supply has fallen to{' '}
+            {fmtTown(chain.hook.BURN_FLOOR)} TOWN), plus the 0.5% pool fee. The estimate already includes both. Selling changes nothing about rebates.
           </li>
           <li>
             <strong>The first 15 minutes.</strong> The buy fee starts at {fmtBps(chain.hook.ANTI_SNIPE_START_BPS)} at launch and falls in a straight line to{' '}
@@ -224,7 +224,7 @@ function BuyForm({ active }: { active: boolean }) {
     void tx.run(
       'Buy TOWN',
       () => buyTx(network, account, amountIn, minValue, deadline),
-      () => `Your buy went through and is counted for your wallet on ${dayName(c)}. Its rebate can be claimed from ${dayName(c + 2)}.`,
+      () => `Your buy went through and is counted for your wallet on ${dayName(c)}. Its rebate can be claimed from ${dayName(claimOpensOn(chain, c))}.`,
       'buy',
     );
   };
@@ -325,7 +325,7 @@ function BuyForm({ active }: { active: boolean }) {
       </dl>
       {minTooHigh && <FieldError>The minimum is above the estimate, so the buy would almost certainly be cancelled.</FieldError>}
       <p class="small muted swap-note">
-        Rebate after the 5% claim fee, at {dayName(c)}’s rate so far, claimable from {dayName(c + 2)} within the day’s limit. If you would receive less than
+        Rebate after the 5% claim fee, at {dayName(c)}’s rate so far, claimable from {dayName(claimOpensOn(chain, c))} within the day’s limit. If you would receive less than
         the minimum, the buy is cancelled and you keep your ETH.
       </p>
 
@@ -473,7 +473,7 @@ function SellForm({ active }: { active: boolean }) {
         <div class="row">
           <dt>Sell fee (2%, burned)</dt>
           <dd class="num" data-view="TownHook.currentSellFeeBps">
-            {sellBps === 0 || aboveFloor === 0n ? 'none: the supply is at 1,000,000 TOWN' : sellFee !== null ? `${fmtTown(sellFee)} TOWN` : '—'}
+            {sellBps === 0 || aboveFloor === 0n ? `none: the supply is at ${fmtTown(chain.hook.BURN_FLOOR)} TOWN` : sellFee !== null ? `${fmtTown(sellFee)} TOWN` : '—'}
           </dd>
         </div>
         <div class="row">

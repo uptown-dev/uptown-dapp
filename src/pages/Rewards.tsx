@@ -2,6 +2,7 @@ import { useApp, useChain, useTx, Card, ConnectPrompt, Details, Fig, Figures, No
 import { claimRebatesTx } from '../lib/actions';
 import {
   afterClaimFee,
+  claimOpensOn,
   cycleRebateGross,
   cycleStatus,
   epochIndex,
@@ -20,7 +21,7 @@ export function Rewards() {
     <div class="wrap page">
       <PageHead
         title="Rewards"
-        lead="Every buy earns a TOWN rebate: up to 5% of the TOWN you bought, less a 5% claim fee, claimable two days later within each day’s limit."
+        lead="Every buy earns a TOWN rebate: up to 5% of the TOWN you bought, less a 5% claim fee, claimable the next day within each day’s limit."
       />
       {reserveNearlySpent(chain) && <ReserveLow />}
       <YourRebate />
@@ -66,7 +67,7 @@ function YourRebate() {
         <p class="muted">This wallet has no buys yet, so there is nothing to claim.</p>
         <TxStatus tx={tx} />
         <p class="small muted">
-          A buy made today on the <a href="#/trade">Trade page</a> can be claimed from {dayName(current + 2)}.
+          A buy made today on the <a href="#/trade">Trade page</a> can be claimed from {dayName(claimOpensOn(chain, current))}.
         </p>
       </Card>
     );
@@ -110,7 +111,7 @@ function YourRebate() {
       ) : (
         <p class="small muted">
           {days.some((d) => !wallet.claimed[d])
-            ? `Nothing is ready yet. Your next day opens on ${dayName((days.find((d) => !wallet.claimed[d]) ?? current) + 2)}.`
+            ? `Nothing is ready yet. Your next day opens on ${dayName(claimOpensOn(chain, days.find((d) => !wallet.claimed[d]) ?? current))}.`
             : 'Nothing to claim: every day you bought has been claimed.'}
         </p>
       )}
@@ -136,7 +137,7 @@ function YourRebate() {
         </thead>
         <tbody>
           {[...days].reverse().map((d) => {
-            const status = cycleStatus(wallet, d, current);
+            const status = cycleStatus(chain, wallet, d);
             const info = chain.rewards.cycleInfo[d];
             const net = afterClaimFee(chain, cycleRebateGross(chain, wallet, d));
             return (
@@ -152,7 +153,7 @@ function YourRebate() {
                 <td class="r nowrap">
                   {status === 'claimed' && <span class="muted">Claimed</span>}
                   {status === 'ready' && <span class="status-ready">Ready</span>}
-                  {status === 'waiting' && <span class="muted">From day {fmtInt(d + 2)}</span>}
+                  {status === 'waiting' && <span class="muted">From day {fmtInt(claimOpensOn(chain, d))}</span>}
                 </td>
               </tr>
             );
@@ -181,7 +182,7 @@ function Today() {
       </Figures>
       <p class="small muted card-foot">
         The rate is 5% until 5% of the day’s buying passes the day’s limit; then the limit is shared and the rate falls. Today’s rebates open on{' '}
-        {dayName(c + 2)}.
+        {dayName(claimOpensOn(chain, c))}.
       </p>
     </Card>
   );
@@ -192,7 +193,7 @@ function Rules() {
     <ul class="plain-list">
       <li>Every TOWN you receive on a buy earns one point for that day. Selling takes no points away.</li>
       <li>A day’s pot is 5% of all TOWN bought that day, never more than the day’s limit, shared by points.</li>
-      <li>A day can be claimed from the start of the day after next. Rebates never expire.</li>
+      <li>A day can be claimed from the start of the next day. Rebates never expire.</li>
       <li>5% of every claim goes to the treasury for the owner, in TOWN, so 4.75% is the most a buyer gets back.</li>
       <li>A limit is not a promise: a quiet day pays less, and what it does not use stays in the reserve.</li>
       <li>Near the end of the reserve, days are paid in the order they are first claimed or finalised.</li>

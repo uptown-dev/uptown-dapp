@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { parseUnits } from 'viem';
 import { useApp, useChain, useTx, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs, TxStatus, type Tx } from '../components/ui';
 import { PriceSource, TIERS, type Tier } from '../data/types';
-import { fallbackExpiresAt, streamEnd, tierEmpty, tierMultiplier, tierShareBps, unpaidStream } from '../lib/derive';
+import { fallbackExpiresAt, pausePending, stakingChangeReady, stakingReplaced, streamEnd, tierEmpty, tierMultiplier, tierShareBps, unpaidStream } from '../lib/derive';
 import { fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUsd8, shortAddress } from '../lib/format';
 import { STAKING_GAS_LIMIT, addStakeTx, approveTx, claimWethTx, openVaultTx, unstakeTx, upgradeTx, withMargin } from '../lib/actions';
 
@@ -23,6 +23,7 @@ export function Stake() {
         title="Stake"
         lead="Buy a vault in one of five tiers, put TOWN in it and earn a share of the ETH the treasury pays out every day, as WETH."
       />
+      <PayoutChanges />
       <PriceStatus />
       <EmptyTiers />
       <TierTable />
@@ -58,6 +59,68 @@ export function Stake() {
         </ul>
       </Details>
     </div>
+  );
+}
+
+/**
+ * CR-46: the treasury's payouts paused, a pause announced, or a different staking contract
+ * announced (or already in use), each with a link to the Stats page, where every pending owner
+ * change is listed.
+ */
+function PayoutChanges() {
+  const chain = useChain();
+  const { network } = useApp();
+  const t = chain.treasury;
+  const pauseAt = pausePending(chain);
+  const replaced = stakingReplaced(chain, network.deployment?.contracts.TownStaking);
+  const more = (
+    <>
+      {' '}
+      See the <a href="#/stats">Stats page</a>.
+    </>
+  );
+  return (
+    <>
+      {t.paused && (
+        <Notice kind="warn" title="The treasury’s payouts are paused by the owner">
+          <p>
+            No new ETH reaches the tiers until the owner unpauses; the stakers’ share waits in the treasury and is paid out afterwards. ETH already streaming
+            here keeps streaming, and adding TOWN, unstaking and claiming keep working.{more}
+          </p>
+        </Notice>
+      )}
+      {pauseAt !== null && (
+        <Notice kind="info" title="A pause of the payouts is announced">
+          <p>
+            From <span class="num">{fmtDateTime(pauseAt)}</span> the treasury’s payouts will be paused, unless the owner cancels it first. ETH already
+            streaming here is not affected.{more}
+          </p>
+        </Notice>
+      )}
+      {t.pendingStaking !== null && (
+        <Notice kind="warn" title="A different staking contract is announced">
+          {stakingChangeReady(chain) ? (
+            <p>
+              Its 2-day wait ended on <span class="num">{fmtDateTime(t.stakingEffectiveAt)}</span>: once anyone applies it, the treasury will pay a different
+              staking contract; ETH already streaming here is not affected.{more}
+            </p>
+          ) : (
+            <p>
+              From <span class="num">{fmtDateTime(t.stakingEffectiveAt)}</span> the treasury will pay a different staking contract; ETH already streaming here
+              is not affected.{more}
+            </p>
+          )}
+        </Notice>
+      )}
+      {replaced && (
+        <Notice kind="warn" title="The treasury pays a different staking contract">
+          <p>
+            The owner replaced this staking contract: new payouts go to <code>{shortAddress(t.staking)}</code>. ETH already streaming here keeps streaming,
+            and your TOWN can be unstaked at any time.{more}
+          </p>
+        </Notice>
+      )}
+    </>
   );
 }
 

@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useApp, Details, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
 import { OWNER_CANNOT, OWNER_POWERS, THINGS_TO_KNOW } from '../content/docs';
 import { PriceSource } from '../data/types';
-import { fallbackExpiresAt } from '../lib/derive';
+import { burnFloor, fallbackExpiresAt, pausePending, stakingReplaced } from '../lib/derive';
 import { fmtBps, fmtDate, fmtDateTime, fmtEth, fmtTown, fmtUsd8, shortAddress } from '../lib/format';
 import { addressUrl, contractUrl, positionUrl, tokenUrl } from '../lib/network';
 
@@ -59,7 +59,7 @@ export function Docs() {
                 this record.
               </li>
               <li>
-                <strong>On a sell</strong> it burns 2% of the TOWN sold, until only 1,000,000 TOWN are left.
+                <strong>On a sell</strong> it burns 2% of the TOWN sold, until only {fmtTown(burnFloor(chain))} TOWN are left.
               </li>
               <li>
                 <strong>In the first 15 minutes after launch</strong> the buy fee starts at 90% and falls in a straight line to 2%, to discourage bots.
@@ -80,7 +80,7 @@ export function Docs() {
                   ]}
                 />
               </li>
-              <li>For each day you buy, you can claim up to 5% of the TOWN you bought, from two days later. Rebates never expire.</li>
+              <li>For each day you buy, you can claim up to 5% of the TOWN you bought, from the next day. Rebates never expire.</li>
               <li>5% of every claim goes to the treasury for the owner, so at most 4.75% reaches you.</li>
               <li>
                 Each day has a limit: 2,500,000 TOWN a day for the first 100 days, halving every 100 days down to 78,125. On a busy day everyone’s rate falls
@@ -115,10 +115,10 @@ export function Docs() {
               </li>
               <li>10% of all ETH arriving is kept for the owner. The rest is for stakers.</li>
               <li>
-                Once a day it sends a share of the stakers’ ETH (10% at launch; the owner can set 1% to 25%) to TownStaking as WETH. A share under 0.001 ETH
-                waits for a later day.
+                Once a day it sends a share of the stakers’ ETH (10% at launch; the owner can set 1% to 25%) to the staking contract as WETH: TownStaking,
+                unless the owner replaces it after a 2-day public wait. A share under 0.001 ETH waits for a later day.
               </li>
-              <li>ETH leaves only two ways: payouts to stakers and the owner’s 10% reserve.</li>
+              <li>ETH leaves only two ways: to the current staking contract and the owner’s 10% reserve.</li>
             </ul>
           </Section>
 
@@ -129,7 +129,7 @@ export function Docs() {
                 <Verify inline links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, town) }]} />
               </li>
               <li>Every sell burns 2% of the TOWN sold, so the supply only falls.</li>
-              <li>The burn stops when the supply reaches 1,000,000 TOWN; after that, sells pay no TownHook fee.</li>
+              <li>The burn stops when the supply reaches {fmtTown(burnFloor(chain))} TOWN; after that, sells pay no TownHook fee.</li>
             </ul>
           </Section>
 
@@ -156,7 +156,10 @@ export function Docs() {
 
           <Section id="rules">
             <ul class="doc-list">
-              <li>No contract can be upgraded, paused or replaced.</li>
+              <li>
+                No contract can be upgraded, and trading never pauses. The one moving part: the owner can pause the treasury’s daily payout or point it at a
+                new staking contract, each after a 2-day public wait.
+              </li>
               <li>The fees are fixed: 2% on buys, 2% on sells, the 0.5% pool fee and the 5% claim fee.</li>
               <li>The supply (1,000,000,000 TOWN), the vault tiers and their dollar prices are fixed.</li>
               <li>
@@ -296,7 +299,8 @@ function Owner() {
         </table>
       </div>
       <p class="doc-text muted small">
-        The owner cannot {OWNER_CANNOT.slice(0, -1).join(', ')} or {OWNER_CANNOT[OWNER_CANNOT.length - 1]}.
+        The owner cannot {OWNER_CANNOT.slice(0, -1).join(', ')} or {OWNER_CANNOT[OWNER_CANNOT.length - 1]}. The owner can pause the stakers’ payouts and
+        re-point them to a new staking contract, each only after a 2-day public delay; the <a href="#/stats">Stats page</a> shows every pending change.
       </p>
 
       <Details summary="Current owner settings">
@@ -310,6 +314,8 @@ function Settings() {
   const { chain: read, network } = useApp();
   const chain = read!;
   const st = chain.staking;
+  const t = chain.treasury;
+  const pauseAt = pausePending(chain);
   const fallbackLive = st.priceStatus.source === PriceSource.Fallback;
   return (
     <>
@@ -334,10 +340,28 @@ function Settings() {
           note={st.pendingFeed ? `From ${fmtDateTime(st.pendingFeedEffectiveAt)}.` : undefined}
         />
         <Fig label="Liquidity locked until" value={fmtDate(chain.lpVault.unlockTime)} view="LPVault.unlockTime" note="Can be extended, never shortened." />
+        <Fig
+          label="Treasury payouts"
+          value={t.paused ? 'Paused' : 'Running'}
+          view="Treasury.paused, Treasury.pauseEffectiveAt"
+          note={t.paused ? `Paused since ${fmtDateTime(t.pauseEffectiveAt)}.` : pauseAt !== null ? `A pause is announced from ${fmtDateTime(pauseAt)}.` : 'No pause announced.'}
+        />
+        <Fig
+          label="Staking contract paid"
+          value={shortAddress(t.staking)}
+          view="Treasury.staking, Treasury.pendingStaking"
+          note={
+            t.pendingStaking
+              ? `${shortAddress(t.pendingStaking)} announced, from ${fmtDateTime(t.stakingEffectiveAt)}.`
+              : stakingReplaced(chain, network.deployment?.contracts.TownStaking)
+                ? 'A replacement for TownStaking; no change announced.'
+                : 'TownStaking; no change announced.'
+          }
+        />
       </Figures>
       <Verify
         links={[
-          { label: 'payout rate', what: 'the Treasury’s payout rate', href: contractUrl(network, 'Treasury', 'read') },
+          { label: 'payout rate and target', what: 'the Treasury’s payout rate, pause and staking contract', href: contractUrl(network, 'Treasury', 'read') },
           { label: 'prices and feed', what: 'TownStaking’s fallback price and feed', href: contractUrl(network, 'TownStaking', 'read') },
           { label: 'unlock time', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
         ]}

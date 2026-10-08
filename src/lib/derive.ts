@@ -46,6 +46,15 @@ export function burned(chain: ChainState): bigint {
   return chain.token.INITIAL_SUPPLY - chain.token.totalSupply;
 }
 
+/**
+ * The burn floor in TOWN units: TownHook.BURN_FLOOR() when the figures have been read; the spec's
+ * 50,000,000 TOWN (CR-45) only where the contracts are not deployed on this network yet.
+ */
+export function burnFloor(chain: ChainState | null): bigint {
+  return chain ? chain.hook.BURN_FLOOR : SPEC_BURN_FLOOR;
+}
+const SPEC_BURN_FLOOR = 50_000_000n * 10n ** 18n;
+
 /** TOWN left to burn before the burn floor: totalSupply - BURN_FLOOR, never negative. */
 export function leftToBurn(chain: ChainState): bigint {
   const { totalSupply } = chain.token;
@@ -93,9 +102,14 @@ export function afterClaimFee(chain: ChainState, gross: bigint): bigint {
 
 export type CycleStatus = 'claimed' | 'ready' | 'waiting';
 
-export function cycleStatus(wallet: WalletState, cycle: number, current: number): CycleStatus {
+/** The day from which a day's rebate can be claimed: c + the delay the contract applies (CR-44: c + 1). */
+export function claimOpensOn(chain: ChainState, cycle: number): number {
+  return cycle + chain.rewards.claimDelay.days;
+}
+
+export function cycleStatus(chain: ChainState, wallet: WalletState, cycle: number): CycleStatus {
   if (wallet.claimed[cycle]) return 'claimed';
-  return cycle + 2 <= current ? 'ready' : 'waiting';
+  return claimOpensOn(chain, cycle) <= chain.rewards.currentCycle ? 'ready' : 'waiting';
 }
 
 /**
@@ -124,8 +138,7 @@ export function walletCycles(wallet: WalletState): number[] {
 
 /** The cycles a claim includes: ready and unclaimed, oldest first (CR-36). */
 export function readyCycles(chain: ChainState, wallet: WalletState): number[] {
-  const current = chain.rewards.currentCycle;
-  return walletCycles(wallet).filter((c) => cycleStatus(wallet, c, current) === 'ready');
+  return walletCycles(wallet).filter((c) => cycleStatus(chain, wallet, c) === 'ready');
 }
 
 // --- treasury --------------------------------------------------------------------------
@@ -144,6 +157,7 @@ export function hookFeesReceived(chain: ChainState): bigint {
 }
 
 export type BudgetState =
+  | { kind: 'paused' }
   | { kind: 'paid'; amount: bigint }
   | { kind: 'below-minimum'; amount: bigint }
   | { kind: 'waiting'; estimate: bigint };
@@ -151,9 +165,28 @@ export type BudgetState =
 /** What has happened to this day's payout so far. */
 export function budgetState(chain: ChainState): BudgetState {
   const t = chain.treasury;
+  // While paused, poke() does nothing and nextDistributionTime() is 0 (CR-46).
+  if (t.paused) return { kind: 'paused' };
   if (t.lastDistributedCycle === t.currentCycle) return { kind: 'paid', amount: t.budget };
   if (t.nextDistributionTime > chain.blockTimestamp) return { kind: 'below-minimum', amount: t.budget };
   return { kind: 'waiting', estimate: (forStakers(chain) * BigInt(t.spendBps)) / BPS };
+}
+
+/** A pause announced and not yet in effect (CR-46): its start time, else null. */
+export function pausePending(chain: ChainState): number | null {
+  const at = chain.treasury.pauseEffectiveAt;
+  return !chain.treasury.paused && at > chain.blockTimestamp ? at : null;
+}
+
+/** True once an announced staking replacement can be applied by anyone (CR-46). */
+export function stakingChangeReady(chain: ChainState): boolean {
+  const t = chain.treasury;
+  return t.pendingStaking !== null && chain.blockTimestamp >= t.stakingEffectiveAt;
+}
+
+/** True when the Treasury no longer pays the TownStaking this site's Stake page uses (CR-46). */
+export function stakingReplaced(chain: ChainState, townStaking: string | undefined): boolean {
+  return !!townStaking && chain.treasury.staking.toLowerCase() !== townStaking.toLowerCase();
 }
 
 // --- staking -----------------------------------------------------------------------------

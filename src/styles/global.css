@@ -1661,6 +1661,62 @@ main:focus {
   font-weight: 600;
   margin-bottom: 2px;
 }
+/* CR-46: the staking contract the treasury pays and the pending owner changes. */
+.owner-changes {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+@media (min-width: 760px) {
+  .owner-changes {
+    grid-template-columns: 1fr 1.4fr;
+    gap: 24px;
+  }
+}
+.staking-target-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 2px 0 4px;
+}
+.staking-target-line .verify {
+  margin: 0;
+}
+.pending-none {
+  margin-top: 8px;
+  font-weight: 600;
+}
+.pending-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.pending-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+}
+.pending-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+  overflow-wrap: anywhere;
+}
+.pending-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 8px;
+}
+.pending-status .tx-status {
+  margin-top: 10px;
+}
 .per-tier {
   margin: 4px 0 12px;
 }

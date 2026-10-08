@@ -1,10 +1,10 @@
 import { useApp, Card, Fig, Figures, Notice, Verify } from '../components/ui';
 import { CheckIcon, EthIcon, FlowGraphic, LockIcon, RebateIcon } from '../components/icons';
-import { burned } from '../lib/derive';
+import { burnFloor, burned } from '../lib/derive';
 import { dayName, fmtEth, fmtTown } from '../lib/format';
 import { contractUrl, tokenUrl } from '../lib/network';
 
-const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades, no pause', 'Liquidity locked for 10 years', 'Every sell burns 2% of the TOWN sold'];
+const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell burns 2% of the TOWN sold'];
 
 export function Home() {
   const { chain, network } = useApp();
@@ -56,7 +56,7 @@ export function Home() {
             />
           </div>
           <figure class="flow-card hero-flow">
-            <FlowGraphic />
+            <FlowGraphic floor={fmtTown(burnFloor(chain))} />
           </figure>
         </div>
       </section>
@@ -69,7 +69,7 @@ export function Home() {
             </span>
             <h2>Buy rebates</h2>
             <p class="feature-number num">up to 4.75%</p>
-            <p>of the TOWN you buy comes back as a TOWN rebate, claimable two days later.</p>
+            <p>of the TOWN you buy comes back as a TOWN rebate, claimable the next day.</p>
             <Verify links={[{ what: 'BuyerRewards’ reserve and running totals', href: contractUrl(network, 'BuyerRewards', 'read') }]} />
           </article>
           <article class="feature">
@@ -87,7 +87,7 @@ export function Home() {
             </span>
             <h2>Fixed rules</h2>
             <p class="feature-number num">1,000,000,000 TOWN</p>
-            <p>never more. No upgrades, no pause, liquidity locked for ten years.</p>
+            <p>never more. No upgrades; trading never pauses; liquidity locked for ten years.</p>
             <Verify links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, town) }]} />
           </article>
         </div>
@@ -121,7 +121,7 @@ export function Home() {
                 <span class="step-no">3</span>
                 <div>
                   <h3>On a sell, TownHook burns TOWN</h3>
-                  <p>2% of the TOWN sold is burned, until only 1,000,000 TOWN remain.</p>
+                  <p>2% of the TOWN sold is burned, until only {fmtTown(burnFloor(chain))} TOWN remain.</p>
                 </div>
               </li>
               <li>
@@ -129,7 +129,7 @@ export function Home() {
                 <div>
                   <h3>Buyers and stakers are rewarded</h3>
                   <p>
-                    Two days after a buy you can claim up to 5% of your TOWN back from the reserve (4.75% after the claim fee). Each day the treasury pays
+                    From the day after a buy you can claim up to 5% of your TOWN back from the reserve (4.75% after the claim fee). Each day the treasury pays
                     part of its ETH to stakers as WETH, streamed over seven days.
                   </p>
                 </div>

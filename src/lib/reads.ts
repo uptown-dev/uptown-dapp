@@ -86,9 +86,17 @@ class Reader {
     const r = this.results[i];
     return r.status === 'success' ? (r.result as T) : null;
   }
+  /** True when the call did not revert (for calls that return nothing). */
+  ok(i: number): boolean {
+    return this.results[i].status === 'success';
+  }
 }
 
 const num = (v: unknown) => Number(v as bigint);
+const isZero = (a: Address) => /^0x0{40}$/i.test(a);
+
+/** The spec's claim delay (CR-44: day c opens on day c + 1), used only on day 0, before the contract can be asked. */
+const SPEC_CLAIM_DELAY_DAYS = 1;
 
 /** Per wallet, the tally of past days never changes (only today's grows), so it is kept here. */
 const pastTally = new Map<string, { through: number; bought: Record<number, bigint> }>();
@@ -145,6 +153,12 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     totalDistributed: T('totalDistributed'),
     totalOwnerEthWithdrawn: T('totalOwnerEthWithdrawn'),
     totalTownWithdrawn: T('totalTownWithdrawn'),
+    OWNER_DELAY: T('OWNER_DELAY'),
+    staking: T('staking'),
+    pendingStaking: T('pendingStaking'),
+    stakingEffectiveAt: T('stakingEffectiveAt'),
+    pauseEffectiveAt: T('pauseEffectiveAt'),
+    paused: T('paused'),
     TOTAL_WEIGHT: S('TOTAL_WEIGHT'),
     STREAM_LENGTH: S('STREAM_LENGTH'),
     PRICE_MAX_AGE: S('PRICE_MAX_AGE'),
@@ -232,7 +246,20 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       });
     }
   }
+  // The claim delay, from the contract (CR-44): ask BuyerRewards whether it would finalise the day
+  // before today, and the day before that, by running `finalize` as a read (eth_call; nothing is
+  // sent). The smallest k it accepts for day `current - k` is the delay: day c opens on c + k. These
+  // calls come last in the round because an accepted one changes state inside this one read.
+  const probeIdx = [1, 2]
+    .filter((delay) => current - delay >= 0)
+    .map((delay) => ({
+      delay,
+      i: b.add(`BuyerRewards.finalize(${current - delay}) as a read`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'finalize', args: [BigInt(current - delay)] }),
+    }));
   const r2 = await b.run(client, n, bn);
+  const accepted = probeIdx.find((p) => r2.ok(p.i));
+  // Day 0 has no ended day to ask about: then the spec's value, one day (CR-44).
+  const claimDelay = accepted ? { days: accepted.delay, fromContract: true } : { days: SPEC_CLAIM_DELAY_DAYS, fromContract: false };
   const cap: Record<number, bigint> = {};
   capDays.forEach((c, j) => (cap[c] = r2.get<bigint>(capIdx[j])));
   const bought: Record<number, bigint> = { ...known };
@@ -306,6 +333,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       totalClaimedGross: r1.get(i.totalClaimedGross),
       totalPaidToBuyers: r1.get(i.totalPaidToBuyers),
       totalFeesToTreasury: r1.get(i.totalFeesToTreasury),
+      claimDelay,
     },
     treasury: {
       balance: r1.get(i.treasuryBalance),
@@ -323,6 +351,12 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       totalDistributed: r1.get(i.totalDistributed),
       totalOwnerEthWithdrawn: r1.get(i.totalOwnerEthWithdrawn),
       totalTownWithdrawn: r1.get(i.totalTownWithdrawn),
+      OWNER_DELAY: num(r1.get(i.OWNER_DELAY)),
+      staking: r1.get(i.staking),
+      pendingStaking: isZero(r1.get<Address>(i.pendingStaking)) ? null : r1.get<Address>(i.pendingStaking),
+      stakingEffectiveAt: num(r1.get(i.stakingEffectiveAt)),
+      pauseEffectiveAt: num(r1.get(i.pauseEffectiveAt)),
+      paused: r1.get(i.paused),
     },
     staking: {
       tierUsd: tierMap(ti.tierUsd, num),
@@ -335,7 +369,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       priceStatus: { price: ps[0], source: Number(ps[1]) as PriceSource, updatedAt: Number(ps[2]) },
       fallbackPrice: r1.get(i.fallbackPrice),
       fallbackPriceSetAt: num(r1.get(i.fallbackPriceSetAt)),
-      pendingFeed: /^0x0{40}$/i.test(pending) ? null : pending,
+      pendingFeed: isZero(pending) ? null : pending,
       pendingFeedEffectiveAt: num(r1.get(i.pendingFeedEffectiveAt)),
       vaultPriceWei: tierMap(ti.vaultPriceWei, (v) => v as bigint, true),
       tierStaked: tierMap(ti.tierStaked, (v) => v as bigint),

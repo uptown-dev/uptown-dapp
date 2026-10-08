@@ -40,6 +40,15 @@ export const UPTOWN_ERRORS = [
   'error NoPendingFeed()',
   'error SpendRateOutOfBounds()',
   'error InsufficientOwnerEth()',
+  // Treasury, owner changes with a delay (CR-46).
+  'error StakingNotContract()',
+  'error SameStaking()',
+  'error NoPendingStaking()',
+  'error StakingChangeNotReady()',
+  'error PauseAlreadyAnnounced()',
+  'error AlreadyPaused()',
+  'error NoPendingPause()',
+  'error NotPaused()',
 ] as const;
 
 /** Errors from libraries and Uniswap that a site action can meet. */
@@ -107,6 +116,9 @@ export const REWARDS_ABI = parseAbi([
   'function claimed(address wallet, uint256 cycle) view returns (bool)',
   'function claimable(address wallet, uint256[] cycles) view returns (uint256)',
   'function claim(uint256[] cycles)',
+  // Never sent by the site: run as a read (eth_call) to ask the contract which past day it would
+  // finalise now, so the claim day comes from the contract's own check (CR-44).
+  'function finalize(uint256 c)',
   ...UPTOWN_ERRORS,
   ...OTHER_ERRORS,
 ]);
@@ -127,6 +139,24 @@ export const TREASURY_ABI = parseAbi([
   'function totalOwnerEthWithdrawn() view returns (uint256)',
   'function totalTownWithdrawn() view returns (uint256)',
   'function poke()',
+  // Owner changes with a delay (CR-46): constant, views, the public apply, the owner-only calls
+  // (listed for completeness and for their errors; the site never sends them) and the events.
+  'function OWNER_DELAY() view returns (uint256)',
+  'function staking() view returns (address)',
+  'function pendingStaking() view returns (address)',
+  'function stakingEffectiveAt() view returns (uint256)',
+  'function pauseEffectiveAt() view returns (uint256)',
+  'function paused() view returns (bool)',
+  'function applyStaking()',
+  'function announceStaking(address newStaking)',
+  'function announcePause()',
+  'function cancelPause()',
+  'function unpause()',
+  'event StakingAnnounced(address indexed newStaking, uint256 effectiveAt)',
+  'event StakingReplaced(address indexed oldStaking, address indexed newStaking)',
+  'event PauseAnnounced(uint256 effectiveAt)',
+  'event PauseCancelled()',
+  'event Unpaused()',
   ...UPTOWN_ERRORS,
   ...OTHER_ERRORS,
 ]);

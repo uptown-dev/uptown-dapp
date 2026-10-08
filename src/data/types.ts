@@ -97,6 +97,12 @@ export interface ChainState {
     totalPaidToBuyers: bigint;
     /** BuyerRewards.totalFeesToTreasury() */
     totalFeesToTreasury: bigint;
+    /**
+     * Day c can be claimed from the start of day c + claimDelay.days. Found by asking BuyerRewards.finalize(current - k) as a read (eth_call, never sent) for k = 1, 2: the
+     * smallest k the contract accepts (CR-44: 1). `fromContract` is false on a day with no ended day
+     * to ask about (day 0), when the spec's value is used.
+     */
+    claimDelay: { days: number; fromContract: boolean };
   };
 
   /** Treasury. */
@@ -131,6 +137,18 @@ export interface ChainState {
     totalOwnerEthWithdrawn: bigint;
     /** Treasury.totalTownWithdrawn() */
     totalTownWithdrawn: bigint;
+    /** Treasury.OWNER_DELAY(): the wait between announcing an owner change and its effect (CR-46). */
+    OWNER_DELAY: number;
+    /** Treasury.staking(): the staking contract every distribution goes to from now on (CR-46). */
+    staking: Address;
+    /** Treasury.pendingStaking(); `null` for address(0), nothing announced. */
+    pendingStaking: Address | null;
+    /** Treasury.stakingEffectiveAt(): from when `applyStaking()` works; 0 when nothing is pending. */
+    stakingEffectiveAt: number;
+    /** Treasury.pauseEffectiveAt(): from when the payouts are paused; 0 when no pause is announced or in effect. */
+    pauseEffectiveAt: number;
+    /** Treasury.paused() */
+    paused: boolean;
   };
 
   /** TownStaking. */
