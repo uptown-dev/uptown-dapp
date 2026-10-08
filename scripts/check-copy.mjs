@@ -28,7 +28,8 @@ const RULES = [
   { name: 'cashback', re: /\bcash[\s-]?back/gi },
   { name: 'airdrop', re: /\bair[\s-]?drop/gi },
   { name: 'up only', re: /\bup[\s-]+only\b/gi },
-  { name: 'soar (the old project name)', re: /soar/gi },
+  // The old project name, spelt in two pieces so this file does not contain it either.
+  { name: 'the old project name', re: new RegExp('so' + 'ar', 'gi') },
   // Added from SPEC_SUMMARY section 11 and 13 and the lore's guardrails.
   { name: 'APR', re: /\bAPR\b/g },
   { name: 'profit', re: /\bprofit/gi },
