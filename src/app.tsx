@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { DEFAULT_SCENARIO_ID, SAMPLE_FIGURES, SCENARIOS, getScenario } from './data/placeholder';
 import { AppContext, type AppState } from './components/ui';
-import { CloseIcon, MenuIcon, DarkModeIcon, LightModeIcon, TowerGlyph } from './components/icons';
+import { CloseIcon, ExternalIcon, MenuIcon, DarkModeIcon, LightModeIcon, TowerGlyph } from './components/icons';
+import { CONTRACT_NAMES } from './data/types';
+import { CHAIN_IDS, DEFAULT_CHAIN_ID, NETWORKS, contractUrl, getNetwork, type ChainId } from './lib/network';
 import { dayName, shortAddress } from './lib/format';
 import { chooseTheme, currentTheme, storedTheme, type Theme } from './lib/theme';
 import { Home } from './pages/Home';
@@ -9,7 +11,7 @@ import { Buy } from './pages/Buy';
 import { Rewards } from './pages/Rewards';
 import { Stake } from './pages/Stake';
 import { Stats } from './pages/Stats';
-import { Owner } from './pages/Owner';
+import { Docs } from './pages/Docs';
 
 const NAV: { page: string; label: string; title: string }[] = [
   { page: '', label: 'Home', title: 'UpTown (TOWN)' },
@@ -17,15 +19,29 @@ const NAV: { page: string; label: string; title: string }[] = [
   { page: 'rewards', label: 'Rewards', title: 'Buyer rebates · UpTown' },
   { page: 'stake', label: 'Stake', title: 'Stake TOWN · UpTown' },
   { page: 'stats', label: 'Stats', title: 'Treasury and stats · UpTown' },
-  { page: 'owner', label: 'Owner and risks', title: 'Owner and risks · UpTown' },
+  { page: 'docs', label: 'Docs', title: 'Docs · UpTown' },
 ];
 
-function parseHash(hash: string): string {
-  const page = hash.replace(/^#\/?/, '').split('/')[0] ?? '';
-  return NAV.some((n) => n.page === page) ? page : '';
+/** `#/docs/owner` is the page docs scrolled to its section owner (element id docs-owner). */
+function parseHash(hash: string): { page: string; section: string } {
+  const [first = '', second = ''] = hash.replace(/^#\/?/, '').split('/');
+  const page = NAV.some((n) => n.page === first) ? first : '';
+  return { page, section: page ? second : '' };
 }
 
 const SCENARIO_KEY = 'uptown-preview-scenario';
+const CHAIN_KEY = 'uptown-preview-chain';
+
+function readStoredChain(): ChainId {
+  // ?chain=<id> in the address opens a network directly (handy for screenshots).
+  const fromUrl = new URLSearchParams(window.location.search).get('chain');
+  if (fromUrl) return getNetwork(fromUrl).chainId;
+  try {
+    return getNetwork(window.localStorage.getItem(CHAIN_KEY) ?? DEFAULT_CHAIN_ID).chainId;
+  } catch {
+    return DEFAULT_CHAIN_ID;
+  }
+}
 
 function readStoredScenario(): string {
   // ?scenario=<id> in the address opens a scenario directly (handy for screenshots).
@@ -44,7 +60,10 @@ interface Toast {
 }
 
 export function App() {
-  const [page, setPage] = useState<string>(() => parseHash(window.location.hash));
+  const [hash, setHash] = useState<string>(() => window.location.hash);
+  const { page, section } = parseHash(hash);
+  const [chainId, setChainId] = useState<ChainId>(() => readStoredChain());
+  const network = NETWORKS[chainId];
   const [scenarioId, setScenarioId] = useState<string>(() => getScenario(readStoredScenario()).id);
   const scenario = getScenario(scenarioId);
   const [connected, setConnected] = useState<boolean>(scenario.walletConnected);
@@ -55,7 +74,7 @@ export function App() {
   const firstRender = useRef(true);
 
   useEffect(() => {
-    const onHash = () => setPage(parseHash(window.location.hash));
+    const onHash = () => setHash(window.location.hash);
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -86,10 +105,28 @@ export function App() {
     mainRef.current?.focus({ preventScroll: true });
   }, [page]);
 
+  // A section link (#/docs/owner): bring that section into view and move focus to it.
+  useEffect(() => {
+    if (!section) return;
+    const el = document.getElementById(`${page}-${section}`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start' });
+    el.focus({ preventScroll: true });
+  }, [hash]);
+
   const state: AppState = useMemo(
     () => ({
       scenario,
       chain: scenario.chain,
+      network,
+      setChainId: (id: ChainId) => {
+        setChainId(id);
+        try {
+          window.localStorage.setItem(CHAIN_KEY, String(id));
+        } catch {
+          /* storage unavailable: the choice lasts for this visit only */
+        }
+      },
       wallet: connected ? scenario.wallet : null,
       toggleWallet: () => setConnected((c) => !c),
       setScenario: (id: string) => {
@@ -108,7 +145,7 @@ export function App() {
         window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 7000);
       },
     }),
-    [scenario, connected],
+    [scenario, connected, network],
   );
 
   const view = (() => {
@@ -121,8 +158,8 @@ export function App() {
         return <Stake />;
       case 'stats':
         return <Stats />;
-      case 'owner':
-        return <Owner />;
+      case 'docs':
+        return <Docs />;
       default:
         return <Home />;
     }
@@ -155,6 +192,20 @@ export function App() {
                 {SCENARIOS.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label class="preview-select preview-chain">
+              <span class="visually-hidden">Preview network</span>
+              <select
+                value={String(chainId)}
+                onChange={(e) => state.setChainId(getNetwork((e.target as HTMLSelectElement).value).chainId)}
+                title="The network the explorer links point to"
+              >
+                {CHAIN_IDS.map((id) => (
+                  <option key={id} value={String(id)}>
+                    {id === 1 ? 'Mainnet' : id === 11155111 ? 'Sepolia' : 'Local'}
                   </option>
                 ))}
               </select>
@@ -236,22 +287,51 @@ export function App() {
               <TowerGlyph />
               <span>UpTown</span>
             </a>
-            <p>UpTown Token (TOWN) on Ethereum. Nothing on this site is advice or a promise about price.</p>
-          </div>
-          <nav aria-label="Footer">
-            <ul>
-              {NAV.slice(1, 5).map((n) => (
-                <li key={n.page}>
-                  <a href={`#/${n.page}`}>{n.label}</a>
+            <p>UpTown Token (TOWN), an experiment on Ethereum.</p>
+            <nav aria-label="Footer">
+              <ul>
+                {NAV.slice(1, 5).map((n) => (
+                  <li key={n.page}>
+                    <a href={`#/${n.page}`}>{n.label}</a>
+                  </li>
+                ))}
+                <li>
+                  <a href="#/docs" class="footer-strong">
+                    Docs
+                  </a>
                 </li>
-              ))}
-              <li>
-                <a href="#/owner" class="footer-strong">
-                  Owner and risks
-                </a>
-              </li>
+              </ul>
+            </nav>
+          </div>
+          <div class="footer-contracts">
+            <p class="footer-head">
+              Contracts{network.explorerName ? ` on ${network.explorerName}` : ''}
+              {SAMPLE_FIGURES && <span class="footer-sample"> · sample addresses</span>}
+            </p>
+            <ul>
+              {CONTRACT_NAMES.map((name) => {
+                const href = contractUrl(network, name);
+                const addr = network.deployment.contracts[name];
+                return (
+                  <li key={name}>
+                    {href ? (
+                      <a href={href} target="_blank" rel="noopener noreferrer" aria-label={`${name}, ${addr}, on ${network.explorerName} (opens in a new tab)`}>
+                        <span class="footer-cname">{name}</span>
+                        <span class="footer-addr num">{shortAddress(addr)}</span>
+                        <ExternalIcon size={12} />
+                      </a>
+                    ) : (
+                      <span class="footer-off">
+                        <span class="footer-cname">{name}</span>
+                        <span class="footer-addr num">{shortAddress(addr)}</span>
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
-          </nav>
+            {!network.explorer && <p class="footer-note">No block explorer on the {network.name.toLowerCase()}, so these are not links.</p>}
+          </div>
           <p class="footer-fonts">
             Fonts under the SIL Open Font Licence: <a href="./licenses/OFL-Inter.txt">Inter</a>, <a href="./licenses/OFL-Cinzel.txt">Cinzel</a> (wordmark).
           </p>

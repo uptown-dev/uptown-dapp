@@ -531,12 +531,16 @@ main:focus {
   line-height: 1.15;
   margin-bottom: 16px;
 }
-.hero-points p {
+.hero-summary {
   color: var(--text-2);
-  margin-bottom: 8px;
+  max-width: 720px;
+  margin-bottom: 0;
 }
-.hero-points strong {
+.hero-summary strong {
   color: var(--text);
+}
+.hero .verify {
+  margin-top: 14px;
 }
 .hero-cta {
   margin: 20px 0 18px;
@@ -581,7 +585,7 @@ main:focus {
   .hero h1 {
     font-size: 40px;
   }
-  .hero-points {
+  .hero-summary {
     font-size: 16px;
   }
 }
@@ -1611,7 +1615,59 @@ main:focus {
 }
 .footer-grid {
   display: grid;
-  gap: 18px;
+  gap: 22px;
+}
+.footer-brand nav {
+  margin-top: 14px;
+}
+.footer-head {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.footer-sample {
+  font-weight: 400;
+  color: var(--text-3);
+}
+.footer-contracts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 4px 20px;
+}
+.footer-contracts a,
+.footer-off {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  text-decoration: none;
+  padding: 2px 0;
+}
+.footer-contracts a:hover {
+  color: var(--text);
+}
+.footer-contracts a:hover .footer-cname {
+  text-decoration: underline;
+}
+.footer-cname {
+  color: var(--text);
+  font-weight: 500;
+}
+.footer-addr {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.footer-off .footer-cname {
+  color: var(--text-2);
+}
+.footer-note {
+  margin-top: 8px;
+  color: var(--text-3);
+  font-size: 12px;
 }
 .footer-brand p {
   margin-top: 8px;
@@ -1647,7 +1703,8 @@ main:focus {
 }
 @media (min-width: 760px) {
   .footer-grid {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 32px;
     align-items: start;
   }
   .footer-fonts {
@@ -1795,8 +1852,11 @@ main:focus {
     padding: 16px;
   }
   .feature-icon {
-    grid-row: span 3;
+    grid-row: span 4;
     margin-bottom: 0;
+  }
+  .feature .verify {
+    grid-column: 2;
   }
   .feature-number {
     font-size: 19px;
@@ -1861,4 +1921,227 @@ main:focus {
 .details-body .table,
 .table.per-tier {
   max-width: 680px;
+}
+
+/* ---------- "Don't trust, verify" links (CR-40) ---------- */
+
+.verify {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.verify.inline {
+  display: inline;
+  margin: 0;
+  white-space: normal;
+}
+.verify.inline .verify-item {
+  margin-left: 8px;
+}
+.verify-text {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.verify-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent-text);
+  white-space: nowrap;
+}
+.verify-link .icon {
+  flex: none;
+}
+.verify.off .verify-text {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.verify-note {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.card > .verify {
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.card.flush > .verify {
+  margin: 0 16px 14px;
+}
+.feature .verify {
+  margin-top: 8px;
+}
+.preview-chain {
+  margin-left: 0;
+}
+.preview-chain select {
+  max-width: 96px;
+}
+
+/* ---------- flow graphic: the hook ---------- */
+
+.fg-hook {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.fg-hook-title {
+  fill: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--font);
+}
+.fg-data {
+  stroke: var(--text-3);
+  stroke-width: 1.5;
+  fill: none;
+  stroke-dasharray: 1.5 3;
+  stroke-linecap: round;
+}
+
+/* ---------- docs ---------- */
+
+.docs-layout {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.docs-layout > * {
+  min-width: 0;
+}
+.toc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  font-size: 14px;
+}
+.toc-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.toc ol {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+  color: var(--text-3);
+}
+.toc a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+.toc a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.docs-body {
+  display: grid;
+  gap: 16px;
+}
+.doc-section {
+  scroll-margin-top: 76px;
+}
+.doc-section:focus {
+  outline: none;
+}
+.doc-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 7px;
+  color: var(--text-2);
+}
+.doc-list strong {
+  color: var(--text);
+}
+.doc-list li::marker {
+  color: var(--text-3);
+}
+.doc-text {
+  color: var(--text-2);
+}
+.doc-section > .notice {
+  margin: 4px 0 6px;
+}
+.doc-sub {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 18px 0 8px;
+}
+.doc-section .powers-list {
+  margin: 0 -16px;
+}
+.doc-section .powers-table {
+  margin-bottom: 4px;
+}
+.doc-section .details {
+  margin-top: 14px;
+}
+@media (min-width: 640px) {
+  .doc-section .powers-list {
+    margin: 0 -20px;
+  }
+}
+@media (min-width: 960px) {
+  .docs-layout {
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .toc {
+    position: sticky;
+    top: 84px;
+  }
+  .toc ol {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+.doc-section .table.powers {
+  table-layout: fixed;
+  width: 100%;
+}
+.doc-section .table.powers th[scope='row'] {
+  min-width: 0;
+}
+.doc-section .table.powers thead th:nth-child(1) {
+  width: 27%;
+}
+.doc-section .table.powers thead th:nth-child(2) {
+  width: 16%;
+}
+.doc-section .table.powers thead th:nth-child(3) {
+  width: 19%;
+}
+.doc-section .table.powers td:nth-child(2) {
+  white-space: normal;
+}
+.doc-section .table.powers td:nth-child(3) {
+  min-width: 0;
+}
+.doc-section .table.powers td:nth-child(4) {
+  color: var(--text-2);
+}
+@media (max-width: 639px) {
+  .preview-bar .wrap {
+    gap: 6px;
+  }
+  .preview-select {
+    min-width: 0;
+  }
+  .preview-select select {
+    max-width: 150px;
+  }
+  .preview-chain select {
+    max-width: 82px;
+  }
 }

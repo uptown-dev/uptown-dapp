@@ -3,13 +3,18 @@ import { createContext, type ComponentChildren } from 'preact';
 import { useContext, useState } from 'preact/hooks';
 import type { ChainState, Scenario, WalletState } from '../data/types';
 import { SAMPLE_FIGURES } from '../data/placeholder';
-import { ChevronIcon, InfoIcon, NoteIcon, WarnIcon } from './icons';
+import { ChevronIcon, ExternalIcon, InfoIcon, NoteIcon, WarnIcon } from './icons';
+import type { ChainId, Network } from '../lib/network';
 
 export interface AppState {
   scenario: Scenario;
   chain: ChainState;
   /** The connected wallet, or null when no wallet is connected. */
   wallet: WalletState | null;
+  /** The chain shown, its explorer and the contract addresses (the network module). */
+  network: Network;
+  /** Preview only: switch the network, to see the explorer links on each chain. */
+  setChainId: (id: ChainId) => void;
   toggleWallet: () => void;
   setScenario: (id: string) => void;
   toast: (message: string) => void;
@@ -285,5 +290,63 @@ export function FieldError({ children }: { children: ComponentChildren }) {
       <WarnIcon size={14} />
       {children}
     </span>
+  );
+}
+
+/** One explorer link for `Verify`: what it proves (for the accessible name) and where it goes. */
+export interface VerifyLink {
+  /** Shown text when a claim needs more than one link, e.g. "unlock time". */
+  label?: string;
+  /** What the page shows, e.g. "LPVault’s unlock time". */
+  what: string;
+  /** Built by the network module; null where the chain has no explorer. */
+  href: string | null;
+}
+
+/**
+ * "Don't trust, verify": a small link beside a claim anyone can check on chain (CR-40). One link
+ * reads "Don’t trust, verify"; several read "Don’t trust, verify:" followed by their labels.
+ * Every link opens the explorer in a new tab. On a chain without an explorer the text shows as
+ * disabled with a short note.
+ */
+export function Verify({ links, inline }: { links: VerifyLink[]; inline?: boolean }) {
+  const { network } = useApp();
+  const Tag = inline ? 'span' : 'p';
+  const usable = links.filter((l) => l.href);
+  if (!network.explorer || usable.length === 0) {
+    return (
+      <Tag class={`verify off${inline ? ' inline' : ''}`}>
+        <span class="verify-text" aria-disabled="true">
+          Don’t trust, verify
+        </span>{' '}
+        <span class="verify-note">(no block explorer on the {network.name.toLowerCase()})</span>
+      </Tag>
+    );
+  }
+  const a = (l: VerifyLink, text: string) => (
+    <a
+      class="verify-link"
+      href={l.href!}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`${l.what}, on ${network.explorerName}`}
+      aria-label={`${text}: ${l.what}, on ${network.explorerName} (opens in a new tab)`}
+    >
+      {text}
+      <ExternalIcon size={12} />
+    </a>
+  );
+  if (usable.length === 1 && !usable[0].label) {
+    return <Tag class={`verify${inline ? ' inline' : ''}`}>{a(usable[0], 'Don’t trust, verify')}</Tag>;
+  }
+  return (
+    <Tag class={`verify${inline ? ' inline' : ''}`}>
+      <span class="verify-text">Don’t trust, verify:</span>
+      {usable.map((l) => (
+        <span key={l.href} class="verify-item">
+          {a(l, l.label ?? l.what)}
+        </span>
+      ))}
+    </Tag>
   );
 }

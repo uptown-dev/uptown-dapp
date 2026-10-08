@@ -308,7 +308,7 @@ function OpenForm() {
         <Row label="Refunded at once" value={price === null ? '—' : `≈ ${fmtEth(withMargin(price) - price, 6)} ETH`} />
       </Rows>
       <div class="btn-row">
-        <ActionButton label="1. Allow TOWN" variant="secondary" explain="ask your wallet to let the staking contract move the TOWN you chose." />
+        <ActionButton label="1. Approve TOWN" variant="secondary" explain="ask your wallet to let the staking contract move the TOWN you chose." />
         <ActionButton
           label={`2. Open tier ${tier} vault`}
           disabled={price === null || amt === null || amt === 0n || tooMuch}
@@ -348,7 +348,7 @@ function AddForm() {
         {tooMuch && <FieldError>That is more TOWN than this wallet holds.</FieldError>}
       </div>
       <div class="btn-row">
-        <ActionButton label="1. Allow TOWN" variant="secondary" explain="ask your wallet to let the staking contract move the TOWN you chose." />
+        <ActionButton label="1. Approve TOWN" variant="secondary" explain="ask your wallet to let the staking contract move the TOWN you chose." />
         <ActionButton label="2. Add TOWN" disabled={amt === null || amt === 0n || tooMuch} explain="add the TOWN you chose to your vault, in the same tier." />
       </div>
     </form>

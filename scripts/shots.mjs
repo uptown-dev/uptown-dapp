@@ -4,10 +4,11 @@
 //
 // Usage (with the built site served, e.g. `npx vite preview --port 4191 --strictPort`):
 //   node scripts/shots.mjs <outDir> <desktop|mobile> <light|dark> [routes] [scenarios] [baseUrl]
-//   routes:    comma list, '' for home (default: ,buy,rewards,stake,stats,owner)
+//   routes:    comma list, '' for home (default: ,buy,rewards,stake,stats,docs)
 //   scenarios: comma list (default: normal)
 //   baseUrl:   default http://127.0.0.1:4191/
 //   'open' as an eighth argument opens every "Details" expander before the pictures are taken.
+//   SHOT_CHAIN=<chain id> in the environment opens that network (?chain=), e.g. 31337 for the local chain.
 // The theme is applied the way a first visit sees it: through the emulated system setting
 // (prefers-color-scheme), with a fresh browser profile and no remembered choice.
 import { spawn } from 'node:child_process';
@@ -18,10 +19,11 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const OUT = process.argv[2] || 'review-shots';
 const MODE = process.argv[3] || 'desktop';
 const THEME = process.argv[4] || 'light';
-const PAGES = (process.argv[5] ?? ',buy,rewards,stake,stats,owner').split(',');
+const PAGES = (process.argv[5] ?? ',buy,rewards,stake,stats,docs').split(',');
 const SCENS = (process.argv[6] || 'normal').split(',');
 const BASE = process.argv[7] || 'http://127.0.0.1:4191/';
 const OPEN = process.argv[8] === 'open';
+const CHAIN = process.env.SHOT_CHAIN || '';
 const W = MODE === 'mobile' ? 390 : 1280;
 const H = MODE === 'mobile' ? 844 : 800;
 const SLICE = MODE === 'mobile' ? 1400 : 1000;
@@ -92,7 +94,7 @@ const OVERFLOW = `(() => {
 const problems = [];
 for (const scen of SCENS) {
   for (const p of PAGES) {
-    await send('Page.navigate', { url: `${BASE}?scenario=${scen}#/${p}` });
+    await send('Page.navigate', { url: `${BASE}?scenario=${scen}${CHAIN ? `&chain=${CHAIN}` : ""}#/${p}` });
     await sleep(900);
     await evalJs('document.fonts.ready.then(()=>1)');
     if (OPEN) await evalJs("document.querySelectorAll('details').forEach((d) => (d.open = true)), 1");
@@ -105,7 +107,7 @@ for (const scen of SCENS) {
     for (let y = 0; y < total; y += SLICE) {
       const h = Math.min(SLICE, total - y);
       const r = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y, width: W, height: h, scale: 1 } });
-      writeFileSync(`${OUT}/${MODE}-${THEME}-${scen}-${name}${OPEN ? '-details' : ''}-${String(n++).padStart(2, '0')}.png`, Buffer.from(r.result.data, 'base64'));
+      writeFileSync(`${OUT}/${MODE}-${THEME}-${CHAIN ? `c${CHAIN}-` : ""}${scen}-${name}${OPEN ? '-details' : ''}-${String(n++).padStart(2, '0')}.png`, Buffer.from(r.result.data, 'base64'));
     }
     console.log(`${MODE} ${THEME} ${scen} ${name}: height ${total}, ${n} slice(s), scrollWidth ${check.scrollW}/${check.vw}, colour scheme ${check.theme}`);
   }

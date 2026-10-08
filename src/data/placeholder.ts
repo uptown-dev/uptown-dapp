@@ -16,6 +16,7 @@ import {
   type Address,
   type ChainState,
   type CycleInfo,
+  type Deployment,
   type PerTier,
   type Scenario,
   type StreamInfo,
@@ -138,6 +139,27 @@ interface Knobs {
 
 const SAMPLE_WALLET: Address = '0x7a1D2f4b9C3e8A6d5B0f1E2c3D4a5B6c7D8e9F00';
 const SAMPLE_PENDING_FEED: Address = '0x3E5f0c2A9b1D8e7F6a4C3b2D1e0F9a8B7c6D5e4F';
+
+/**
+ * Sample contract addresses for the design preview (CR-40, "Verify"). Each is one digit repeated,
+ * so nobody can mistake it for a real UpTown contract; the explorer pages they open are empty or
+ * unrelated. The owner's address stays a placeholder until launch. Token ID 999,999,999 is not a
+ * real position. Phase two replaces this record with the deployed addresses and the launch
+ * position's token ID (read from LPVault).
+ */
+export const SAMPLE_DEPLOYMENT: Deployment = {
+  contracts: {
+    UpTownToken: '0x1111111111111111111111111111111111111111',
+    TownHook: '0x2222222222222222222222222222222222222222',
+    BuyerRewards: '0x3333333333333333333333333333333333333333',
+    Treasury: '0x4444444444444444444444444444444444444444',
+    TownStaking: '0x5555555555555555555555555555555555555555',
+    LPVault: '0x6666666666666666666666666666666666666666',
+    Launcher: '0x7777777777777777777777777777777777777777',
+  },
+  owner: null,
+  lpTokenId: 999_999_999n,
+};
 
 function build(k: Knobs): { chain: ChainState; wallet: WalletState } {
   const launchTime = SAMPLE_LAUNCH_TIME;

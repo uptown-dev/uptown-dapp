@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Copy check: scans the site's source and its built output for words the site must never use
-// (docs/SPEC_SUMMARY.md sections 11 and 13, docs/tasks/F8a-frontend.md, docs/tasks/F8a3-frontend.md)
+// (docs/SPEC_SUMMARY.md sections 11 and 13, docs/tasks/F8a-frontend.md, docs/tasks/F8a3-frontend.md,
+// docs/tasks/F8a4-frontend.md)
 // and fails if it finds one. Run with `npm run check:copy` after `npm run build`. F8a3 added the
-// price-expectation terms and the lore names, which the redesigned site no longer uses.
+// price-expectation terms and the lore names, which the redesigned site no longer uses. F8a4 added
+// lawyer, legal, counsel and advice: the site carries no legal statements (CR-40).
 //
 // Where a forbidden word is needed to say what something is NOT, the exact sentence goes in
 // ALLOWED_SENTENCES below; it is removed before the scan, so the same word anywhere else still
@@ -55,6 +57,11 @@ const RULES = [
     name: 'lore name',
     re: /\b(?:granary|bellamy|bellringer|mayor|fountain|aqueduct|weathervane|furnace|cornerstone|ledger|dawn\s+toll|shadow\s+markets?|penthouse|walk-up|the\s+stoop|the\s+loft|the\s+crown|residents?|the\s+gate|gatekeeper|the\s+tower|town\s+hall|long\s+lights|charter|lowlands|tolls?|rations?|bells?)\b/gi,
   },
+  // Added by F8a4 (CR-40): no lawyer or legal statements anywhere on the site.
+  { name: 'lawyer', re: /\blawyers?/gi },
+  { name: 'legal', re: /\blegal/gi },
+  { name: 'counsel', re: /\bcounsel/gi },
+  { name: 'advice', re: /\badvice/gi },
 ];
 
 /**

@@ -232,3 +232,17 @@ export interface Scenario {
   chain: ChainState;
   wallet: WalletState;
 }
+
+/** The seven UpTown contracts, in the order the footer lists them. */
+export const CONTRACT_NAMES = ['UpTownToken', 'TownHook', 'BuyerRewards', 'Treasury', 'TownStaking', 'LPVault', 'Launcher'] as const;
+export type ContractName = (typeof CONTRACT_NAMES)[number];
+
+/** Where the seven contracts live on one chain, plus the owner and the locked position (CR-40, "Verify"). */
+export interface Deployment {
+  /** Each contract's address. */
+  contracts: Record<ContractName, Address>;
+  /** The owner's address (one multisig); `null` until the owner publishes it before launch. */
+  owner: Address | null;
+  /** The launch position's token ID on the Uniswap v4 PositionManager (LPVault holds it); `null` before launch. */
+  lpTokenId: bigint | null;
+}

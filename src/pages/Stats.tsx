@@ -1,7 +1,8 @@
-import { useApp, ActionButton, Card, Fig, Figures, Notice, PageHead } from '../components/ui';
+import { useApp, ActionButton, Card, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
 import { TIERS } from '../data/types';
 import { budgetState, burned, daysUntil, forStakers, hookFeesReceived, leftToBurn, reserveUnscheduled } from '../lib/derive';
 import { dayName, fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown } from '../lib/format';
+import { contractUrl, positionUrl, tokenUrl } from '../lib/network';
 
 export function Stats() {
   return (
@@ -18,7 +19,7 @@ export function Stats() {
 }
 
 function Treasury() {
-  const { chain } = useApp();
+  const { chain, network } = useApp();
   const t = chain.treasury;
   const b = budgetState(chain);
   const c = t.currentCycle;
@@ -72,12 +73,18 @@ function Treasury() {
           explain="call poke() on the treasury, which sets the day’s budget and pays it to stakers if it is due and at least 0.001 ETH."
         />
       </div>
+      <Verify
+        links={[
+          { label: 'balance', what: 'the Treasury’s ETH balance', href: contractUrl(network, 'Treasury') },
+          { label: 'reserve, rate and budget', what: 'the Treasury’s owner reserve, payout rate and budget', href: contractUrl(network, 'Treasury', 'read') },
+        ]}
+      />
     </Card>
   );
 }
 
 function EthFlows() {
-  const { chain } = useApp();
+  const { chain, network } = useApp();
   const t = chain.treasury;
   const booked = t.totalEthReceived - t.totalDistributed - t.totalOwnerEthWithdrawn;
   const unbooked = t.balance > booked ? t.balance - booked : 0n;
@@ -98,12 +105,18 @@ function EthFlows() {
         )}
         ETH leaves the treasury only two ways: payouts to stakers and the owner’s 10% reserve. “From buy fees” also counts any other ETH sent in.
       </p>
+      <Verify
+        links={[
+          { label: 'Treasury', what: 'the Treasury’s running totals', href: contractUrl(network, 'Treasury', 'read') },
+          { label: 'TownStaking', what: 'TownStaking’s vault purchases', href: contractUrl(network, 'TownStaking', 'read') },
+        ]}
+      />
     </Card>
   );
 }
 
 function TownTotals() {
-  const { chain } = useApp();
+  const { chain, network } = useApp();
   const r = chain.rewards;
   return (
     <Card title="TOWN">
@@ -117,12 +130,19 @@ function TownTotals() {
         <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" view="BuyerRewards.totalFeesToTreasury" />
       </Figures>
       <p class="small faint card-foot">Burned counts sell fees and any voluntary burns. The burn stops at 1,000,000 TOWN of supply.</p>
+      <Verify
+        links={[
+          { label: 'total supply', what: 'TOWN’s total supply', href: tokenUrl(network, network.deployment.contracts.UpTownToken) },
+          { label: 'reserve balance', what: 'BuyerRewards’ TOWN balance', href: contractUrl(network, 'BuyerRewards') },
+          { label: 'rebate totals', what: 'BuyerRewards’ running totals', href: contractUrl(network, 'BuyerRewards', 'read') },
+        ]}
+      />
     </Card>
   );
 }
 
 function Staking() {
-  const { chain } = useApp();
+  const { chain, network } = useApp();
   const st = chain.staking;
   const vaults = TIERS.reduce((a, t) => a + st.tierVaults[t], 0);
   const unlock = chain.lpVault.unlockTime;
@@ -174,6 +194,13 @@ function Staking() {
         </strong>
         <span class="muted small">({fmtInt(daysUntil(chain, unlock))} days from now; can be extended, never shortened)</span>
       </div>
+      <Verify
+        links={[
+          { label: 'staking totals', what: 'TownStaking’s totals per tier', href: contractUrl(network, 'TownStaking', 'read') },
+          { label: 'unlock time', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
+          { label: 'position NFT', what: 'the liquidity position NFT', href: positionUrl(network) },
+        ]}
+      />
     </Card>
   );
 }
