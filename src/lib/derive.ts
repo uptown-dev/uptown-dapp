@@ -6,19 +6,19 @@ const BPS = 10_000n;
 
 // --- time ---------------------------------------------------------------------------------
 
-/** The Age index (0 to 6) for a cycle: 100-cycle epochs, the Long Lights from cycle 600. */
-export function ageIndex(cycle: number): number {
+/** The emission epoch (0 to 6) for a cycle: 100-cycle epochs, the last cap from cycle 600 on. */
+export function epochIndex(cycle: number): number {
   return Math.min(6, Math.floor(cycle / 100));
 }
 
 /** Seconds left in the anti-snipe window, 0 once it has ended. */
-export function dawnTollSecondsLeft(chain: ChainState): number {
+export function antiSnipeSecondsLeft(chain: ChainState): number {
   const end = chain.hook.launchTime + chain.hook.ANTI_SNIPE_DURATION;
   return Math.max(0, end - chain.blockTimestamp);
 }
 
 /** True while TownHook.currentBuyFeeBps() is above the ordinary 2%. */
-export function dawnTollActive(chain: ChainState): boolean {
+export function antiSnipeActive(chain: ChainState): boolean {
   return chain.hook.currentBuyFeeBps > chain.hook.BUY_FEE_BPS;
 }
 
@@ -27,7 +27,7 @@ export function cycleStartTime(chain: ChainState, cycle: number): number {
   return chain.hook.launchTime + cycle * 86_400;
 }
 
-// --- the Gate -----------------------------------------------------------------------------
+// --- buying -------------------------------------------------------------------------------
 
 /** The buy fee taken from `amountIn` at `feeBps`: ethSpecified * f / 10000 (spec "Fees"). */
 export function buyFee(amountIn: bigint, feeBps: number): bigint {
@@ -45,21 +45,21 @@ export function minReceived(estimate: bigint, slippageBps: number): bigint {
   return (estimate * (BPS - BigInt(slippageBps))) / BPS;
 }
 
-// --- the Furnace --------------------------------------------------------------------------
+// --- burning ---------------------------------------------------------------------------
 
 /** All TOWN destroyed since the mint: sell fees and voluntary burns together. */
 export function burned(chain: ChainState): bigint {
   return chain.token.INITIAL_SUPPLY - chain.token.totalSupply;
 }
 
-/** TOWN left to burn before the Cornerstone Million: totalSupply - BURN_FLOOR, never negative. */
+/** TOWN left to burn before the burn floor: totalSupply - BURN_FLOOR, never negative. */
 export function leftToBurn(chain: ChainState): bigint {
   const { totalSupply } = chain.token;
   const floor = chain.hook.BURN_FLOOR;
   return totalSupply > floor ? totalSupply - floor : 0n;
 }
 
-// --- the Granary --------------------------------------------------------------------------
+// --- rebates ----------------------------------------------------------------------------
 
 /** TOWN not yet scheduled for any cycle: RESERVE - totalEmitted. */
 export function reserveUnscheduled(chain: ChainState): bigint {
@@ -134,37 +134,37 @@ export function readyCycles(chain: ChainState, wallet: WalletState): number[] {
   return walletCycles(wallet).filter((c) => cycleStatus(wallet, c, current) === 'ready');
 }
 
-// --- the Town Hall ------------------------------------------------------------------------
+// --- treasury --------------------------------------------------------------------------
 
-/** The Fountain: the ETH balance less the owner reserve. */
-export function fountain(chain: ChainState): bigint {
+/** The ETH that feeds the stakers' payouts: the Treasury balance less the owner reserve. */
+export function forStakers(chain: ChainState): bigint {
   const { balance, ownerEthAvailable } = chain.treasury;
   return balance > ownerEthAvailable ? balance - ownerEthAvailable : 0n;
 }
 
-/** Gate tolls and any other arrivals: totalEthReceived - TownStaking.totalVaultFees (spec "Frontend"). */
-export function tollsAndOtherArrivals(chain: ChainState): bigint {
+/** Hook fees (buy fees) and any other arrivals: totalEthReceived - TownStaking.totalVaultFees (spec "Frontend"). */
+export function hookFeesReceived(chain: ChainState): bigint {
   const r = chain.treasury.totalEthReceived;
   const v = chain.staking.totalVaultFees;
   return r > v ? r - v : 0n;
 }
 
 export type BudgetState =
-  | { kind: 'delivered'; amount: bigint }
+  | { kind: 'paid'; amount: bigint }
   | { kind: 'below-minimum'; amount: bigint }
   | { kind: 'waiting'; estimate: bigint };
 
-/** What has happened to this Bell's delivery so far. */
+/** What has happened to this day's payout so far. */
 export function budgetState(chain: ChainState): BudgetState {
   const t = chain.treasury;
-  if (t.lastDistributedCycle === t.currentCycle) return { kind: 'delivered', amount: t.budget };
+  if (t.lastDistributedCycle === t.currentCycle) return { kind: 'paid', amount: t.budget };
   if (t.nextDistributionTime > chain.blockTimestamp) return { kind: 'below-minimum', amount: t.budget };
-  return { kind: 'waiting', estimate: (fountain(chain) * BigInt(t.spendBps)) / BPS };
+  return { kind: 'waiting', estimate: (forStakers(chain) * BigInt(t.spendBps)) / BPS };
 }
 
-// --- the Tower ----------------------------------------------------------------------------
+// --- staking -----------------------------------------------------------------------------
 
-/** A tier's share of every delivery, in basis points with decimals: 100/750 -> 1333.33. */
+/** A tier's share of every payout, in basis points with decimals: 100/750 -> 1333.33. */
 export function tierShareBps(chain: ChainState, tier: Tier): number {
   return Math.round((chain.staking.tierWeight[tier] * 1_000_000) / chain.staking.TOTAL_WEIGHT) / 100;
 }
@@ -194,7 +194,7 @@ export function unpaidStream(chain: ChainState, tier: Tier): bigint {
   return left > 0 ? s.rewardRate * BigInt(left) : 0n;
 }
 
-/** When a non-empty tier's stream runs dry if no new delivery arrives; null while paused or ended. */
+/** When a non-empty tier's stream runs dry if no new payout arrives; null while paused or ended. */
 export function streamEnd(chain: ChainState, tier: Tier): number | null {
   const s = chain.staking.streamInfo[tier];
   if (s.rewardRate === 0n || tierEmpty(chain, tier)) return null;
@@ -211,7 +211,7 @@ export function fallbackExpiresAt(chain: ChainState): number {
   return chain.staking.fallbackPriceSetAt + chain.staking.FALLBACK_MAX_AGE;
 }
 
-// --- the Sealed Foundation ----------------------------------------------------------------
+// --- liquidity lock ------------------------------------------------------------------
 
 export function daysUntil(chain: ChainState, ts: number): number {
   return Math.max(0, Math.floor((ts - chain.blockTimestamp) / 86_400));

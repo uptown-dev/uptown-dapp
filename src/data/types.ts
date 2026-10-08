@@ -84,7 +84,7 @@ export interface ChainState {
     CLAIM_FEE_BPS: number;
     /** BuyerRewards.currentCycle() */
     currentCycle: number;
-    /** BuyerRewards.cap(c), for the current cycle, the next nine, and each Age's first cycle. */
+    /** BuyerRewards.cap(c), for the current cycle, the next nine, and the first cycle of each 100-day epoch. */
     cap: Record<number, bigint>;
     /** BuyerRewards.cycleInfo(c), for the cycles the wallet bought in. */
     cycleInfo: Record<number, CycleInfo>;
@@ -221,7 +221,7 @@ export interface WalletState {
   upgradePriceWei: Partial<PerTier<bigint | null>>;
 }
 
-/** One named state of the town that the owner can switch to in the preview. */
+/** One named state of the project that the owner can switch to in the preview. */
 export interface Scenario {
   id: string;
   label: string;

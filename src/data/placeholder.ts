@@ -115,10 +115,10 @@ interface Knobs {
     /** WETH still to stream, per tier (for an empty tier: its pile at the door). */
     unpaid: PerTier<string>;
     totalVaultFees: string;
-    /** Seconds after its cycle's start at which the most recent delivery arrived. */
-    deliveryOffset: number;
-    /** The cycle of the most recent delivery; defaults to the current cycle. */
-    deliveryCycle?: number;
+    /** Seconds after its cycle's start at which the most recent payout arrived. */
+    payoutOffset: number;
+    /** The cycle of the most recent payout; defaults to the current cycle. */
+    payoutCycle?: number;
     price:
       | { source: PriceSource.Feed; usd: string; ageSeconds: number }
       | { source: PriceSource.Fallback; usd: string; ageSeconds: number }
@@ -144,7 +144,7 @@ function build(k: Knobs): { chain: ChainState; wallet: WalletState } {
   const cycleStart = launchTime + k.cycle * DAY;
   const now = cycleStart + k.secondsIntoCycle;
 
-  // --- caps: current cycle and the next nine, plus the first cycle of each Age.
+  // --- caps: current cycle and the next nine, plus the first cycle of each 100-day epoch.
   const cap: Record<number, bigint> = {};
   for (let c = k.cycle; c < k.cycle + 10; c++) cap[c] = capOf(c);
   for (const c of [0, 100, 200, 300, 400, 500, 600]) cap[c] = capOf(c);
@@ -188,17 +188,17 @@ function build(k: Knobs): { chain: ChainState; wallet: WalletState } {
   const tierPaidRaw = splitByWeight(paidTotal);
   const tierStaked = perTier((t) => T(st.tierStaked[t]));
   const totalStaked = TIERS.reduce((a, t) => a + tierStaked[t], 0n);
-  const deliveryTime = launchTime + (st.deliveryCycle ?? k.cycle) * DAY + st.deliveryOffset;
+  const payoutTime = launchTime + (st.payoutCycle ?? k.cycle) * DAY + st.payoutOffset;
   const streamInfo = perTier<StreamInfo>((t) => {
     const unpaid = E(st.unpaid[t]);
     if (distributed === 0n) {
       // Before the first distribution: "ended at deployment", rate 0 (CL-38).
       return { rewardRate: 0n, periodFinish: launchTime - DAY, lastUpdateTime: launchTime - DAY, rewardPerTokenStored: 0n };
     }
-    const periodFinish = deliveryTime + STREAM_LENGTH;
+    const periodFinish = payoutTime + STREAM_LENGTH;
     if (tierStaked[t] === 0n) {
-      // An empty tier: the stream is paused at its last update (the delivery), CL-33.
-      return { rewardRate: unpaid / BigInt(STREAM_LENGTH), periodFinish, lastUpdateTime: deliveryTime, rewardPerTokenStored: 0n };
+      // An empty tier: the stream is paused at its last update (the payout), CL-33.
+      return { rewardRate: unpaid / BigInt(STREAM_LENGTH), periodFinish, lastUpdateTime: payoutTime, rewardPerTokenStored: 0n };
     }
     const left = BigInt(periodFinish - now);
     return { rewardRate: unpaid / left, periodFinish, lastUpdateTime: now - 300, rewardPerTokenStored: 0n };
@@ -349,7 +349,7 @@ function build(k: Knobs): { chain: ChainState; wallet: WalletState } {
 // The named scenarios.
 // ---------------------------------------------------------------------------------------------
 
-/** A busy Bell 42: the ordinary state of the town. */
+/** Day 42 of a busy launch: the ordinary state. */
 const NORMAL: Knobs = {
   cycle: 42,
   secondsIntoCycle: 9 * 3600 + 12 * 60,
@@ -380,7 +380,7 @@ const NORMAL: Knobs = {
     totalRewardsPaid: '1.3018',
     unpaid: { 1: '0.0507', 2: '0.0634', 3: '0.0761', 4: '0.0888', 5: '0.1014' },
     totalVaultFees: '0.7384',
-    deliveryOffset: 41 * 60,
+    payoutOffset: 41 * 60,
     price: { source: PriceSource.Feed, usd: '2712.40', ageSeconds: 14 * 60 },
   },
   quote: { amountIn: '0.1', amountOut: '2018240' },
@@ -394,7 +394,7 @@ const NORMAL: Knobs = {
   },
 };
 
-/** The first fifteen minutes: the Dawn Toll is running. */
+/** The first fifteen minutes: the anti-snipe buy fee is running. */
 const DAWN: Knobs = {
   cycle: 0,
   secondsIntoCycle: 6 * 60,
@@ -420,7 +420,7 @@ const DAWN: Knobs = {
     totalRewardsPaid: '0',
     unpaid: { 1: '0', 2: '0', 3: '0', 4: '0', 5: '0' },
     totalVaultFees: '0',
-    deliveryOffset: 0,
+    payoutOffset: 0,
     price: { source: PriceSource.Feed, usd: '2698.15', ageSeconds: 31 * 60 },
   },
   quote: { amountIn: '0.1', amountOut: '4271900' },
@@ -446,7 +446,7 @@ const NO_PRICE: Knobs = {
   staking: { ...NORMAL.staking, price: { source: PriceSource.None } },
 };
 
-/** The Penthouse (tier 4) is empty and its share piles up at the door. */
+/** Tier 4 is empty and its share of each payout waits for its first staker. */
 const EMPTY_TIER: Knobs = {
   ...NORMAL,
   staking: {
@@ -458,7 +458,7 @@ const EMPTY_TIER: Knobs = {
   },
 };
 
-/** A quiet town: this Bell's budget is under the 0.001 ETH minimum and waits. */
+/** A quiet stretch: this day's budget is under the 0.001 ETH minimum and waits. */
 const BELOW_MINIMUM: Knobs = {
   cycle: 42,
   secondsIntoCycle: 15 * 3600 + 5 * 60,
@@ -482,8 +482,8 @@ const BELOW_MINIMUM: Knobs = {
     totalRewardsPaid: '0.0151',
     unpaid: { 1: '0.00071', 2: '0.00112', 3: '0.00107', 4: '0.00131', 5: '0.00150' },
     totalVaultFees: '0.0074',
-    deliveryOffset: 2 * 3600,
-    deliveryCycle: 39,
+    payoutOffset: 2 * 3600,
+    payoutCycle: 39,
     price: { source: PriceSource.Feed, usd: '2712.40', ageSeconds: 40 * 60 },
   },
   quote: { amountIn: '0.1', amountOut: '6540300' },
@@ -497,7 +497,7 @@ const BELOW_MINIMUM: Knobs = {
   },
 };
 
-/** Bell 1,240: fewer than ten days of rations remain in the Granary. */
+/** Day 1,240: fewer than ten days of caps remain in the rebate reserve. */
 const RESERVE_LOW: Knobs = {
   cycle: 1240,
   secondsIntoCycle: 4 * 3600,
@@ -522,7 +522,7 @@ const RESERVE_LOW: Knobs = {
     totalRewardsPaid: '48.9020',
     unpaid: { 1: '0.2290', 2: '0.2862', 3: '0.3434', 4: '0.4007', 5: '0.4579' },
     totalVaultFees: '4.1120',
-    deliveryOffset: 12 * 60,
+    payoutOffset: 12 * 60,
     price: { source: PriceSource.Feed, usd: '2912.75', ageSeconds: 22 * 60 },
     pendingFeed: { address: SAMPLE_PENDING_FEED, effectiveIn: 4 * DAY + 6 * 3600 },
   },
@@ -555,15 +555,15 @@ function scenario(id: string, label: string, description: string, knobs: Knobs, 
 }
 
 export const SCENARIOS: Scenario[] = [
-  scenario('normal', 'An ordinary Bell', 'Bell 42 of a busy town: deliveries running, a wallet with rebates ready and a vault on the Loft.', NORMAL),
-  scenario('no-wallet', 'No wallet connected', 'The same Bell 42, seen by a visitor who has not connected a wallet.', NORMAL, false),
+  scenario('normal', 'Normal day', 'Day 42: daily payouts running, a wallet with rebates ready and a tier 3 vault.', NORMAL),
+  scenario('no-wallet', 'No wallet connected', 'The same Day 42, seen by a visitor who has not connected a wallet.', NORMAL, false),
   scenario('nothing-to-claim', 'Wallet with nothing to claim', 'A connected wallet that has bought nothing yet and holds no vault.', NOTHING_TO_CLAIM),
-  scenario('dawn', 'Dawn Toll active', 'Six minutes after launch: the anti-snipe buy fee is still falling from 90% to 2%.', DAWN),
-  scenario('fallback', 'Fallback price in use', 'The Chainlink feed has not updated for over 3 hours; vault prices use the owner\'s fallback price.', FALLBACK),
+  scenario('dawn', 'First 15 minutes', 'Six minutes after launch: the anti-snipe buy fee is still falling from 90% to 2%.', DAWN),
+  scenario('fallback', 'Fallback price in use', 'The Chainlink feed is unhealthy; vault prices use the owner’s fallback price.', FALLBACK),
   scenario('no-price', 'No price available', 'The feed is stale and no valid fallback exists: opening and upgrading vaults pause.', NO_PRICE),
-  scenario('empty-tier', 'Empty floor with a pile at the door', 'The Penthouse has no stakers; its share of each delivery waits for the first to move in.', EMPTY_TIER),
-  scenario('below-minimum', 'Budget under the minimum', 'A quiet town: this Bell\'s budget is under 0.001 ETH, so it stays in the Fountain.', BELOW_MINIMUM),
-  scenario('reserve-low', 'Granary nearly spent', 'Bell 1,240: fewer than ten days of rations remain in the rebate reserve.', RESERVE_LOW),
+  scenario('empty-tier', 'An empty tier', 'Tier 4 has no stakers; its share of each payout waits for whoever joins it.', EMPTY_TIER),
+  scenario('below-minimum', 'Payout under the minimum', 'A quiet day: the day’s budget is under 0.001 ETH, so it stays in the treasury.', BELOW_MINIMUM),
+  scenario('reserve-low', 'Rebate reserve nearly spent', 'Day 1,240: fewer than ten days of caps remain in the rebate reserve.', RESERVE_LOW),
 ];
 
 export const DEFAULT_SCENARIO_ID = 'normal';

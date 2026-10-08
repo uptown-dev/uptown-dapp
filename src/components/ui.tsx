@@ -1,11 +1,9 @@
-// Shared building blocks: the app context, glossary links, figures, panels and notices.
+// Shared building blocks: the app context, cards, figures, notices, expanders and buttons.
 import { createContext, type ComponentChildren } from 'preact';
-import { useContext } from 'preact/hooks';
+import { useContext, useState } from 'preact/hooks';
 import type { ChainState, Scenario, WalletState } from '../data/types';
 import { SAMPLE_FIGURES } from '../data/placeholder';
-import { glossaryEntry } from '../content/glossary';
-import { bellName, fmtInt } from '../lib/format';
-import { BellIcon, InfoIcon, ScrollIcon, WarnIcon } from './art';
+import { ChevronIcon, InfoIcon, NoteIcon, WarnIcon } from './icons';
 
 export interface AppState {
   scenario: Scenario;
@@ -25,74 +23,44 @@ export function useApp(): AppState {
   return ctx;
 }
 
-/** A lore term that links to its glossary entry. */
-export function Term({ slug, children }: { slug: string; children: ComponentChildren }) {
-  const entry = glossaryEntry(slug);
-  return (
-    <a class="term" href={`#/glossary/${slug}`} title={entry ? entry.plain : undefined}>
-      {children}
-    </a>
-  );
-}
-
-/** The small badge that marks placeholder figures. Phase two removes it with SAMPLE_FIGURES. */
+/** The small badge that marks placeholder figures, one per card header. Phase two removes it with SAMPLE_FIGURES. */
 export function SampleBadge() {
   if (!SAMPLE_FIGURES) return null;
-  return <span class="sample-badge" title="Placeholder figures for the design preview, not read from the contracts">Sample figures</span>;
-}
-
-/** One figure: a label, a value and its unit. `view` names the contract view it comes from. */
-export function Stat({
-  label,
-  value,
-  unit,
-  note,
-  view,
-  big,
-  gold,
-}: {
-  label: ComponentChildren;
-  value: ComponentChildren;
-  unit?: string;
-  note?: ComponentChildren;
-  view: string;
-  big?: boolean;
-  gold?: boolean;
-}) {
   return (
-    <div class={`stat${big ? ' big' : ''}${gold ? ' gold' : ''}`}>
-      <dt>{label}</dt>
-      <dd class="num" data-view={view}>
-        {value}
-        {unit && <span class="unit">{unit}</span>}
-      </dd>
-      {note && <dd class="note">{note}</dd>}
-    </div>
+    <span class="sample-badge" title="Placeholder figures for the design preview, not read from the contracts">
+      Sample figures
+    </span>
   );
 }
 
-export function Panel({
+/** A card with an optional title and the sample badge in its header. */
+export function Card({
   title,
   children,
   sample = true,
   class: cls,
   id,
-  headingLevel = 3,
+  action,
 }: {
   title?: ComponentChildren;
   children: ComponentChildren;
+  /** Show the "Sample figures" badge (cards that hold placeholder figures). */
   sample?: boolean;
   class?: string;
   id?: string;
-  headingLevel?: 2 | 3;
+  /** Something small at the right of the header, before the badge. */
+  action?: ComponentChildren;
 }) {
-  const H = headingLevel === 2 ? 'h2' : 'h3';
+  const hasHead = title || (sample && SAMPLE_FIGURES) || action;
   return (
-    <section class={`panel${cls ? ' ' + cls : ''}`} id={id} aria-label={typeof title === 'string' ? title : undefined}>
-      {(title || sample) && (
-        <div class="panel-head">
-          {title ? <H>{title}</H> : <span />}
-          {sample && <SampleBadge />}
+    <section class={`card${cls ? ' ' + cls : ''}`} id={id}>
+      {hasHead && (
+        <div class="card-head">
+          {title ? <h2 class="card-title">{title}</h2> : <span />}
+          <div class="card-head-end">
+            {action}
+            {sample && <SampleBadge />}
+          </div>
         </div>
       )}
       {children}
@@ -100,74 +68,91 @@ export function Panel({
   );
 }
 
+/**
+ * One figure: label above, value below, optional note. Figures sit in a `Figures` grid whose
+ * rows are shared (CSS subgrid), so values in a row line up on one baseline even when one label
+ * runs to two lines. `view` names the contract view the value comes from (kept as data-view).
+ */
+export function Fig({
+  label,
+  value,
+  unit,
+  note,
+  view,
+  accent,
+  large,
+}: {
+  label: ComponentChildren;
+  value: ComponentChildren;
+  unit?: string;
+  note?: ComponentChildren;
+  view: string;
+  accent?: boolean;
+  large?: boolean;
+}) {
+  return (
+    <div class={`fig${accent ? ' accent' : ''}${large ? ' large' : ''}`}>
+      <dt>{label}</dt>
+      <dd class="fig-value" data-view={view}>
+        <span class="num">{value}</span>
+        {unit && <span class="unit">{unit}</span>}
+      </dd>
+      <dd class="fig-note">{note}</dd>
+    </div>
+  );
+}
+
+export function Figures({ children, cols }: { children: ComponentChildren; cols?: 2 | 3 | 4 }) {
+  return <dl class={`figs${cols ? ` cols-${cols}` : ''}`}>{children}</dl>;
+}
+
+/** A label and value on one line (value right-aligned, never wrapped). */
+export function Row({ label, value, view, strong }: { label: ComponentChildren; value: ComponentChildren; view?: string; strong?: boolean }) {
+  return (
+    <div class={`row${strong ? ' strong' : ''}`}>
+      <dt>{label}</dt>
+      <dd class="num" data-view={view}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+export function Rows({ children }: { children: ComponentChildren }) {
+  return <dl class="rows">{children}</dl>;
+}
+
 export function Notice({
   kind = 'info',
   title,
   children,
 }: {
-  kind?: 'info' | 'warn' | 'danger' | 'lore' | 'placeholder';
+  kind?: 'info' | 'warn' | 'placeholder';
   title?: ComponentChildren;
   children: ComponentChildren;
 }) {
-  const icon =
-    kind === 'warn' ? <WarnIcon /> : kind === 'danger' ? <WarnIcon color="#e07258" /> : kind === 'lore' ? <BellIcon /> : kind === 'placeholder' ? <ScrollIcon /> : <InfoIcon />;
+  const icon = kind === 'warn' ? <WarnIcon /> : kind === 'placeholder' ? <NoteIcon /> : <InfoIcon />;
   return (
-    <div class={`notice ${kind}`} role={kind === 'danger' || kind === 'warn' ? 'note' : undefined}>
-      {icon}
-      <div>
-        {title && <h3>{title}</h3>}
+    <div class={`notice ${kind}`} role={kind === 'warn' ? 'note' : undefined}>
+      <span class="notice-icon">{icon}</span>
+      <div class="notice-body">
+        {title && <p class="notice-title">{title}</p>}
         {children}
       </div>
     </div>
   );
 }
 
-/** The plain meaning of a Bell number, used at least once on every page. */
-export function bellMeaning(c: number): string {
-  if (c === 0) return 'launch day, the first 24 hours after the launch transaction';
-  return `the 24-hour day that began ${fmtInt(c)} ${c === 1 ? 'day' : 'days'} after launch`;
-}
-
-/** "It is Bell 42: the 24-hour day that began 42 days after launch." */
-export function BellNow() {
-  const { chain } = useApp();
-  const c = chain.hook.currentCycle;
+/** A small expander, closed by default, for the longer explanations. */
+export function Details({ summary = 'Details', children }: { summary?: string; children: ComponentChildren }) {
   return (
-    <p class="bell-line">
-      <BellIcon />
-      <span>
-        It is <strong>{bellName(c)}</strong>: {bellMeaning(c)}. UpTown counts its days in <Term slug="bell">Bells</Term>, 24 hours each, from the moment of launch, not by the calendar. <SampleBadge />
-      </span>
-    </p>
-  );
-}
-
-export function PageHero({
-  kicker,
-  title,
-  lead,
-  art,
-  children,
-}: {
-  kicker: string;
-  title: ComponentChildren;
-  lead: ComponentChildren;
-  art?: ComponentChildren;
-  children?: ComponentChildren;
-}) {
-  return (
-    <header class="page-hero">
-      <div class="wrap">
-        <div>
-          <p class="kicker">{kicker}</p>
-          <h1>{title}</h1>
-          <p class="lead">{lead}</p>
-          {children}
-          <BellNow />
-        </div>
-        {art && <div class="hero-art">{art}</div>}
-      </div>
-    </header>
+    <details class="details">
+      <summary>
+        <span>{summary}</span>
+        <ChevronIcon size={16} />
+      </summary>
+      <div class="details-body">{children}</div>
+    </details>
   );
 }
 
@@ -175,21 +160,21 @@ export function PageHero({
 export function ActionButton({
   label,
   explain,
-  variant = 'gold',
+  variant = 'primary',
   disabled,
-  small,
+  block,
 }: {
   label: string;
   explain: string;
-  variant?: 'gold' | 'brick' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
-  small?: boolean;
+  block?: boolean;
 }) {
   const { toast } = useApp();
   return (
     <button
       type="button"
-      class={`btn btn-${variant}${small ? ' btn-small' : ''}`}
+      class={`btn btn-${variant}${block ? ' btn-block' : ''}`}
       disabled={disabled}
       onClick={() => toast(`Preview only: nothing was sent. In the finished site this button will ${explain}`)}
     >
@@ -199,17 +184,106 @@ export function ActionButton({
 }
 
 /** Shown where a wallet is needed and none is connected. */
-export function ConnectPrompt({ what }: { what: string }) {
+export function ConnectPrompt({ what, block }: { what: string; block?: boolean }) {
   const { toggleWallet } = useApp();
   return (
-    <div class="notice lore">
-      <InfoIcon />
-      <div>
-        <p>Connect a wallet to see {what}.</p>
-        <button type="button" class="btn btn-gold btn-small" onClick={toggleWallet}>
-          Connect wallet
-        </button>
+    <div class="connect-prompt">
+      <p>Connect a wallet to see {what}.</p>
+      <button type="button" class={`btn btn-primary${block ? ' btn-block' : ''}`} onClick={toggleWallet}>
+        Connect wallet
+      </button>
+    </div>
+  );
+}
+
+/** A page's title block: a heading and one short line. */
+export function PageHead({ title, lead, children }: { title: string; lead: ComponentChildren; children?: ComponentChildren }) {
+  return (
+    <header class="page-head">
+      <h1>{title}</h1>
+      <p class="lead">{lead}</p>
+      {children}
+    </header>
+  );
+}
+
+/** Segmented tabs: one panel shown at a time. */
+export function Tabs<T extends string>({
+  tabs,
+  label,
+  initial,
+  render,
+}: {
+  tabs: { id: T; label: string }[];
+  label: string;
+  initial?: T;
+  render: (id: T) => ComponentChildren;
+}) {
+  const [active, setActive] = useState<T>(initial ?? tabs[0].id);
+  const current = tabs.some((t) => t.id === active) ? active : tabs[0].id;
+  if (tabs.length === 1) {
+    // One action only: no tab strip, just its title and panel.
+    return (
+      <div class="tabs single">
+        <p class="tab-single-title">{tabs[0].label}</p>
+        <div class="tab-panel">{render(tabs[0].id)}</div>
+      </div>
+    );
+  }
+  return (
+    <div class="tabs">
+      <div class="tab-list" role="tablist" aria-label={label}>
+        {tabs.map((t) => (
+          <button
+            type="button"
+            role="tab"
+            key={t.id}
+            id={`tab-${t.id}`}
+            aria-selected={current === t.id}
+            aria-controls={`panel-${t.id}`}
+            class="tab"
+            onClick={() => setActive(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div class="tab-panel" role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`}>
+        {render(current)}
       </div>
     </div>
+  );
+}
+
+/** Segmented choice chips (aria-pressed). */
+export function Chips<T extends string | number>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: { value: T; label: string }[];
+  value: T | null;
+  onChange: (v: T) => void;
+  label: string;
+}) {
+  return (
+    <div class="chips" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button type="button" class="chip" key={String(o.value)} aria-pressed={value === o.value} onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A warning-coloured inline message under an input. */
+export function FieldError({ children }: { children: ComponentChildren }) {
+  return (
+    <span class="field-error">
+      <WarnIcon size={14} />
+      {children}
+    </span>
   );
 }

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Copy check: scans the site's source and its built output for words the site must never use
-// (docs/SPEC_SUMMARY.md section 13, the lore's guardrails, docs/tasks/F8a-frontend.md) and
-// fails if it finds one. Run with `npm run check:copy` after `npm run build`.
+// (docs/SPEC_SUMMARY.md sections 11 and 13, docs/tasks/F8a-frontend.md, docs/tasks/F8a3-frontend.md)
+// and fails if it finds one. Run with `npm run check:copy` after `npm run build`. F8a3 added the
+// price-expectation terms and the lore names, which the redesigned site no longer uses.
 //
 // Where a forbidden word is needed to say what something is NOT, the exact sentence goes in
 // ALLOWED_SENTENCES below; it is removed before the scan, so the same word anywhere else still
@@ -43,6 +44,17 @@ const RULES = [
   { name: 'bounty (poke pays nothing)', re: /\bbount(?:y|ies)\b/gi },
   { name: 'team wallet', re: /\bteam\s+wallet/gi },
   { name: 'lambo', re: /\blambo/gi },
+  // Added by F8a3: no wording that states or hints that TOWN's price is expected to rise.
+  { name: 'price will', re: /\bprice\s+will\b/gi },
+  { name: 'go up', re: /\bgo\s+up\b/gi },
+  { name: 'goes up', re: /\bgoes\s+up\b/gi },
+  { name: 'pump', re: /\bpump/gi },
+  { name: 'returns', re: /\breturns\b/gi },
+  // Added by F8a3: the lore names, which the owner asked the site to drop (plain words only).
+  {
+    name: 'lore name',
+    re: /\b(?:granary|bellamy|bellringer|mayor|fountain|aqueduct|weathervane|furnace|cornerstone|ledger|dawn\s+toll|shadow\s+markets?|penthouse|walk-up|the\s+stoop|the\s+loft|the\s+crown|residents?|the\s+gate|gatekeeper|the\s+tower|town\s+hall|long\s+lights|charter|lowlands|tolls?|rations?|bells?)\b/gi,
+  },
 ];
 
 /**

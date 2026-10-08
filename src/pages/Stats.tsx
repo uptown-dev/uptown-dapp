@@ -1,187 +1,179 @@
-import { useApp, Term, Panel, PageHero, Stat, SampleBadge } from '../components/ui';
-import { FurnaceArt, FoundationArt } from '../components/art';
-import { FLOORS } from '../content/town';
+import { useApp, ActionButton, Card, Fig, Figures, Notice, PageHead } from '../components/ui';
 import { TIERS } from '../data/types';
-import { burned, daysUntil, leftToBurn, reserveUnscheduled, tollsAndOtherArrivals } from '../lib/derive';
-import { bellName, fmtDate, fmtEth, fmtInt, fmtTown } from '../lib/format';
+import { budgetState, burned, daysUntil, forStakers, hookFeesReceived, leftToBurn, reserveUnscheduled } from '../lib/derive';
+import { dayName, fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown } from '../lib/format';
 
 export function Stats() {
-  const { chain } = useApp();
   return (
-    <>
-      <PageHero
-        kicker="The Records · stats"
-        title="The Records"
-        lead={<>Up here, everything's on the record. Every figure on this page is read straight from the contracts: a running total or a balance.</>}
-        art={<FurnaceArt cold={chain.hook.currentSellFeeBps === 0} title="The Furnace" />}
-      />
-      <section class="section" style="padding-top:0">
-        <div class="wrap grid grid-2" style="align-items:start">
-          <Bricks />
-          <Granary />
-        </div>
-      </section>
-      <section class="section">
-        <div class="wrap">
-          <TowerBook />
-        </div>
-      </section>
-      <section class="section">
-        <div class="wrap grid grid-2" style="align-items:start">
-          <Hall />
-          <Foundation />
-        </div>
-      </section>
-    </>
-  );
-}
-
-function Bricks() {
-  const { chain } = useApp();
-  const b = burned(chain);
-  const span = chain.token.INITIAL_SUPPLY - chain.hook.BURN_FLOOR;
-  const pct = span > 0n ? Number((b * 10_000n) / span) / 100 : 0;
-  return (
-    <Panel title="Bricks and the Furnace">
-      <dl class="stats">
-        <Stat label="TOWN in existence" value={fmtTown(chain.token.totalSupply)} unit="TOWN" view="UpTownToken.totalSupply" />
-        <Stat label="TOWN burned in total" value={fmtTown(b)} unit="TOWN" view="INITIAL_SUPPLY - totalSupply" note="Sell fees and any voluntary burns together." />
-        <Stat
-          label={
-            <>
-              Left to burn before the <Term slug="cornerstone">Cornerstone Million</Term>
-            </>
-          }
-          value={fmtTown(leftToBurn(chain))}
-          unit="TOWN"
-          view="totalSupply - TownHook.BURN_FLOOR"
-          gold
-        />
-      </dl>
-      <div style="margin-top:16px" aria-hidden="true">
-        <div style="height:12px;background:rgba(201,196,184,0.12);border-radius:6px;overflow:hidden">
-          <div style={`height:100%;width:${Math.max(pct, b > 0n ? 0.5 : 0)}%;background:linear-gradient(90deg,#b5462f,#ff8a3d)`} />
-        </div>
+    <div class="wrap page">
+      <PageHead title="Stats" lead="The treasury and the running totals, read straight from the contracts." />
+      <Treasury />
+      <div class="grid-2">
+        <EthFlows />
+        <TownTotals />
       </div>
-      <p class="small muted" style="margin:8px 0 0">
-        {pct.toFixed(2)}% of the way from a billion to the Cornerstone. Every sell burns 2% of the TOWN sold until supply reaches 1,000,000 TOWN; after
-        that, sells pay no Gate fee. Nobody can know when, or whether, that day comes.
-      </p>
-    </Panel>
+      <Staking />
+    </div>
   );
 }
 
-function Granary() {
+function Treasury() {
+  const { chain } = useApp();
+  const t = chain.treasury;
+  const b = budgetState(chain);
+  const c = t.currentCycle;
+  const wait = t.nextDistributionTime - chain.blockTimestamp;
+  return (
+    <Card title="Treasury">
+      <Figures cols={3}>
+        <Fig label="ETH balance" value={fmtEth(t.balance)} unit="ETH" view="eth_getBalance(Treasury)" />
+        <Fig label="Owner reserve" value={fmtEth(t.ownerEthAvailable)} unit="ETH" view="Treasury.ownerEthAvailable" note="10% of all ETH in" />
+        <Fig label="For stakers" value={fmtEth(forStakers(chain))} unit="ETH" view="balance - ownerEthAvailable" note="balance less the owner reserve" />
+        <Fig
+          label="Daily payout rate"
+          value={fmtBps(t.spendBps)}
+          view="Treasury.spendBps"
+          note={`of the stakers’ ETH each day; settable 1% to ${fmtBps(t.MAX_SPEND_BPS)}`}
+        />
+        <Fig
+          label={`${dayName(c)} budget`}
+          value={b.kind === 'waiting' ? `≈ ${fmtEth(b.estimate)}` : fmtEth(b.amount)}
+          unit="ETH"
+          view={b.kind === 'waiting' ? 'derived: (balance - ownerEthAvailable) × spendBps' : 'Treasury.budget'}
+          accent
+          note={b.kind === 'paid' ? 'Paid to stakers.' : b.kind === 'below-minimum' ? 'Under 0.001 ETH: waits for a later day.' : 'Not yet triggered.'}
+        />
+        <Fig
+          label="Next payout"
+          value={b.kind === 'waiting' ? 'Now' : `in ${fmtDuration(wait)}`}
+          view="Treasury.nextDistributionTime"
+          note={b.kind === 'waiting' ? 'Anyone can trigger it.' : `${fmtDateTime(t.nextDistributionTime)}, the start of ${dayName(c + 1)}`}
+        />
+      </Figures>
+      {b.kind === 'below-minimum' && (
+        <Notice kind="info" title="Today’s budget is under the minimum">
+          <p>
+            The budget of <span class="num">{fmtEth(b.amount)}</span> ETH is under 0.001 ETH, so nothing was paid today. It stays in the treasury and counts
+            toward a later day.
+          </p>
+        </Notice>
+      )}
+      <div class="poke">
+        <div>
+          <p class="poke-title">Trigger today’s payout</p>
+          <p class="small muted">
+            Free to press: it pays no reward and costs only gas. Any staking action does the same, so most days are triggered without this button.
+          </p>
+        </div>
+        <ActionButton
+          label={b.kind === 'waiting' ? 'Trigger payout' : 'Already triggered today'}
+          variant="secondary"
+          disabled={b.kind !== 'waiting'}
+          explain="call poke() on the treasury, which sets the day’s budget and pays it to stakers if it is due and at least 0.001 ETH."
+        />
+      </div>
+    </Card>
+  );
+}
+
+function EthFlows() {
+  const { chain } = useApp();
+  const t = chain.treasury;
+  const booked = t.totalEthReceived - t.totalDistributed - t.totalOwnerEthWithdrawn;
+  const unbooked = t.balance > booked ? t.balance - booked : 0n;
+  return (
+    <Card title="ETH in and out, since launch">
+      <Figures cols={2}>
+        <Fig label="ETH received by the treasury" value={fmtEth(t.totalEthReceived)} unit="ETH" view="Treasury.totalEthReceived" />
+        <Fig label="from buy fees" value={fmtEth(hookFeesReceived(chain))} unit="ETH" view="totalEthReceived - TownStaking.totalVaultFees" />
+        <Fig label="from vault purchases" value={fmtEth(chain.staking.totalVaultFees)} unit="ETH" view="TownStaking.totalVaultFees" />
+        <Fig label="Paid to stakers" value={fmtEth(t.totalDistributed)} unit="WETH" view="Treasury.totalDistributed" accent />
+        <Fig label="Withdrawn by the owner" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" view="Treasury.totalOwnerEthWithdrawn" />
+      </Figures>
+      <p class="small faint card-foot">
+        {unbooked > 0n && (
+          <>
+            Another <span class="num">{fmtEth(unbooked)}</span> ETH has arrived and is counted at the next treasury action.{' '}
+          </>
+        )}
+        ETH leaves the treasury only two ways: payouts to stakers and the owner’s 10% reserve. “From buy fees” also counts any other ETH sent in.
+      </p>
+    </Card>
+  );
+}
+
+function TownTotals() {
   const { chain } = useApp();
   const r = chain.rewards;
   return (
-    <Panel title="The Granary">
-      <dl class="stats">
-        <Stat label="TOWN set aside for Bells (emitted)" value={fmtTown(r.totalEmitted)} unit="TOWN" view="BuyerRewards.totalEmitted" />
-        <Stat label="Not yet set aside (remaining)" value={fmtTown(reserveUnscheduled(chain))} unit="TOWN" view="RESERVE - totalEmitted" gold />
-        <Stat label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="TOWN" view="BuyerRewards.totalPaidToBuyers" />
-        <Stat label="Claim fees collected for the owner" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" view="BuyerRewards.totalFeesToTreasury" />
-        <Stat label="Claimed in total, before the fee" value={fmtTown(r.totalClaimedGross)} unit="TOWN" view="BuyerRewards.totalClaimedGross" />
-      </dl>
-      <p class="small muted" style="margin:14px 0 0">
-        Set-aside rebates that nobody claims stay in the Granary, so "set aside" and "claimed" drift apart over time.
-      </p>
-    </Panel>
+    <Card title="TOWN">
+      <Figures cols={2}>
+        <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="TOWN" view="UpTownToken.totalSupply" />
+        <Fig label="Burned" value={fmtTown(burned(chain))} unit="TOWN" view="1,000,000,000 - totalSupply" />
+        <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="TOWN" view="totalSupply - TownHook.BURN_FLOOR" />
+        <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="TOWN" view="BuyerRewards.totalEmitted" />
+        <Fig label="Rebate reserve remaining" value={fmtTown(reserveUnscheduled(chain))} unit="TOWN" view="RESERVE - totalEmitted" />
+        <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="TOWN" view="BuyerRewards.totalPaidToBuyers" accent />
+        <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" view="BuyerRewards.totalFeesToTreasury" />
+      </Figures>
+      <p class="small faint card-foot">Burned counts sell fees and any voluntary burns. The burn stops at 1,000,000 TOWN of supply.</p>
+    </Card>
   );
 }
 
-function TowerBook() {
+function Staking() {
   const { chain } = useApp();
   const st = chain.staking;
   const vaults = TIERS.reduce((a, t) => a + st.tierVaults[t], 0);
-  return (
-    <Panel title="The Tower's books">
-      <dl class="stats" style="margin-bottom:16px">
-        <Stat label="TOWN stored in the Tower" value={fmtTown(st.totalStaked)} unit="TOWN" view="TownStaking.totalStaked" />
-        <Stat label="Open vaults" value={fmtInt(vaults)} view="sum of TownStaking.tierVaults(tier)" />
-        <Stat label="WETH received from the Town Hall" value={fmtEth(st.totalRewardsNotified)} unit="WETH" view="TownStaking.totalRewardsNotified" />
-        <Stat label="WETH collected by Residents" value={fmtEth(st.totalRewardsPaid)} unit="WETH" view="TownStaking.totalRewardsPaid" gold />
-      </dl>
-      <div class="table-wrap">
-        <table class="data stack">
-          <caption class="visually-hidden">Each floor's figures</caption>
-          <thead>
-            <tr>
-              <th scope="col">Floor</th>
-              <th scope="col" class="num">
-                Vaults
-              </th>
-              <th scope="col" class="num">
-                TOWN stored
-              </th>
-              <th scope="col" class="num">
-                WETH received
-              </th>
-              <th scope="col" class="num">
-                WETH collected
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...TIERS].reverse().map((t) => (
-              <tr key={t}>
-                <td data-label="Floor">
-                  {t}. {FLOORS[t].name}
-                </td>
-                <td data-label="Vaults" class="num" data-view={`TownStaking.tierVaults(${t})`}>
-                  {fmtInt(st.tierVaults[t])}
-                </td>
-                <td data-label="TOWN stored" class="num" data-view={`TownStaking.tierStaked(${t})`}>
-                  {fmtTown(st.tierStaked[t])}
-                </td>
-                <td data-label="WETH received" class="num" data-view={`TownStaking.tierNotified(${t})`}>
-                  {fmtEth(st.tierNotified[t])}
-                </td>
-                <td data-label="WETH collected" class="num" data-view={`TownStaking.tierPaid(${t})`}>
-                  {fmtEth(st.tierPaid[t])}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  );
-}
-
-function Hall() {
-  const { chain } = useApp();
-  const t = chain.treasury;
-  return (
-    <Panel title="The Town Hall">
-      <dl class="stats">
-        <Stat label="ETH received in total" value={fmtEth(t.totalEthReceived)} unit="ETH" view="Treasury.totalEthReceived" />
-        <Stat label="of which Gate tolls and gifts" value={fmtEth(tollsAndOtherArrivals(chain))} unit="ETH" view="totalEthReceived - totalVaultFees" />
-        <Stat label="of which rent from the Tower" value={fmtEth(chain.staking.totalVaultFees)} unit="ETH" view="TownStaking.totalVaultFees" />
-        <Stat label="WETH delivered to the Tower" value={fmtEth(t.totalDistributed)} unit="WETH" view="Treasury.totalDistributed" gold />
-        <Stat label="ETH withdrawn by the owner" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" view="Treasury.totalOwnerEthWithdrawn" />
-        <Stat label="TOWN withdrawn by the owner" value={fmtTown(t.totalTownWithdrawn)} unit="TOWN" view="Treasury.totalTownWithdrawn" />
-      </dl>
-    </Panel>
-  );
-}
-
-function Foundation() {
-  const { chain } = useApp();
   const unlock = chain.lpVault.unlockTime;
-  const sealBell = Math.floor((unlock - chain.hook.launchTime) / 86_400);
   return (
-    <Panel title="The Sealed Foundation">
-      <div style="max-width:220px;margin-bottom:10px">
-        <FoundationArt />
+    <Card title="Staking and liquidity">
+      <Figures cols={4}>
+        <Fig label="TOWN staked" value={fmtTown(st.totalStaked)} unit="TOWN" view="TownStaking.totalStaked" />
+        <Fig label="Vaults" value={fmtInt(vaults)} view="sum of TownStaking.tierVaults" />
+        <Fig label="WETH received by staking" value={fmtEth(st.totalRewardsNotified)} unit="WETH" view="TownStaking.totalRewardsNotified" />
+        <Fig label="WETH claimed by stakers" value={fmtEth(st.totalRewardsPaid)} unit="WETH" view="TownStaking.totalRewardsPaid" />
+      </Figures>
+      <table class="table compact per-tier">
+        <caption class="visually-hidden">Each tier’s figures</caption>
+        <thead>
+          <tr>
+            <th scope="col">Tier</th>
+            <th scope="col" class="r">
+              Vaults
+            </th>
+            <th scope="col" class="r">
+              WETH received
+            </th>
+            <th scope="col" class="r">
+              WETH claimed
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {TIERS.map((t) => (
+            <tr key={t}>
+              <td>Tier {t}</td>
+              <td class="r num" data-view={`TownStaking.tierVaults(${t})`}>
+                {fmtInt(st.tierVaults[t])}
+              </td>
+              <td class="r num" data-view={`TownStaking.tierNotified(${t})`}>
+                {fmtEth(st.tierNotified[t])}
+              </td>
+              <td class="r num" data-view={`TownStaking.tierPaid(${t})`}>
+                {fmtEth(st.tierPaid[t])}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div class="lock-line">
+        <span class="muted">Liquidity locked until</span>
+        <strong class="num" data-view="LPVault.unlockTime">
+          {fmtDate(unlock)}
+        </strong>
+        <span class="muted small">({fmtInt(daysUntil(chain, unlock))} days from now; can be extended, never shortened)</span>
       </div>
-      <dl class="stats">
-        <Stat label="The liquidity lock ends no earlier than" value={fmtDate(unlock)} view="LPVault.unlockTime" gold note={`${bellName(sealBell)}, ${fmtInt(daysUntil(chain, unlock))} days from now`} />
-      </dl>
-      <p class="small muted" style="margin:14px 0 0">
-        The pool's liquidity position is locked in LPVault until then. The owner can lengthen the lock, never shorten it, and can collect the pool's trading
-        fees meanwhile. <SampleBadge />
-      </p>
-    </Panel>
+    </Card>
   );
 }

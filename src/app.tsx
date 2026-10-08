@@ -1,60 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { DEFAULT_SCENARIO_ID, SAMPLE_FIGURES, SCENARIOS, getScenario } from './data/placeholder';
 import { AppContext, type AppState } from './components/ui';
-import { BellIcon, TowerGlyph, BellamyBadge, Skyline } from './components/art';
-import { bellName, shortAddress } from './lib/format';
-import { ageIndex } from './lib/derive';
+import { CloseIcon, MenuIcon, DarkModeIcon, LightModeIcon, TowerGlyph } from './components/icons';
+import { dayName, shortAddress } from './lib/format';
+import { chooseTheme, currentTheme, storedTheme, type Theme } from './lib/theme';
 import { Home } from './pages/Home';
-import { Gate } from './pages/Gate';
-import { Granary } from './pages/Granary';
-import { Tower } from './pages/Tower';
-import { TownHall } from './pages/TownHall';
+import { Buy } from './pages/Buy';
+import { Rewards } from './pages/Rewards';
+import { Stake } from './pages/Stake';
 import { Stats } from './pages/Stats';
-import { Mayor } from './pages/Mayor';
-import { NoticePage } from './pages/Notice';
-import { Glossary } from './pages/Glossary';
+import { Owner } from './pages/Owner';
 
-interface Route {
-  page: string;
-  param: string | null;
-}
-
-function parseHash(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-  return { page: parts[0] ?? '', param: parts[1] ?? null };
-}
-
-const NAV: { page: string; label: string; plain: string }[] = [
-  { page: '', label: 'The Town', plain: 'Home' },
-  { page: 'gate', label: 'The Gate', plain: 'Buy TOWN' },
-  { page: 'granary', label: 'The Granary', plain: 'Rebates' },
-  { page: 'tower', label: 'The Tower', plain: 'Stake' },
-  { page: 'town-hall', label: 'Town Hall', plain: 'Treasury' },
-  { page: 'records', label: 'The Records', plain: 'Stats' },
-  { page: 'mayor', label: 'The Mayor', plain: 'The owner' },
-  { page: 'glossary', label: 'Glossary', plain: 'Lore to plain words' },
+const NAV: { page: string; label: string; title: string }[] = [
+  { page: '', label: 'Home', title: 'UpTown (TOWN)' },
+  { page: 'buy', label: 'Buy', title: 'Buy TOWN · UpTown' },
+  { page: 'rewards', label: 'Rewards', title: 'Buyer rebates · UpTown' },
+  { page: 'stake', label: 'Stake', title: 'Stake TOWN · UpTown' },
+  { page: 'stats', label: 'Stats', title: 'Treasury and stats · UpTown' },
+  { page: 'owner', label: 'Owner and risks', title: 'Owner and risks · UpTown' },
 ];
 
-const PAGE_TITLES: Record<string, string> = {
-  '': 'UpTown',
-  gate: 'The Gate: buy TOWN · UpTown',
-  granary: 'The Granary: rebates · UpTown',
-  tower: 'The Tower: staking vaults · UpTown',
-  'town-hall': 'Town Hall: the Treasury · UpTown',
-  records: 'The Records: stats · UpTown',
-  mayor: 'The Mayor: the owner\'s powers and income · UpTown',
-  notice: 'Notice and risks · UpTown',
-  glossary: 'Glossary · UpTown',
-};
+function parseHash(hash: string): string {
+  const page = hash.replace(/^#\/?/, '').split('/')[0] ?? '';
+  return NAV.some((n) => n.page === page) ? page : '';
+}
 
-const STORAGE_KEY = 'uptown-preview-scenario';
+const SCENARIO_KEY = 'uptown-preview-scenario';
 
 function readStoredScenario(): string {
   // ?scenario=<id> in the address opens a scenario directly (handy for screenshots).
   const fromUrl = new URLSearchParams(window.location.search).get('scenario');
   if (fromUrl) return fromUrl;
   try {
-    return window.localStorage.getItem(STORAGE_KEY) ?? DEFAULT_SCENARIO_ID;
+    return window.localStorage.getItem(SCENARIO_KEY) ?? DEFAULT_SCENARIO_ID;
   } catch {
     return DEFAULT_SCENARIO_ID;
   }
@@ -66,39 +44,47 @@ interface Toast {
 }
 
 export function App() {
-  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
+  const [page, setPage] = useState<string>(() => parseHash(window.location.hash));
   const [scenarioId, setScenarioId] = useState<string>(() => getScenario(readStoredScenario()).id);
   const scenario = getScenario(scenarioId);
   const [connected, setConnected] = useState<boolean>(scenario.walletConnected);
   const [navOpen, setNavOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => currentTheme());
   const [toasts, setToasts] = useState<Toast[]>([]);
   const mainRef = useRef<HTMLElement>(null);
   const firstRender = useRef(true);
 
   useEffect(() => {
-    const onHash = () => setRoute(parseHash(window.location.hash));
+    const onHash = () => setPage(parseHash(window.location.hash));
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  // Follow the system setting while the visitor has not chosen a theme.
   useEffect(() => {
-    document.title = PAGE_TITLES[route.page] ?? 'UpTown';
+    let mq: MediaQueryList | null = null;
+    try {
+      mq = window.matchMedia('(prefers-color-scheme: dark)');
+    } catch {
+      return;
+    }
+    const onChange = () => {
+      if (!storedTheme() && !document.documentElement.hasAttribute('data-theme')) setTheme(mq!.matches ? 'dark' : 'light');
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq!.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    document.title = NAV.find((n) => n.page === page)?.title ?? 'UpTown (TOWN)';
     setNavOpen(false);
     if (firstRender.current) {
       firstRender.current = false;
-      if (!route.param) return;
-    }
-    if (route.page === 'glossary' && route.param) {
-      const el = document.getElementById(`g-${route.param}`);
-      if (el) {
-        el.scrollIntoView({ block: 'start' });
-        el.focus({ preventScroll: true });
-        return;
-      }
+      return;
     }
     window.scrollTo(0, 0);
     mainRef.current?.focus({ preventScroll: true });
-  }, [route.page, route.param]);
+  }, [page]);
 
   const state: AppState = useMemo(
     () => ({
@@ -111,7 +97,7 @@ export function App() {
         setScenarioId(next.id);
         setConnected(next.walletConnected);
         try {
-          window.localStorage.setItem(STORAGE_KEY, next.id);
+          window.localStorage.setItem(SCENARIO_KEY, next.id);
         } catch {
           /* storage unavailable: the choice lasts for this visit only */
         }
@@ -125,32 +111,25 @@ export function App() {
     [scenario, connected],
   );
 
-  const page = (() => {
-    switch (route.page) {
-      case '':
-        return <Home />;
-      case 'gate':
-        return <Gate />;
-      case 'granary':
-        return <Granary />;
-      case 'tower':
-        return <Tower />;
-      case 'town-hall':
-        return <TownHall />;
-      case 'records':
+  const view = (() => {
+    switch (page) {
+      case 'buy':
+        return <Buy />;
+      case 'rewards':
+        return <Rewards />;
+      case 'stake':
+        return <Stake />;
+      case 'stats':
         return <Stats />;
-      case 'mayor':
-        return <Mayor />;
-      case 'notice':
-        return <NoticePage />;
-      case 'glossary':
-        return <Glossary highlight={route.param} />;
+      case 'owner':
+        return <Owner />;
       default:
         return <Home />;
     }
   })();
 
   const c = scenario.chain.hook.currentCycle;
+  const nextTheme: Theme = theme === 'dark' ? 'light' : 'dark';
 
   return (
     <AppContext.Provider value={state}>
@@ -166,12 +145,13 @@ export function App() {
       </a>
 
       {SAMPLE_FIGURES && (
-        <div class="sample-bar" role="region" aria-label="Design preview controls">
+        <div class="preview-bar" role="region" aria-label="Design preview controls">
           <div class="wrap">
-            <strong>DESIGN PREVIEW · SAMPLE FIGURES</strong>
-            <label>
-              <span>Scenario</span>
-              <select value={scenario.id} onChange={(e) => state.setScenario((e.target as HTMLSelectElement).value)}>
+            <span class="preview-tag">Design preview</span>
+            <span class="preview-note">Sample figures, not read from the contracts.</span>
+            <label class="preview-select">
+              <span class="visually-hidden">Preview scenario</span>
+              <select value={scenario.id} onChange={(e) => state.setScenario((e.target as HTMLSelectElement).value)} title={scenario.description}>
                 {SCENARIOS.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.label}
@@ -179,13 +159,12 @@ export function App() {
                 ))}
               </select>
             </label>
-            <span class="scenario-note">{scenario.description} No figure on this preview is read from the contracts.</span>
           </div>
         </div>
       )}
 
-      <div class="site-header">
-        <div class="wrap">
+      <header class="site-header">
+        <div class="wrap header-row">
           <a class="wordmark" href="#/" aria-label="UpTown, home">
             <TowerGlyph />
             <span>UpTown</span>
@@ -194,22 +173,32 @@ export function App() {
             <ul>
               {NAV.map((n) => (
                 <li key={n.page}>
-                  <a href={`#/${n.page}`} aria-current={route.page === n.page ? 'page' : undefined}>
-                    <span>{n.label}</span>
-                    <small>{n.plain}</small>
+                  <a href={`#/${n.page}`} aria-current={page === n.page ? 'page' : undefined}>
+                    {n.label}
                   </a>
                 </li>
               ))}
             </ul>
           </nav>
           <div class="header-tools">
-            <span class="bell-chip" title={`Bell ${c}: the 24-hour day that began ${c} days after launch`}>
-              <BellIcon />
-              {bellName(c)}
+            <span class="day-chip" title={`${dayName(c)}: the 24-hour day that began ${c} days after launch`}>
+              {dayName(c)}
             </span>
             <button
               type="button"
-              class={`btn btn-small ${connected ? 'btn-ghost' : 'btn-gold'} wallet-btn`}
+              class="icon-btn"
+              onClick={() => {
+                chooseTheme(nextTheme);
+                setTheme(nextTheme);
+              }}
+              aria-label={`Switch to ${nextTheme} mode`}
+              title={`Switch to ${nextTheme} mode`}
+            >
+              {theme === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+            </button>
+            <button
+              type="button"
+              class={`btn btn-small ${connected ? 'btn-secondary' : 'btn-primary'} wallet-btn`}
               onClick={state.toggleWallet}
               aria-label={connected ? `Wallet ${scenario.wallet.address} connected (sample). Select to disconnect.` : 'Connect wallet (sample)'}
             >
@@ -222,76 +211,50 @@ export function App() {
                 'Connect wallet'
               )}
             </button>
+            <button
+              type="button"
+              class="icon-btn nav-toggle"
+              aria-expanded={navOpen}
+              aria-controls="site-nav"
+              aria-label={navOpen ? 'Close the menu' : 'Open the menu'}
+              onClick={() => setNavOpen((o) => !o)}
+            >
+              {navOpen ? <CloseIcon /> : <MenuIcon />}
+            </button>
           </div>
-          <button
-            type="button"
-            class="nav-toggle"
-            aria-expanded={navOpen}
-            aria-controls="site-nav"
-            aria-label={navOpen ? 'Close the menu' : 'Open the menu'}
-            onClick={() => setNavOpen((o) => !o)}
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              {navOpen ? (
-                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-              ) : (
-                <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-              )}
-            </svg>
-          </button>
         </div>
-      </div>
+      </header>
 
       <main ref={mainRef} tabIndex={-1} id="main">
-        {page}
+        {view}
       </main>
 
       <footer class="site-footer">
-        <div class="footer-skyline" aria-hidden="true">
-          <Skyline age={ageIndex(c)} compact showBellamy={false} />
-        </div>
-        <div class="wrap">
-          <div>
-            <div style="display:flex;gap:12px;align-items:center">
-              <div style="width:90px;flex:none">
-                <BellamyBadge />
-              </div>
-              <p class="small muted" style="margin:0">
-                <em>"Up here, everything's on the record."</em> Bellamy reports the town's figures. He never predicts, and nothing on this site promises a price or a reward.
-              </p>
-            </div>
+        <div class="wrap footer-grid">
+          <div class="footer-brand">
+            <a class="wordmark small" href="#/" aria-label="UpTown, home">
+              <TowerGlyph />
+              <span>UpTown</span>
+            </a>
+            <p>UpTown Token (TOWN) on Ethereum. Nothing on this site is advice or a promise about price.</p>
           </div>
-          <div>
-            <h2>Read before you act</h2>
+          <nav aria-label="Footer">
             <ul>
-              <li>
-                <a class="legal-link" href="#/notice">Notice and risks</a>
-              </li>
-              <li>
-                <a href="#/mayor">The owner's powers and income</a>
-              </li>
-              <li>
-                <a href="#/glossary">Glossary: lore to plain words</a>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h2>The town</h2>
-            <ul>
-              {NAV.slice(1, 6).map((n) => (
+              {NAV.slice(1, 5).map((n) => (
                 <li key={n.page}>
-                  <a href={`#/${n.page}`}>
-                    {n.label} <span class="faint">({n.plain})</span>
-                  </a>
+                  <a href={`#/${n.page}`}>{n.label}</a>
                 </li>
               ))}
-              <li class="faint small">
-                UpTown Token (TOWN) on Ethereum. Fonts under the SIL Open Font Licence:{' '}
-                <a href="./licenses/OFL-Cinzel.txt">Cinzel</a>, <a href="./licenses/OFL-SourceSerif4.txt">Source Serif 4</a>,{' '}
-                <a href="./licenses/OFL-PublicSans.txt">Public Sans</a>.
+              <li>
+                <a href="#/owner" class="footer-strong">
+                  Owner and risks
+                </a>
               </li>
             </ul>
-          </div>
+          </nav>
+          <p class="footer-fonts">
+            Fonts under the SIL Open Font Licence: <a href="./licenses/OFL-Inter.txt">Inter</a>, <a href="./licenses/OFL-Cinzel.txt">Cinzel</a> (wordmark).
+          </p>
         </div>
       </footer>
 
@@ -300,7 +263,7 @@ export function App() {
           <div class="toast" key={t.id} role="status">
             <span>{t.message}</span>
             <button type="button" aria-label="Dismiss" onClick={() => setToasts((all) => all.filter((x) => x.id !== t.id))}>
-              ×
+              <CloseIcon size={16} />
             </button>
           </div>
         ))}

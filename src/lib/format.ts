@@ -78,7 +78,14 @@ export function shortAddress(a: string): string {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-/** "Bell 42", "Bell Zero", with thousands separators for later Bells. */
-export function bellName(c: number): string {
-  return c === 0 ? 'Bell Zero' : `Bell ${fmtInt(c)}`;
+/** "Day 42", with thousands separators for later days. A day is the 24-hour cycle counted from launch. */
+export function dayName(c: number): string {
+  return `Day ${fmtInt(c)}`;
+}
+
+/** "days 37, 38 and 40" style list of day numbers. */
+export function listDays(cycles: number[]): string {
+  const names = cycles.map((c) => fmtInt(c));
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
