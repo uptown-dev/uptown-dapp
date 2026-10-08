@@ -1,15 +1,13 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { parseEther, parseUnits } from 'viem';
-import { useApp, ActionButton, ConnectPrompt, Details, FieldError, Notice, PageHead, SampleBadge, Chips } from '../components/ui';
+import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus } from '../components/ui';
 import { ArrowDownIcon, ExternalIcon } from '../components/icons';
-import { afterClaimFee, antiSnipeActive, antiSnipeSecondsLeft, buyFee, minReceived, quoteTownOut, rebateRateBps } from '../lib/derive';
+import { afterClaimFee, antiSnipeActive, antiSnipeSecondsLeft, buyFee, minReceived, rebateRateBps } from '../lib/derive';
 import { dayName, fmtBps, fmtClock, fmtEth, fmtTown, fmtUnits } from '../lib/format';
-
-/** Universal Router 2.1.2 on Ethereum mainnet (R1b A1; CL-41). Phase two sends the site's buys through it. */
-export const UNIVERSAL_ROUTER = '0x23617e59A5925b2A4Bf75d73ff6711cD0b29De85';
-
-/** The Uniswap app, for selling (and a second way to buy). Phase two adds TOWN's address. */
-const UNISWAP_URL = 'https://app.uniswap.org/swap?chain=mainnet&inputCurrency=NATIVE';
+import { uniswapSellUrl } from '../lib/network';
+import { quoteBuy } from '../lib/reads';
+import { BUY_DEADLINE_SECONDS, buyTx } from '../lib/actions';
+import { explainError } from '../lib/errors';
 
 const SLIPPAGE = [
   { value: 50, label: '0.5%' },
@@ -38,25 +36,35 @@ function parseEthInput(s: string): bigint | null {
 }
 
 export function Buy() {
-  const { chain } = useApp();
+  const chain = useChain();
+  const { network } = useApp();
+  const sell = uniswapSellUrl(network);
+  const town = network.deployment?.contracts.UpTownToken;
   return (
     <div class="wrap page narrow">
       <PageHead title="Buy TOWN" lead="Swap ETH for TOWN. Every buy here is counted for your wallet, so its rebate is yours." />
       {antiSnipeActive(chain) && <AntiSnipe />}
       <BuyCard />
       <div class="after-card">
-        <a class="btn btn-secondary btn-block" href={UNISWAP_URL} target="_blank" rel="noopener noreferrer">
-          Sell on Uniswap
-          <ExternalIcon size={16} />
-        </a>
+        {sell ? (
+          <a class="btn btn-secondary btn-block" href={sell} target="_blank" rel="noopener noreferrer">
+            Sell on Uniswap
+            <ExternalIcon size={16} />
+          </a>
+        ) : (
+          <span class="btn btn-secondary btn-block is-off" aria-disabled="true">
+            Sell on Uniswap
+          </span>
+        )}
+        {!sell && <p class="small muted">The Uniswap app does not run on the {network.name.toLowerCase()}, so this link is off here.</p>}
         <p class="small muted">Other TOWN pools, outside the official one, pay no fees and earn no rebates.</p>
       </div>
       <Details>
         <ul class="plain-list">
           <li>
             <strong>How the buy is sent.</strong> One exact-input swap through Uniswap’s Universal Router (version 2.1.2,{' '}
-            <code>{UNIVERSAL_ROUTER.slice(0, 10)}…</code>) that names your wallet in the swap, with your minimum received as the limit. Your wallet shows the
-            transaction for you to approve.
+            <code>{network.uniswap ? `${network.uniswap.universalRouter.slice(0, 10)}…` : '—'}</code>) that names your wallet in the swap, with your minimum
+            received as the limit. Your wallet shows the transaction for you to approve.
           </li>
           <li>
             <strong>Fees on a buy.</strong> The buy fee ({fmtBps(chain.hook.BUY_FEE_BPS)} of the ETH, to the treasury; 10% of it is kept for the owner) and the
@@ -77,7 +85,7 @@ export function Buy() {
             you.
           </li>
           <li>
-            <strong>The right pool.</strong> Only the TOWN pool that runs through UpTown’s hook counts. TOWN’s address will be published here at launch.
+            <strong>The right pool.</strong> Only the TOWN pool that runs through TownHook counts. TOWN’s address: <code class="break">{town ?? '—'}</code>.
           </li>
         </ul>
       </Details>
@@ -86,12 +94,12 @@ export function Buy() {
 }
 
 function AntiSnipe() {
-  const { chain } = useApp();
+  const chain = useChain();
   const left = antiSnipeSecondsLeft(chain);
   const dur = chain.hook.ANTI_SNIPE_DURATION;
   const done = Math.round(((dur - left) / dur) * 100);
   return (
-    <Notice kind="warn" title={`Launch fee: the buy fee is ${fmtBps(chain.hook.currentBuyFeeBps)} right now`}>
+    <Notice kind="warn" title={`Higher buy fee in the first 15 minutes: ${fmtBps(chain.hook.currentBuyFeeBps)} right now`}>
       <p>
         For the first 15 minutes after launch the buy fee falls from {fmtBps(chain.hook.ANTI_SNIPE_START_BPS)} to {fmtBps(chain.hook.BUY_FEE_BPS)}. It reaches{' '}
         {fmtBps(chain.hook.BUY_FEE_BPS)} in <strong class="num">{fmtClock(left)}</strong>. Unless you mean to pay it, wait.
@@ -99,7 +107,7 @@ function AntiSnipe() {
       <div
         class="meter"
         role="progressbar"
-        aria-label="Time passed in the 15-minute launch fee window"
+        aria-label="Time passed in the first 15 minutes after launch"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={done}
@@ -110,16 +118,47 @@ function AntiSnipe() {
   );
 }
 
+interface Quote {
+  amountIn: bigint;
+  block: bigint;
+  out: bigint | null;
+  error: string | null;
+}
+
 function BuyCard() {
-  const { chain, wallet } = useApp();
+  const chain = useChain();
+  const { wallet, account, network, client } = useApp();
+  const tx = useTx();
   const [amount, setAmount] = useState('0.1');
   const [slippage, setSlippage] = useState(100);
   const [minText, setMinText] = useState<string | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
 
   const amountIn = parseEthInput(amount);
+
+  // Ask Uniswap's V4Quoter for the amount typed (CL-41), again whenever the figures are read again.
+  useEffect(() => {
+    if (amountIn === null || amountIn === 0n) {
+      setQuote(null);
+      return;
+    }
+    let live = true;
+    const t = window.setTimeout(() => {
+      quoteBuy(client, network, amountIn, account).then(
+        (out) => live && setQuote({ amountIn, block: chain.blockNumber, out, error: null }),
+        (e) => live && setQuote({ amountIn, block: chain.blockNumber, out: null, error: explainError(e).message }),
+      );
+    }, 300);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [amountIn?.toString(), chain.blockNumber, account]);
+
   const feeBps = chain.hook.currentBuyFeeBps;
   const fee = amountIn !== null ? buyFee(amountIn, feeBps) : null;
-  const estimate = amountIn !== null ? quoteTownOut(chain, amountIn) : null;
+  const fresh = quote && amountIn !== null && quote.amountIn === amountIn ? quote : null;
+  const estimate = fresh?.out ?? null;
   const autoMin = estimate !== null ? minReceived(estimate, slippage) : null;
   const minValue = minText !== null ? parseAmount(minText) : autoMin;
   const c = chain.hook.currentCycle;
@@ -128,13 +167,16 @@ function BuyCard() {
   const overBalance = !!wallet && amountIn !== null && amountIn > wallet.ethBalance;
   const minTooHigh = minValue !== null && estimate !== null && minValue > estimate;
 
+  const buy = () => {
+    if (!account || amountIn === null || minValue === null) return;
+    const deadline = BigInt(Math.max(chain.blockTimestamp, Math.floor(Date.now() / 1000)) + BUY_DEADLINE_SECONDS);
+    void tx.run('Buy TOWN', () => buyTx(network, account, amountIn, minValue, deadline), () => `Your buy went through and is counted for your wallet on ${dayName(c)}. Its rebate can be claimed from ${dayName(c + 2)}.`);
+  };
+
   return (
     <section class="card swap-card" aria-label="Buy TOWN with ETH">
       <div class="card-head">
         <h2 class="card-title">Swap</h2>
-        <div class="card-head-end">
-          <SampleBadge />
-        </div>
       </div>
 
       <div class="swap-box">
@@ -170,10 +212,15 @@ function BuyCard() {
       <div class="swap-box">
         <div class="swap-box-top">
           <span>You receive (estimate)</span>
+          {wallet && (
+            <span class="muted small">
+              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> TOWN
+            </span>
+          )}
         </div>
         <div class="swap-box-main">
           <output class="swap-output num" data-view="V4Quoter.quoteExactInputSingle" for="buy-eth">
-            {estimate !== null ? fmtTown(estimate) : '0'}
+            {estimate !== null ? fmtTown(estimate) : amountIn !== null && amountIn > 0n && !fresh ? '…' : '0'}
           </output>
           <span class="token-pill gold">TOWN</span>
         </div>
@@ -181,6 +228,7 @@ function BuyCard() {
 
       {amountIn === null && <FieldError>Enter an amount of ETH, for example 0.1.</FieldError>}
       {overBalance && <FieldError>That is more ETH than this wallet holds.</FieldError>}
+      {fresh?.error && <FieldError>No estimate: {fresh.error}</FieldError>}
 
       <dl class="rows swap-rows">
         <div class="row">
@@ -229,16 +277,19 @@ function BuyCard() {
         the minimum, the buy is cancelled and you keep your ETH.
       </p>
 
-      {wallet ? (
-        <ActionButton
-          label="Buy TOWN"
-          block
-          disabled={amountIn === null || amountIn === 0n || overBalance || minValue === null}
-          explain="ask your wallet to send this buy, naming your wallet so the rebate is credited to you."
-        />
+      {account ? (
+        <button
+          type="button"
+          class="btn btn-primary btn-block"
+          disabled={tx.busy || amountIn === null || amountIn === 0n || overBalance || minValue === null}
+          onClick={buy}
+        >
+          {tx.busy ? 'Buying…' : 'Buy TOWN'}
+        </button>
       ) : (
         <ConnectPrompt what="your balance and buy" block />
       )}
+      <TxStatus tx={tx} />
       <p class="credit-line">Buy here so the rebate is credited to your wallet.</p>
     </section>
   );

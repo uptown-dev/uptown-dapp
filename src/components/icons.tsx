@@ -144,7 +144,7 @@ export const FlameIcon = (p: IconProps) => (
 );
 
 // ---------------------------------------------------------------------------------------------
-// The one flow graphic, with the hook at its centre: every trade passes through the UpTown hook,
+// The one flow graphic, with the hook at its centre: every trade passes through TownHook,
 // which sends 2% of a buy's ETH to the treasury, records the buy in the tally and burns 2% of a
 // sell's TOWN; the treasury pays stakers and the tally decides the buyers' rebates.
 // ---------------------------------------------------------------------------------------------
@@ -184,7 +184,7 @@ export function FlowGraphic() {
       viewBox="0 0 360 412"
       class="flow-graphic"
       role="img"
-      aria-label="Flow: every trade in the TOWN pool passes through the UpTown hook on Uniswap v4. On a buy the hook sends 2% of the ETH to the treasury and records the buy in the day's tally; on a sell it burns 2% of the TOWN sold. The treasury pays part of its ETH to stakers every day as WETH, spread over seven days. From the tally, buyers claim a TOWN rebate from the reserve two days later."
+      aria-label="Flow: every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy the hook sends 2% of the ETH to the treasury and records the buy in the day's tally; on a sell it burns 2% of the TOWN sold. The treasury pays part of its ETH to stakers every day as WETH, spread over seven days. From the tally, buyers claim a TOWN rebate from the reserve two days later."
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -204,7 +204,7 @@ export function FlowGraphic() {
 
       {/* The hook, at the centre */}
       <rect x="8" y="104" width="344" height="64" rx="12" class="fg-hook" />
-      <text x="180" y="132" class="fg-hook-title" text-anchor="middle">UpTown hook</text>
+      <text x="180" y="132" class="fg-hook-title" text-anchor="middle">TownHook</text>
       <text x="180" y="152" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the TOWN pool</text>
 
       {/* Hook to treasury, tally and burn */}

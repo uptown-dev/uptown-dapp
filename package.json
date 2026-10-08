@@ -3,9 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "The UpTown website: a static site, phase one (mock design with placeholder figures).",
+  "description": "The UpTown website: a static site that reads every figure from the contracts and sends the nine actions (F8b).",
   "scripts": {
+    "addresses": "node scripts/addresses.mjs",
+    "predev": "node scripts/addresses.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/addresses.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "check:copy": "node scripts/check-copy.mjs"

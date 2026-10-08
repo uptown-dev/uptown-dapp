@@ -1,4 +1,5 @@
-import { useApp, ActionButton, Card, ConnectPrompt, Details, Fig, Figures, Notice, PageHead } from '../components/ui';
+import { useApp, useChain, useTx, Card, ConnectPrompt, Details, Fig, Figures, Notice, PageHead, TxStatus } from '../components/ui';
+import { claimRebatesTx } from '../lib/actions';
 import {
   afterClaimFee,
   cycleRebateGross,
@@ -14,7 +15,7 @@ import {
 import { dayName, fmtBps, fmtInt, fmtTown, listDays } from '../lib/format';
 
 export function Rewards() {
-  const { chain } = useApp();
+  const chain = useChain();
   return (
     <div class="wrap page">
       <PageHead
@@ -33,7 +34,7 @@ export function Rewards() {
 }
 
 function ReserveLow() {
-  const { chain } = useApp();
+  const chain = useChain();
   return (
     <Notice kind="warn" title="The rebate reserve is nearly spent">
       <p>
@@ -46,10 +47,12 @@ function ReserveLow() {
 }
 
 function YourRebate() {
-  const { chain, wallet } = useApp();
+  const chain = useChain();
+  const { wallet, network } = useApp();
+  const tx = useTx();
   if (!wallet) {
     return (
-      <Card title="Your rebate" sample={false}>
+      <Card title="Your rebate">
         <ConnectPrompt what="your buys, day by day, and what you can claim" />
       </Card>
     );
@@ -61,6 +64,7 @@ function YourRebate() {
     return (
       <Card title="Your rebate">
         <p class="muted">This wallet has no buys yet, so there is nothing to claim.</p>
+        <TxStatus tx={tx} />
         <p class="small muted">
           A buy made today on the <a href="#/buy">Buy page</a> can be claimed from {dayName(current + 2)}.
         </p>
@@ -85,16 +89,32 @@ function YourRebate() {
       </Figures>
       {ready.length > 0 ? (
         <div class="claim-row">
-          <ActionButton
-            label={`Claim ${ready.length === 1 ? 'day' : 'days'} ${listDays(ready)}`}
-            block
-            explain={`claim your rebates for days ${listDays(ready)}, oldest first, in one transaction.`}
-          />
+          <button
+            type="button"
+            class="btn btn-primary btn-block"
+            disabled={tx.busy}
+            onClick={() => {
+              const days = [...ready];
+              const net = wallet.claimable;
+              void tx.run(
+                `Claim ${days.length === 1 ? 'day' : 'days'} ${listDays(days)}`,
+                () => claimRebatesTx(network, days),
+                () => `${fmtTown(net)} TOWN for ${days.length === 1 ? 'day' : 'days'} ${listDays(days)} went to your wallet, after the 5% claim fee.`,
+              );
+            }}
+          >
+            {tx.busy ? 'Claiming…' : `Claim ${ready.length === 1 ? 'day' : 'days'} ${listDays(ready)}`}
+          </button>
           <p class="small muted">Oldest ready days are always claimed first. Claiming several days at once costs less gas per day.</p>
         </div>
       ) : (
-        <p class="small muted">Nothing is ready yet. Your next day opens on {dayName((days.find((d) => !wallet.claimed[d]) ?? current) + 2)}.</p>
+        <p class="small muted">
+          {days.some((d) => !wallet.claimed[d])
+            ? `Nothing is ready yet. Your next day opens on ${dayName((days.find((d) => !wallet.claimed[d]) ?? current) + 2)}.`
+            : 'Nothing to claim: every day you bought has been claimed.'}
+        </p>
       )}
+      <TxStatus tx={tx} />
       </div>
       <div>
       <div class="table-scroll">
@@ -148,7 +168,7 @@ function YourRebate() {
 }
 
 function Today() {
-  const { chain } = useApp();
+  const chain = useChain();
   const c = chain.rewards.currentCycle;
   const rate = rebateRateBps(chain, c);
   return (
@@ -184,7 +204,7 @@ function Rules() {
 const EPOCHS = [0, 100, 200, 300, 400, 500, 600];
 
 function Schedule() {
-  const { chain } = useApp();
+  const chain = useChain();
   const now = epochIndex(chain.rewards.currentCycle);
   const reserve = chain.rewards.RESERVE;
   let cumulative = 0n;

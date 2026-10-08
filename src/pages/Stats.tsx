@@ -1,4 +1,5 @@
-import { useApp, ActionButton, Card, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
+import { useApp, useChain, useTx, Card, Fig, Figures, Notice, PageHead, TxStatus, Verify } from '../components/ui';
+import { pokeTx } from '../lib/actions';
 import { TIERS } from '../data/types';
 import { budgetState, burned, daysUntil, forStakers, hookFeesReceived, leftToBurn, reserveUnscheduled } from '../lib/derive';
 import { dayName, fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown } from '../lib/format';
@@ -19,7 +20,9 @@ export function Stats() {
 }
 
 function Treasury() {
-  const { chain, network } = useApp();
+  const chain = useChain();
+  const { network } = useApp();
+  const tx = useTx();
   const t = chain.treasury;
   const b = budgetState(chain);
   const c = t.currentCycle;
@@ -66,13 +69,26 @@ function Treasury() {
             Free to press: it pays no reward and costs only gas. Any staking action does the same, so most days are triggered without this button.
           </p>
         </div>
-        <ActionButton
-          label={b.kind === 'waiting' ? 'Trigger payout' : 'Already triggered today'}
-          variant="secondary"
-          disabled={b.kind !== 'waiting'}
-          explain="call poke() on the treasury, which sets the day’s budget and pays it to stakers if it is due and at least 0.001 ETH."
-        />
+        <button
+          type="button"
+          class="btn btn-secondary"
+          disabled={tx.busy || b.kind !== 'waiting'}
+          onClick={() =>
+            void tx.run('Trigger payout', () => pokeTx(network), () =>
+              `${dayName(c)} is triggered. The figures above show its budget and whether it was paid to stakers (only at 0.001 ETH or more).`,
+            )
+          }
+        >
+          {tx.busy ? 'Triggering…' : b.kind === 'waiting' ? 'Trigger payout' : 'Already triggered today'}
+        </button>
       </div>
+      {b.kind !== 'waiting' && (
+        <p class="small muted poke-why">
+          {dayName(c)} was already triggered{b.kind === 'paid' ? ' and paid' : ''}. The next payout can be triggered from{' '}
+          <span class="num">{fmtDateTime(t.nextDistributionTime)}</span>.
+        </p>
+      )}
+      <TxStatus tx={tx} />
       <Verify
         links={[
           { label: 'balance', what: 'the Treasury’s ETH balance', href: contractUrl(network, 'Treasury') },
@@ -84,7 +100,8 @@ function Treasury() {
 }
 
 function EthFlows() {
-  const { chain, network } = useApp();
+  const chain = useChain();
+  const { network } = useApp();
   const t = chain.treasury;
   const booked = t.totalEthReceived - t.totalDistributed - t.totalOwnerEthWithdrawn;
   const unbooked = t.balance > booked ? t.balance - booked : 0n;
@@ -116,7 +133,8 @@ function EthFlows() {
 }
 
 function TownTotals() {
-  const { chain, network } = useApp();
+  const chain = useChain();
+  const { network } = useApp();
   const r = chain.rewards;
   return (
     <Card title="TOWN">
@@ -132,7 +150,7 @@ function TownTotals() {
       <p class="small faint card-foot">Burned counts sell fees and any voluntary burns. The burn stops at 1,000,000 TOWN of supply.</p>
       <Verify
         links={[
-          { label: 'total supply', what: 'TOWN’s total supply', href: tokenUrl(network, network.deployment.contracts.UpTownToken) },
+          { label: 'total supply', what: 'TOWN’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },
           { label: 'reserve balance', what: 'BuyerRewards’ TOWN balance', href: contractUrl(network, 'BuyerRewards') },
           { label: 'rebate totals', what: 'BuyerRewards’ running totals', href: contractUrl(network, 'BuyerRewards', 'read') },
         ]}
@@ -142,7 +160,8 @@ function TownTotals() {
 }
 
 function Staking() {
-  const { chain, network } = useApp();
+  const chain = useChain();
+  const { network } = useApp();
   const st = chain.staking;
   const vaults = TIERS.reduce((a, t) => a + st.tierVaults[t], 0);
   const unlock = chain.lpVault.unlockTime;

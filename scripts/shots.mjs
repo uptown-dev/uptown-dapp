@@ -1,14 +1,15 @@
 // Review screenshots with headless Microsoft Edge over the Chrome DevTools Protocol.
-// For each scenario and route it saves page slices and checks for sideways scrolling.
+// For each wallet and route it saves page slices and checks for sideways scrolling.
 // Local review only: the pictures go to the git-ignored frontend/review-shots/.
 //
 // Usage (with the built site served, e.g. `npx vite preview --port 4191 --strictPort`):
-//   node scripts/shots.mjs <outDir> <desktop|mobile> <light|dark> [routes] [scenarios] [baseUrl]
+//   node scripts/shots.mjs <outDir> <desktop|mobile> <light|dark> [routes] [wallets] [baseUrl]
 //   routes:    comma list, '' for home (default: ,buy,rewards,stake,stats,docs)
-//   scenarios: comma list (default: normal)
+//   wallets:   comma list of local test wallet addresses to connect, 'none' for no wallet (default: none)
 //   baseUrl:   default http://127.0.0.1:4191/
 //   'open' as an eighth argument opens every "Details" expander before the pictures are taken.
-//   SHOT_CHAIN=<chain id> in the environment opens that network (?chain=), e.g. 31337 for the local chain.
+// The figures come from the chain the build reads (the local chain: start it first); each page is
+// photographed once its figures have been read.
 // The theme is applied the way a first visit sees it: through the emulated system setting
 // (prefers-color-scheme), with a fresh browser profile and no remembered choice.
 import { spawn } from 'node:child_process';
@@ -20,10 +21,9 @@ const OUT = process.argv[2] || 'review-shots';
 const MODE = process.argv[3] || 'desktop';
 const THEME = process.argv[4] || 'light';
 const PAGES = (process.argv[5] ?? ',buy,rewards,stake,stats,docs').split(',');
-const SCENS = (process.argv[6] || 'normal').split(',');
+const WALLETS = (process.argv[6] || 'none').split(',');
 const BASE = process.argv[7] || 'http://127.0.0.1:4191/';
 const OPEN = process.argv[8] === 'open';
-const CHAIN = process.env.SHOT_CHAIN || '';
 const W = MODE === 'mobile' ? 390 : 1280;
 const H = MODE === 'mobile' ? 844 : 800;
 const SLICE = MODE === 'mobile' ? 1400 : 1000;
@@ -92,10 +92,22 @@ const OVERFLOW = `(() => {
 })()`;
 
 const problems = [];
-for (const scen of SCENS) {
+for (const wallet of WALLETS) {
+  // The local test wallet is remembered in the page's storage (key uptown-local-wallet).
+  await send('Page.navigate', { url: BASE });
+  await sleep(500);
+  await evalJs(wallet === 'none' ? "localStorage.removeItem('uptown-local-wallet'), 1" : `localStorage.setItem('uptown-local-wallet', '${wallet}'), 1`);
+  await send('Page.reload', { ignoreCache: true });
+  await sleep(800);
+  const scen = wallet === 'none' ? 'nowallet' : `w${wallet.slice(2, 6).toLowerCase()}`;
   for (const p of PAGES) {
-    await send('Page.navigate', { url: `${BASE}?scenario=${scen}${CHAIN ? `&chain=${CHAIN}` : ""}#/${p}` });
+    await send('Page.navigate', { url: `${BASE}#/${p}` });
     await sleep(900);
+    for (let i = 0; i < 60; i++) {
+      if (await evalJs("!!document.querySelector('.read-line')?.dataset.block")) break;
+      await sleep(250);
+    }
+    await sleep(1200);
     await evalJs('document.fonts.ready.then(()=>1)');
     if (OPEN) await evalJs("document.querySelectorAll('details').forEach((d) => (d.open = true)), 1");
     await sleep(150);
@@ -107,7 +119,7 @@ for (const scen of SCENS) {
     for (let y = 0; y < total; y += SLICE) {
       const h = Math.min(SLICE, total - y);
       const r = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y, width: W, height: h, scale: 1 } });
-      writeFileSync(`${OUT}/${MODE}-${THEME}-${CHAIN ? `c${CHAIN}-` : ""}${scen}-${name}${OPEN ? '-details' : ''}-${String(n++).padStart(2, '0')}.png`, Buffer.from(r.result.data, 'base64'));
+      writeFileSync(`${OUT}/${MODE}-${THEME}-${scen}-${name}${OPEN ? '-details' : ''}-${String(n++).padStart(2, '0')}.png`, Buffer.from(r.result.data, 'base64'));
     }
     console.log(`${MODE} ${THEME} ${scen} ${name}: height ${total}, ${n} slice(s), scrollWidth ${check.scrollW}/${check.vw}, colour scheme ${check.theme}`);
   }

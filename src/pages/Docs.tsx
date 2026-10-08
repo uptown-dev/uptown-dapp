@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useApp, Details, Fig, Figures, Notice, PageHead, SampleBadge, Verify } from '../components/ui';
+import { useApp, Details, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
 import { OWNER_CANNOT, OWNER_POWERS, THINGS_TO_KNOW } from '../content/docs';
 import { PriceSource } from '../data/types';
 import { fallbackExpiresAt } from '../lib/derive';
@@ -23,7 +23,7 @@ const titleOf = (id: string) => SECTIONS.find((s) => s.id === id)!.title;
 
 export function Docs() {
   const { network, chain } = useApp();
-  const c = network.deployment.contracts;
+  const town = network.deployment?.contracts.UpTownToken;
   return (
     <div class="wrap page docs">
       <PageHead title="Docs" lead="How UpTown works, part by part, and what the owner can do. UpTown is an experiment on Ethereum." />
@@ -51,7 +51,7 @@ export function Docs() {
           <Section id="hook">
             <ul class="doc-list">
               <li>
-                Every trade in the TOWN pool on Uniswap v4 passes through UpTown’s hook (TownHook). It has no owner: nobody can change it or switch it off.{' '}
+                Every trade in the TOWN pool on Uniswap v4 passes through TownHook, the pool’s hook contract. It has no owner: nobody can change it or switch it off.{' '}
                 <Verify inline links={[{ what: 'TownHook’s code', href: contractUrl(network, 'TownHook', 'code') }]} />
               </li>
               <li>
@@ -126,18 +126,24 @@ export function Docs() {
             <ul class="doc-list">
               <li>
                 1,000,000,000 TOWN were minted once; no one can mint more.{' '}
-                <Verify inline links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, c.UpTownToken) }]} />
+                <Verify inline links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, town) }]} />
               </li>
               <li>Every sell burns 2% of the TOWN sold, so the supply only falls.</li>
               <li>The burn stops when the supply reaches 1,000,000 TOWN; after that, sells pay no hook fee.</li>
             </ul>
           </Section>
 
-          <Section id="liquidity" sample>
+          <Section id="liquidity">
             <ul class="doc-list">
               <li>At launch the other 500,000,000 TOWN form the pool’s single liquidity position.</li>
               <li>
-                LPVault holds that position, locked for at least 10 years: until <strong class="num">{fmtDate(chain.lpVault.unlockTime)}</strong>.{' '}
+                LPVault holds that position, locked for at least 10 years
+                {chain && (
+                  <>
+                    : until <strong class="num">{fmtDate(chain.lpVault.unlockTime)}</strong>
+                  </>
+                )}
+                .{' '}
                 <Verify inline links={[{ what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') }]} />
               </li>
               <li>
@@ -185,18 +191,13 @@ export function Docs() {
 }
 
 /** One documentation section: a card with its heading, reachable as #/docs/<id>. */
-function Section({ id, sample, children }: { id: string; sample?: boolean; children: ComponentChildren }) {
+function Section({ id, children }: { id: string; children: ComponentChildren }) {
   return (
     <section class="card doc-section" id={`docs-${id}`} tabIndex={-1} aria-labelledby={`docs-${id}-title`}>
       <div class="card-head">
         <h2 class="card-title" id={`docs-${id}-title`}>
           {titleOf(id)}
         </h2>
-        {sample && (
-          <div class="card-head-end">
-            <SampleBadge />
-          </div>
-        )}
       </div>
       {children}
     </section>
@@ -205,10 +206,10 @@ function Section({ id, sample, children }: { id: string; sample?: boolean; child
 
 function Owner() {
   const { chain, network } = useApp();
-  const t = chain.treasury;
-  const owner = network.deployment.owner;
+  const t = chain?.treasury ?? null;
+  const owner = network.deployment?.owner ?? null;
   return (
-    <Section id="owner" sample>
+    <Section id="owner">
       <p class="doc-text">
         One address holds the owner’s powers on LPVault, the Treasury and TownStaking, and makes the single launch call. Ownership can be handed over in two
         steps but not given up.{' '}
@@ -228,7 +229,7 @@ function Owner() {
         </p>
       ) : (
         <Notice kind="placeholder" title="The owner’s address">
-          <p class="small">[Placeholder: published here before launch.]</p>
+          <p class="small">Published here with the contracts’ addresses.</p>
         </Notice>
       )}
 
@@ -244,12 +245,14 @@ function Owner() {
           <strong>The 5% claim fee</strong> on every rebate claim, in TOWN.
         </li>
       </ol>
-      <Figures cols={4}>
-        <Fig label="ETH reserve, not yet withdrawn" value={fmtEth(t.ownerEthAvailable)} unit="ETH" view="Treasury.ownerEthAvailable" />
-        <Fig label="ETH withdrawn so far" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" view="Treasury.totalOwnerEthWithdrawn" />
-        <Fig label="TOWN claim fees, not yet withdrawn" value={fmtTown(t.ownerTownAvailable)} unit="TOWN" view="Treasury.ownerTownAvailable" />
-        <Fig label="TOWN withdrawn so far" value={fmtTown(t.totalTownWithdrawn)} unit="TOWN" view="Treasury.totalTownWithdrawn" />
-      </Figures>
+      {t && (
+        <Figures cols={4}>
+          <Fig label="ETH reserve, not yet withdrawn" value={fmtEth(t.ownerEthAvailable)} unit="ETH" view="Treasury.ownerEthAvailable" />
+          <Fig label="ETH withdrawn so far" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" view="Treasury.totalOwnerEthWithdrawn" />
+          <Fig label="TOWN claim fees, not yet withdrawn" value={fmtTown(t.ownerTownAvailable)} unit="TOWN" view="Treasury.ownerTownAvailable" />
+          <Fig label="TOWN withdrawn so far" value={fmtTown(t.totalTownWithdrawn)} unit="TOWN" view="Treasury.totalTownWithdrawn" />
+        </Figures>
+      )}
       <p class="small faint card-foot">
         The pool fees the owner collects are not shown: the contracts keep no running total of them.{' '}
         <Verify inline links={[{ what: 'the Treasury’s owner reserve and withdrawals', href: contractUrl(network, 'Treasury', 'read') }]} />
@@ -297,14 +300,15 @@ function Owner() {
       </p>
 
       <Details summary="Current owner settings">
-        <Settings />
+        {chain ? <Settings /> : <p class="small muted">Shown once the contracts are deployed on this network.</p>}
       </Details>
     </Section>
   );
 }
 
 function Settings() {
-  const { chain, network } = useApp();
+  const { chain: read, network } = useApp();
+  const chain = read!;
   const st = chain.staking;
   const fallbackLive = st.priceStatus.source === PriceSource.Fallback;
   return (

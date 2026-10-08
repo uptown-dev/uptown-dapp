@@ -1,8 +1,7 @@
 // The shape of every figure the site shows. Each field is named after the contract view it
-// comes from in phase two (F8b); the comment on each field names that view. Phase one fills
-// this shape from `placeholder.ts`; phase two fills the same shape from the chain through
-// multicall. Units are the contracts' raw units: wei for ETH and WETH, 10^18 units for TOWN,
-// basis points for rates, seconds since 1970 for times.
+// comes from; the comment on each field names that view. `src/lib/reads.ts` fills this shape
+// from the chain through Multicall3, all at one block. Units are the contracts' raw units: wei
+// for ETH and WETH, 10^18 units for TOWN, basis points for rates, seconds since 1970 for times.
 
 export type Address = `0x${string}`;
 
@@ -43,8 +42,10 @@ export interface CycleInfo {
 
 /** Everything read from the seven contracts (and two Uniswap contracts) for one page view. */
 export interface ChainState {
-  /** `block.timestamp` of the block the figures were read at (phase two: the latest block). */
+  /** `block.timestamp` of the block the figures were read at (the latest block). */
   blockTimestamp: number;
+  /** The number of that block. */
+  blockNumber: bigint;
 
   /** UpTownToken. */
   token: {
@@ -188,14 +189,6 @@ export interface ChainState {
     lockDuration: number;
   };
 
-  /**
-   * Uniswap V4Quoter.quoteExactInputSingle on the TOWN pool (R1b A1). Phase two asks the quoter
-   * for each amount typed. The mock holds one sample quote and scales it.
-   */
-  quoter: {
-    sampleAmountIn: bigint;
-    sampleAmountOut: bigint;
-  };
 }
 
 /** Everything read for the connected wallet. */
@@ -217,20 +210,8 @@ export interface WalletState {
   positionOf: { tier: 0 | Tier; amount: bigint };
   /** TownStaking.earned(wallet) */
   earned: bigint;
-  /** TownStaking.upgradePriceWei(wallet, tier) for each tier above the current one. */
+  /** TownStaking.upgradePriceWei(wallet, tier) for each tier above the current one; null when it reverts (no price). */
   upgradePriceWei: Partial<PerTier<bigint | null>>;
-}
-
-/** One named state of the project that the owner can switch to in the preview. */
-export interface Scenario {
-  id: string;
-  label: string;
-  /** One plain sentence on what this scenario shows. */
-  description: string;
-  /** Whether the mock wallet starts connected in this scenario. */
-  walletConnected: boolean;
-  chain: ChainState;
-  wallet: WalletState;
 }
 
 /** The seven UpTown contracts, in the order the footer lists them. */
@@ -241,7 +222,7 @@ export type ContractName = (typeof CONTRACT_NAMES)[number];
 export interface Deployment {
   /** Each contract's address. */
   contracts: Record<ContractName, Address>;
-  /** The owner's address (one multisig); `null` until the owner publishes it before launch. */
+  /** The owner's address (one multisig), from the address file; `null` until it is published. */
   owner: Address | null;
   /** The launch position's token ID on the Uniswap v4 PositionManager (LPVault holds it); `null` before launch. */
   lpTokenId: bigint | null;

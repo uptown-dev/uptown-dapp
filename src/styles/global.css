@@ -227,45 +227,29 @@ main:focus {
   padding: 0 var(--gutter);
 }
 
-/* ---------- preview bar (phase one only) ---------- */
+/* ---------- local chain strip (local test chain only) ---------- */
 
-.preview-bar {
+.chain-bar {
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
   font-size: 12px;
   color: var(--text-2);
 }
-.preview-bar .wrap {
+.chain-bar .wrap {
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
-.preview-tag {
+.chain-tag {
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
 }
-.preview-note {
-  display: none;
-}
-.preview-select {
-  margin-left: auto;
-}
-.preview-select select {
-  font: inherit;
-  font-size: 12px;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 2px 6px;
-  max-width: 200px;
-}
-@media (min-width: 640px) {
-  .preview-note {
-    display: inline;
-  }
+.chain-note {
+  min-width: 0;
 }
 
 /* ---------- header ---------- */
@@ -389,6 +373,65 @@ main:focus {
 }
 .icon-btn:hover {
   background: var(--surface-2);
+}
+.wallet-wrap {
+  position: relative;
+}
+.wallet-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: min(300px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 8px;
+  display: grid;
+  gap: 2px;
+}
+.wallet-menu-title {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 8px 0;
+}
+.wallet-menu-note {
+  font-size: 12px;
+  color: var(--text-3);
+  padding: 0 8px 6px;
+}
+.wallet-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+.wallet-option:hover {
+  background: var(--surface-2);
+}
+.wallet-option[aria-checked='true'] {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+.wallet-option code {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.wallet-off {
+  color: var(--warn-text);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  margin-top: 4px;
 }
 .wallet-btn .dot {
   width: 7px;
@@ -860,15 +903,6 @@ main:focus {
 .card > * + .notice,
 .card > .notice + * {
   margin-top: 12px;
-}
-.sample-badge {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-3);
-  border: 1px dashed var(--border-strong);
-  border-radius: 999px;
-  padding: 1px 8px;
-  white-space: nowrap;
 }
 
 /* ---------- figures ---------- */
@@ -1588,6 +1622,9 @@ main:focus {
 .poke > div {
   flex: 1 1 280px;
 }
+.poke-why {
+  margin-top: 8px;
+}
 .poke-title {
   font-weight: 600;
   margin-bottom: 2px;
@@ -1624,10 +1661,6 @@ main:focus {
   font-weight: 600;
   color: var(--text);
   margin-bottom: 8px;
-}
-.footer-sample {
-  font-weight: 400;
-  color: var(--text-3);
 }
 .footer-contracts ul {
   list-style: none;
@@ -1750,6 +1783,9 @@ main:focus {
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
+  }
+  .tx-spinner {
+    animation-duration: 3s;
   }
 }
 
@@ -1977,12 +2013,6 @@ main:focus {
 .feature .verify {
   margin-top: 8px;
 }
-.preview-chain {
-  margin-left: 0;
-}
-.preview-chain select {
-  max-width: 96px;
-}
 
 /* ---------- flow graphic: the hook ---------- */
 
@@ -2131,17 +2161,98 @@ main:focus {
 .doc-section .table.powers td:nth-child(4) {
   color: var(--text-2);
 }
-@media (max-width: 639px) {
-  .preview-bar .wrap {
-    gap: 6px;
+
+/* ---------- transactions: status line, confirm step ---------- */
+
+.tx-status {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.tx-status > div {
+  min-width: 0;
+  flex: 1;
+}
+.tx-status p + p {
+  margin-top: 2px;
+}
+.tx-status.done {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.tx-status.failed {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+.tx-status.failed > .icon,
+.tx-status.failed strong {
+  color: var(--warn-text);
+}
+.tx-status a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.tx-spinner {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: tx-spin 0.9s linear infinite;
+}
+@keyframes tx-spin {
+  to {
+    transform: rotate(360deg);
   }
-  .preview-select {
-    min-width: 0;
-  }
-  .preview-select select {
-    max-width: 150px;
-  }
-  .preview-chain select {
-    max-width: 82px;
-  }
+}
+.confirm-box {
+  border: 1px solid var(--warn-line);
+  background: var(--warn-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+}
+.btn.is-off {
+  cursor: not-allowed;
+  background: var(--surface-2);
+  color: var(--text-3);
+  border-color: var(--border);
+}
+code.break {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- when the figures were read ---------- */
+
+.read-line {
+  padding-top: 8px;
+  padding-bottom: 28px;
+}
+.read-line .num {
+  font-variant-numeric: tabular-nums;
+}
+.read-error {
+  color: var(--warn-text);
+  margin-top: 4px;
+}
+.link-btn {
+  font: inherit;
+  color: var(--accent-text);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
 }

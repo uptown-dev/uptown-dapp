@@ -1,0 +1,2 @@
+# The local chain's address file, copied by scripts/addresses.mjs before dev and build (rewritten on every local-chain start).
+src/addresses/31337.json

@@ -1,12 +1,10 @@
 import { useState } from 'preact/hooks';
 import { parseUnits } from 'viem';
-import { useApp, ActionButton, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs } from '../components/ui';
+import { useApp, useChain, useTx, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs, TxStatus, type Tx } from '../components/ui';
 import { PriceSource, TIERS, type Tier } from '../data/types';
-import { fallbackExpiresAt, streamEnd, tierEmpty, tierMultiplier, tierShareBps, unpaidStream, withMargin } from '../lib/derive';
+import { fallbackExpiresAt, streamEnd, tierEmpty, tierMultiplier, tierShareBps, unpaidStream } from '../lib/derive';
 import { fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUsd8, shortAddress } from '../lib/format';
-
-/** Staking transactions carry this gas limit so the day's payout can run alongside (spec "Frontend"). */
-export const STAKING_GAS_LIMIT = 700_000;
+import { STAKING_GAS_LIMIT, addStakeTx, approveTx, claimWethTx, openVaultTx, unstakeTx, upgradeTx, withMargin } from '../lib/actions';
 
 function parseTown(s: string): bigint | null {
   const t = s.replace(/,/g, '').trim();
@@ -54,7 +52,7 @@ export function Stake() {
             and upgrading pause. Adding TOWN, unstaking and claiming never use the price.
           </li>
           <li>
-            <strong>Gas.</strong> Staking transactions are sent with a gas limit of {fmtInt(STAKING_GAS_LIMIT)}, so the day’s payout can run with your action;
+            <strong>Gas.</strong> Staking transactions are sent with a gas limit of {fmtInt(Number(STAKING_GAS_LIMIT))}, so the day’s payout can run with your action;
             the first staking action of a day costs more gas for that reason. Small vaults may not cover their gas.
           </li>
         </ul>
@@ -64,7 +62,7 @@ export function Stake() {
 }
 
 function PriceStatus() {
-  const { chain } = useApp();
+  const chain = useChain();
   const st = chain.staking;
   const ps = st.priceStatus;
   const age = chain.blockTimestamp - ps.updatedAt;
@@ -109,7 +107,7 @@ function PriceStatus() {
 }
 
 function EmptyTiers() {
-  const { chain } = useApp();
+  const chain = useChain();
   const waiting = TIERS.filter((t) => tierEmpty(chain, t) && unpaidStream(chain, t) > 0n);
   if (waiting.length === 0) return null;
   return (
@@ -125,7 +123,8 @@ function EmptyTiers() {
 }
 
 function TierTable() {
-  const { chain, wallet } = useApp();
+  const chain = useChain();
+  const { wallet } = useApp();
   const st = chain.staking;
   return (
     <Card title="Tiers" class="flush">
@@ -219,9 +218,12 @@ function GoodToKnow() {
 
 function YourVault() {
   const { wallet } = useApp();
+  // One transaction state for every vault action, kept here so its result stays in view when the
+  // tabs change (opening a vault turns "Open a vault" into Claim, Add, Upgrade and Unstake).
+  const tx = useTx();
   if (!wallet) {
     return (
-      <Card title="Your vault" sample={false}>
+      <Card title="Your vault">
         <div class="split">
           <ConnectPrompt what="your vault, your earned WETH and the staking actions" />
           <GoodToKnow />
@@ -255,18 +257,19 @@ function YourVault() {
         render={(id) => {
           switch (id) {
             case 'open':
-              return <OpenForm />;
+              return <OpenForm tx={tx} />;
             case 'claim':
-              return <ClaimForm />;
+              return <ClaimForm tx={tx} />;
             case 'add':
-              return <AddForm />;
+              return <AddForm tx={tx} />;
             case 'upgrade':
-              return <UpgradeForm />;
+              return <UpgradeForm tx={tx} />;
             default:
-              return <UnstakeForm />;
+              return <UnstakeForm tx={tx} />;
           }
         }}
       />
+      <TxStatus tx={tx} />
       </div>
       <GoodToKnow />
       </div>
@@ -274,14 +277,35 @@ function YourVault() {
   );
 }
 
-function OpenForm() {
-  const { chain, wallet } = useApp();
+/** Step 1 of opening or adding: approve exactly the TOWN typed; shows when the allowance already covers it. */
+function ApproveButton({ tx, amount }: { tx: Tx; amount: bigint | null }) {
+  const { wallet, network } = useApp();
+  const enough = !!wallet && amount !== null && amount > 0n && wallet.townAllowanceToStaking >= amount;
+  return (
+    <button
+      type="button"
+      class="btn btn-secondary"
+      disabled={tx.busy || enough || amount === null || amount === 0n}
+      onClick={() =>
+        amount !== null &&
+        void tx.run('Approve TOWN', () => approveTx(network, amount), () => `The staking contract may now move ${fmtTown(amount)} of your TOWN. Now do step 2.`)
+      }
+    >
+      {enough ? '1. TOWN approved' : '1. Approve TOWN'}
+    </button>
+  );
+}
+
+function OpenForm({ tx }: { tx: Tx }) {
+  const chain = useChain();
+  const { wallet, network } = useApp();
   const st = chain.staking;
   const [tier, setTier] = useState<Tier>(1);
   const [amount, setAmount] = useState('');
   const price = st.vaultPriceWei[tier];
   const amt = parseTown(amount);
   const tooMuch = !!wallet && amt !== null && amt > wallet.townBalance;
+  const approved = !!wallet && amt !== null && amt > 0n && wallet.townAllowanceToStaking >= amt;
   return (
     <form class="action-form" onSubmit={(e) => e.preventDefault()}>
       <Chips label="Tier" options={TIERS.map((t) => ({ value: t, label: `Tier ${t} · $${st.tierUsd[t]}` }))} value={tier} onChange={setTier} />
@@ -299,6 +323,12 @@ function OpenForm() {
               · <a href="#/buy">Buy TOWN first</a>
             </>
           )}
+          {wallet && wallet.townAllowanceToStaking > 0n && (
+            <>
+              {' '}
+              · approved: <span class="num">{fmtTown(wallet.townAllowanceToStaking)}</span>
+            </>
+          )}
         </span>
         {tooMuch && <FieldError>That is more TOWN than this wallet holds.</FieldError>}
       </div>
@@ -308,32 +338,48 @@ function OpenForm() {
         <Row label="Refunded at once" value={price === null ? '—' : `≈ ${fmtEth(withMargin(price) - price, 6)} ETH`} />
       </Rows>
       <div class="btn-row">
-        <ActionButton label="1. Approve TOWN" variant="secondary" explain="ask your wallet to let the staking contract move the TOWN you chose." />
-        <ActionButton
-          label={`2. Open tier ${tier} vault`}
-          disabled={price === null || amt === null || amt === 0n || tooMuch}
-          explain={`open a tier ${tier} vault, pay its price once and stake your TOWN (gas limit ${fmtInt(STAKING_GAS_LIMIT)}).`}
-        />
+        <ApproveButton tx={tx} amount={amt} />
+        <button
+          type="button"
+          class="btn btn-primary"
+          disabled={tx.busy || price === null || amt === null || amt === 0n || tooMuch || !approved}
+          onClick={() =>
+            price !== null &&
+            amt !== null &&
+            void tx.run(`Open a tier ${tier} vault`, () => openVaultTx(network, tier, amt, price), () => `Your tier ${tier} vault is open with ${fmtTown(amt)} TOWN staked. The extra ETH was refunded.`)
+          }
+        >
+          {`2. Open tier ${tier} vault`}
+        </button>
       </div>
     </form>
   );
 }
 
-function ClaimForm() {
-  const { wallet } = useApp();
+function ClaimForm({ tx }: { tx: Tx }) {
+  const { wallet, network } = useApp();
+  const earned = wallet?.earned ?? 0n;
   return (
     <div class="action-form">
       <p class="small muted">Sends all your earned WETH to your wallet. It also triggers the day’s payout if nobody has yet.</p>
-      <ActionButton label={`Claim ${fmtEth(wallet?.earned ?? 0n)} WETH`} disabled={!wallet || wallet.earned === 0n} explain="send your earned WETH to your wallet." />
+      <button
+        type="button"
+        class="btn btn-primary"
+        disabled={tx.busy || !wallet || earned === 0n}
+        onClick={() => void tx.run('Claim WETH', () => claimWethTx(network), () => `About ${fmtEth(earned)} WETH went to your wallet.`)}
+      >
+        {`Claim ${fmtEth(earned)} WETH`}
+      </button>
     </div>
   );
 }
 
-function AddForm() {
-  const { wallet } = useApp();
+function AddForm({ tx }: { tx: Tx }) {
+  const { wallet, network } = useApp();
   const [amount, setAmount] = useState('');
   const amt = parseTown(amount);
   const tooMuch = !!wallet && amt !== null && amt > wallet.townBalance;
+  const approved = !!wallet && amt !== null && amt > 0n && wallet.townAllowanceToStaking >= amt;
   return (
     <form class="action-form" onSubmit={(e) => e.preventDefault()}>
       <div class="field">
@@ -344,63 +390,113 @@ function AddForm() {
         </div>
         <span class="hint">
           No extra vault price, only gas. Your TOWN: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span>
+          {wallet && wallet.townAllowanceToStaking > 0n && (
+            <>
+              {' '}
+              · approved: <span class="num">{fmtTown(wallet.townAllowanceToStaking)}</span>
+            </>
+          )}
         </span>
         {tooMuch && <FieldError>That is more TOWN than this wallet holds.</FieldError>}
       </div>
       <div class="btn-row">
-        <ActionButton label="1. Approve TOWN" variant="secondary" explain="ask your wallet to let the staking contract move the TOWN you chose." />
-        <ActionButton label="2. Add TOWN" disabled={amt === null || amt === 0n || tooMuch} explain="add the TOWN you chose to your vault, in the same tier." />
+        <ApproveButton tx={tx} amount={amt} />
+        <button
+          type="button"
+          class="btn btn-primary"
+          disabled={tx.busy || amt === null || amt === 0n || tooMuch || !approved}
+          onClick={() => amt !== null && void tx.run('Add TOWN', () => addStakeTx(network, amt), () => `${fmtTown(amt)} TOWN was added to your vault.`)}
+        >
+          2. Add TOWN
+        </button>
       </div>
     </form>
   );
 }
 
-function UpgradeForm() {
-  const { chain, wallet } = useApp();
+function UpgradeForm({ tx }: { tx: Tx }) {
+  const chain = useChain();
+  const { wallet, network } = useApp();
   const st = chain.staking;
-  const current = (wallet?.positionOf.tier ?? 1) as Tier;
+  const current = (wallet?.positionOf.tier || 1) as Tier;
   const higher = TIERS.filter((t) => t > current);
   const [target, setTarget] = useState<Tier | null>(higher[0] ?? null);
+  const chosen = target !== null && target > current ? target : (higher[0] ?? null);
   if (higher.length === 0) {
     return (
       <div class="action-form">
         <p class="small muted">Your vault is in tier 5, the highest. There is no downgrade.</p>
-      </div>
+        </div>
     );
   }
-  const up = target !== null ? (wallet?.upgradePriceWei[target] ?? null) : null;
+  const up = chosen !== null ? (wallet?.upgradePriceWei[chosen] ?? null) : null;
   return (
     <form class="action-form" onSubmit={(e) => e.preventDefault()}>
-      <Chips label="Upgrade to tier" options={higher.map((t) => ({ value: t, label: `Tier ${t}` }))} value={target} onChange={setTarget} />
-      {target !== null && (
+      <Chips label="Upgrade to tier" options={higher.map((t) => ({ value: t, label: `Tier ${t}` }))} value={chosen} onChange={setTarget} />
+      {chosen !== null && (
         <Rows>
           <Row
-            label={`Price difference, paid once ($${st.tierUsd[target] - st.tierUsd[current]})`}
+            label={`Price difference, paid once ($${st.tierUsd[chosen] - st.tierUsd[current]})`}
             value={up === null ? 'paused' : `${fmtEth(up, 6)} ETH`}
-            view={`TownStaking.upgradePriceWei(wallet, ${target})`}
+            view={`TownStaking.upgradePriceWei(wallet, ${chosen})`}
           />
           <Row label="You send (about 1% more)" value={up === null ? '—' : `${fmtEth(withMargin(up), 6)} ETH`} />
         </Rows>
       )}
       <p class="small muted">Your whole stake moves up. Earned WETH stays yours. There is no way back down.</p>
-      <ActionButton
-        label={target !== null ? `Upgrade to tier ${target}` : 'Upgrade'}
-        disabled={up === null}
-        explain="move your whole stake to the higher tier and pay the price difference once."
-      />
+      <button
+        type="button"
+        class="btn btn-primary"
+        disabled={tx.busy || up === null || chosen === null}
+        onClick={() =>
+          up !== null &&
+          chosen !== null &&
+          void tx.run(`Upgrade to tier ${chosen}`, () => upgradeTx(network, chosen, up), () => `Your vault is now in tier ${chosen}. The extra ETH was refunded.`)
+        }
+      >
+        {chosen !== null ? `Upgrade to tier ${chosen}` : 'Upgrade'}
+      </button>
     </form>
   );
 }
 
-function UnstakeForm() {
-  const { wallet } = useApp();
+function UnstakeForm({ tx }: { tx: Tx }) {
+  const { wallet, network } = useApp();
+  const [confirming, setConfirming] = useState(false);
+  const amount = wallet?.positionOf.amount ?? 0n;
   return (
     <div class="action-form">
       <p class="small muted">
-        Full exit: all <span class="num">{fmtTown(wallet?.positionOf.amount ?? 0n)}</span> TOWN comes back and the vault closes. Earned WETH stays claimable.
-        The vault price is not refunded; staking again means buying a new vault.
+        Full exit: all <span class="num">{fmtTown(amount)}</span> TOWN comes back and the vault closes. Earned WETH stays claimable. The vault price is not
+        refunded; staking again means buying a new vault.
       </p>
-      <ActionButton label="Unstake everything" variant="danger" explain="give back all your TOWN and close your vault; earned WETH stays claimable." />
+      {confirming ? (
+        <div class="confirm-box" role="group" aria-label="Confirm unstaking">
+          <p>
+            <strong>Unstake everything and close your vault?</strong> Your {fmtTown(amount)} TOWN comes back; the vault price is not refunded.
+          </p>
+          <div class="btn-row">
+            <button
+              type="button"
+              class="btn btn-danger"
+              disabled={tx.busy}
+              onClick={() => {
+                setConfirming(false);
+                void tx.run('Unstake', () => unstakeTx(network), () => `${fmtTown(amount)} TOWN came back to your wallet and your vault is closed. Earned WETH stays claimable.`);
+              }}
+            >
+              Yes, unstake everything
+            </button>
+            <button type="button" class="btn btn-secondary" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" class="btn btn-danger" disabled={tx.busy || amount === 0n} onClick={() => setConfirming(true)}>
+          Unstake everything
+        </button>
+      )}
     </div>
   );
 }

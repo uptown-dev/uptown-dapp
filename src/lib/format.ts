@@ -17,8 +17,9 @@ export function fmtTown(value: bigint): string {
   return fmtUnits(value, 18, value < 1000n * 10n ** 18n ? 2 : 0);
 }
 
-/** ETH and WETH amounts: four decimals, more for very small values. */
+/** ETH and WETH amounts: four decimals, six for very small values, "< 0.000001" below that (never a bare 0 for a non-zero amount). */
 export function fmtEth(value: bigint, maxFrac = 4): string {
+  if (value > 0n && value < 10n ** 12n) return '< 0.000001';
   if (value > 0n && value < 10n ** 15n) return fmtUnits(value, 18, 6);
   return fmtUnits(value, 18, maxFrac);
 }

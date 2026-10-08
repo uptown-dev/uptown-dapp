@@ -4,7 +4,8 @@
 // docs/tasks/F8a4-frontend.md)
 // and fails if it finds one. Run with `npm run check:copy` after `npm run build`. F8a3 added the
 // price-expectation terms and the lore names, which the redesigned site no longer uses. F8a4 added
-// lawyer, legal, counsel and advice: the site carries no legal statements (CR-40).
+// lawyer, legal, counsel and advice: the site carries no legal statements (CR-40). F8b lets the
+// "returns" rule skip Solidity's `returns (...)` keyword in contract interfaces (code, not copy).
 //
 // Where a forbidden word is needed to say what something is NOT, the exact sentence goes in
 // ALLOWED_SENTENCES below; it is removed before the scan, so the same word anywhere else still
@@ -51,7 +52,15 @@ const RULES = [
   { name: 'go up', re: /\bgo\s+up\b/gi },
   { name: 'goes up', re: /\bgoes\s+up\b/gi },
   { name: 'pump', re: /\bpump/gi },
-  { name: 'returns', re: /\breturns\b/gi },
+  // F8b: "returns" is also Solidity's keyword in contract interfaces (`view returns (uint256)`), which
+  // the site's ABI (src/lib/abi.ts) and the viem library in the build carry. Those code uses are
+  // skipped (isCode: followed by "(" or " (", or written as an identifier: `.returns`, `<returns>`,
+  // `|returns|`, `returns\s`); "returns" in prose still fails.
+  {
+    name: 'returns',
+    re: /\breturns\b/gi,
+    isCode: (before, after) => /^ ?\(/.test(after) || /^[|>]/.test(after) || /^\\s/.test(after) || /[.<|]$/.test(before),
+  },
   // Added by F8a3: the lore names, which the owner asked the site to drop (plain words only).
   {
     name: 'lore name',
@@ -109,6 +118,8 @@ function scan(file) {
     rule.re.lastIndex = 0;
     let m;
     while ((m = rule.re.exec(text)) !== null) {
+      const end = m.index + m[0].length;
+      if (rule.isCode && rule.isCode(text.slice(Math.max(0, m.index - 1), m.index), text.slice(end, end + 2))) continue;
       const { line, col } = lineCol(text, m.index);
       const start = Math.max(0, m.index - 40);
       const context = text.slice(start, m.index + m[0].length + 40).replace(/\s+/g, ' ');

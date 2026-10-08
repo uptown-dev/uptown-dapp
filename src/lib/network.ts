@@ -1,72 +1,123 @@
-// THE NETWORK MODULE: the one place that knows which chain the site shows, that chain's block
-// explorer and where the contracts live. Every explorer link on the site is built here: the
-// "Don't trust, verify" links beside checkable claims and the footer's list of contracts (CR-40,
-// spec "Frontend → Verify"). Links are plain navigation the visitor clicks; the site itself
-// never contacts the explorer.
+// THE NETWORK MODULE: the one place that knows which chain the site shows, how to reach it, its
+// block explorer and where the contracts live. It holds, per chain: the name, the chain ID, the
+// RPC URL, the explorer base and the address set (from `src/addresses/<chainId>.json`). Every
+// explorer link on the site is built here: the "Don't trust, verify" links beside checkable
+// claims, the footer's list of contracts and transaction links (CR-40, spec "Frontend ->
+// Verify"). Links are plain navigation the visitor clicks; the site itself never contacts the
+// explorer.
+//
+// Which chain a build shows: `VITE_CHAIN_ID` (1, 11155111 or 31337) when the build sets it;
+// otherwise the first chain, in the order mainnet, Sepolia, local, whose address file names the
+// contracts. So filling Sepolia's file (milestone 9) or mainnet's (launch) is all it takes.
 
-import { SAMPLE_DEPLOYMENT } from '../data/placeholder';
+import { getAddress } from 'viem';
+import mainnetFile from '../addresses/1.json';
+import sepoliaFile from '../addresses/11155111.json';
+import localFile from '../addresses/31337.json';
 import type { Address, ContractName, Deployment } from '../data/types';
+import { CONTRACT_NAMES } from '../data/types';
+import { CHAINS, CHAIN_ORDER, type ChainContracts, type ChainId } from './chains';
 
-export type ChainId = 1 | 11155111 | 31337;
+export type { ChainId } from './chains';
+
+/** The shape of `src/addresses/<chainId>.json`. */
+interface AddressFile {
+  chainId: number;
+  source: string | null;
+  contracts: Record<string, string> | null;
+  owner: string | null;
+  positionTokenId: string | null;
+  uniswap: Record<string, string> | null;
+  testWallets: string[];
+}
 
 export interface Network {
   chainId: ChainId;
   /** The chain's name, as the site shows it. */
   name: string;
+  /** The JSON-RPC endpoint the site reads from (and, on the local chain, sends through). */
+  rpcUrl: string;
   /** The block explorer's base address, without a trailing slash; `null` where there is none. */
   explorer: string | null;
   /** The explorer's name, for link titles. */
   explorerName: string | null;
-  /** Uniswap v4 PositionManager, which holds the launch position's NFT (R1b A1 and A6); `null` on the local chain. */
-  positionManager: Address | null;
-  /** The seven contracts, the owner and the locked position on this chain. */
-  deployment: Deployment;
+  /** The Uniswap app's name for the chain, for the sell link; `null` where the app does not run. */
+  uniswapChain: string | null;
+  /** Uniswap v4 and helper contracts (PositionManager, V4Quoter, Universal Router 2.1.2, Multicall3, WETH). */
+  uniswap: ChainContracts | null;
+  /** The seven contracts, the owner and the locked position; `null`: not deployed on this chain yet. */
+  deployment: Deployment | null;
+  /** The private local chain: transactions go to the node from a test wallet, without a key. */
+  local: boolean;
+  /** The local chain's test wallets (no key exists for any of them), owner last; empty elsewhere. */
+  testWallets: { label: string; address: Address }[];
 }
 
-/** Explorer bases: Etherscan for Ethereum mainnet and Sepolia (R1b A6), none for the local chain. */
+function readFile(chainId: ChainId, file: AddressFile): Network {
+  const info = CHAINS[chainId];
+  if (file.chainId !== chainId) throw new Error(`address file for chain ${chainId} names chain ${file.chainId}`);
+  let deployment: Deployment | null = null;
+  if (file.contracts) {
+    const contracts = {} as Record<ContractName, Address>;
+    for (const name of CONTRACT_NAMES) contracts[name] = getAddress(file.contracts[name]);
+    deployment = {
+      contracts,
+      owner: file.owner ? getAddress(file.owner) : null,
+      lpTokenId: file.positionTokenId !== null ? BigInt(file.positionTokenId) : null,
+    };
+  }
+  const u = file.uniswap;
+  const uniswap: ChainContracts | null =
+    info.contracts ??
+    (u
+      ? {
+          poolManager: getAddress(u.poolManager),
+          positionManager: getAddress(u.positionManager),
+          v4Quoter: getAddress(u.v4Quoter),
+          universalRouter: getAddress(u.universalRouter),
+          multicall3: getAddress(u.multicall3),
+          weth: getAddress(u.weth),
+        }
+      : null);
+  const testWallets = info.local
+    ? [
+        ...file.testWallets.map((a, i) => ({ label: `Test wallet ${i + 1}`, address: getAddress(a) })),
+        ...(file.owner ? [{ label: 'Owner', address: getAddress(file.owner) }] : []),
+      ]
+    : [];
+  return {
+    chainId,
+    name: info.name,
+    rpcUrl: info.rpcUrl,
+    explorer: info.explorer,
+    explorerName: info.explorerName,
+    uniswapChain: info.uniswapChain,
+    uniswap,
+    deployment,
+    local: info.local,
+    testWallets,
+  };
+}
+
 export const NETWORKS: Record<ChainId, Network> = {
-  1: {
-    chainId: 1,
-    name: 'Ethereum',
-    explorer: 'https://etherscan.io',
-    explorerName: 'Etherscan',
-    positionManager: '0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e',
-    // Phase one: sample addresses. Phase two: the mainnet deployment.
-    deployment: SAMPLE_DEPLOYMENT,
-  },
-  11155111: {
-    chainId: 11155111,
-    name: 'Sepolia',
-    explorer: 'https://sepolia.etherscan.io',
-    explorerName: 'Sepolia Etherscan',
-    positionManager: '0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4',
-    // Phase one: sample addresses. Phase two: the Sepolia rehearsal's deployment.
-    deployment: SAMPLE_DEPLOYMENT,
-  },
-  31337: {
-    chainId: 31337,
-    name: 'Local test chain',
-    explorer: null,
-    explorerName: null,
-    positionManager: null,
-    // Phase one: sample addresses. Phase two: whatever the local deployment script reports.
-    deployment: SAMPLE_DEPLOYMENT,
-  },
+  1: readFile(1, mainnetFile as AddressFile),
+  11155111: readFile(11155111, sepoliaFile as AddressFile),
+  31337: readFile(31337, localFile as AddressFile),
 };
 
-export const CHAIN_IDS: ChainId[] = [1, 11155111, 31337];
-
-/** The chain the site shows. Ethereum mainnet (chain ID 1) is the launch chain. */
-export const DEFAULT_CHAIN_ID: ChainId = 1;
-
-export function getNetwork(id: number | string | null | undefined): Network {
-  const n = Number(id);
-  return (NETWORKS as Record<number, Network>)[n] ?? NETWORKS[DEFAULT_CHAIN_ID];
+function chooseChain(): ChainId {
+  const fromBuild = Number(import.meta.env.VITE_CHAIN_ID ?? '');
+  if (CHAIN_ORDER.includes(fromBuild as ChainId)) return fromBuild as ChainId;
+  return CHAIN_ORDER.find((id) => NETWORKS[id].deployment !== null) ?? 1;
 }
 
+/** The chain this build of the site shows and transacts on. Nothing is ever sent to any other. */
+export const SITE_CHAIN_ID: ChainId = chooseChain();
+export const NETWORK: Network = NETWORKS[SITE_CHAIN_ID];
+
 // ---------------------------------------------------------------------------------------------
-// Link builders. Each gives null when the chain has no explorer (the local chain), so the
-// caller shows the link as disabled.
+// Link builders. Each gives null when the chain has no explorer (the local chain) or the
+// contracts are not deployed there, so the caller shows the link as disabled.
 // ---------------------------------------------------------------------------------------------
 
 /** The explorer's page for an address (balances, transactions). */
@@ -85,8 +136,8 @@ export function readUrl(n: Network, address: Address): string | null {
 }
 
 /** A token's page (total supply, holders). */
-export function tokenUrl(n: Network, address: Address): string | null {
-  return n.explorer ? `${n.explorer}/token/${address}` : null;
+export function tokenUrl(n: Network, address: Address | null | undefined): string | null {
+  return n.explorer && address ? `${n.explorer}/token/${address}` : null;
 }
 
 /** An NFT's page: `nft/<collection>/<tokenId>`. */
@@ -94,13 +145,25 @@ export function nftUrl(n: Network, collection: Address | null, tokenId: bigint |
   return n.explorer && collection && tokenId !== null ? `${n.explorer}/nft/${collection}/${tokenId.toString()}` : null;
 }
 
+/** A transaction's page. */
+export function txUrl(n: Network, hash: string): string | null {
+  return n.explorer ? `${n.explorer}/tx/${hash}` : null;
+}
+
 /** Shorthands for the seven contracts. */
 export function contractUrl(n: Network, name: ContractName, page: 'address' | 'code' | 'read' = 'address'): string | null {
-  const a = n.deployment.contracts[name];
+  const a = n.deployment?.contracts[name];
+  if (!a) return null;
   return page === 'code' ? codeUrl(n, a) : page === 'read' ? readUrl(n, a) : addressUrl(n, a);
 }
 
 /** The launch position's NFT on the Uniswap v4 PositionManager, held by LPVault. */
 export function positionUrl(n: Network): string | null {
-  return nftUrl(n, n.positionManager, n.deployment.lpTokenId);
+  return nftUrl(n, n.uniswap?.positionManager ?? null, n.deployment?.lpTokenId ?? null);
+}
+
+/** The Uniswap app, selling TOWN for ETH on this chain; null where the app does not run or TOWN is not deployed. */
+export function uniswapSellUrl(n: Network): string | null {
+  const town = n.deployment?.contracts.UpTownToken;
+  return n.uniswapChain && town ? `https://app.uniswap.org/swap?chain=${n.uniswapChain}&inputCurrency=${town}&outputCurrency=NATIVE` : null;
 }

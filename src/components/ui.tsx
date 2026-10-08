@@ -1,22 +1,45 @@
-// Shared building blocks: the app context, cards, figures, notices, expanders and buttons.
+// Shared building blocks: the app context, cards, figures, notices, expanders, buttons and the
+// transaction status line.
 import { createContext, type ComponentChildren } from 'preact';
 import { useContext, useState } from 'preact/hooks';
-import type { ChainState, Scenario, WalletState } from '../data/types';
-import { SAMPLE_FIGURES } from '../data/placeholder';
+import type { PublicClient, TransactionReceipt } from 'viem';
+import type { Address, ChainState, WalletState } from '../data/types';
 import { ChevronIcon, ExternalIcon, InfoIcon, NoteIcon, WarnIcon } from './icons';
-import type { ChainId, Network } from '../lib/network';
+import { txUrl, type Network } from '../lib/network';
+import { explainError } from '../lib/errors';
+import { sendTx, waitForTx, type TxRequest } from '../lib/wallet';
+import { fmtInt, shortAddress } from '../lib/format';
+
+/** Where the figures stand: being read, read, failed to read, or nothing deployed on this chain. */
+export interface DataStatus {
+  state: 'loading' | 'ready' | 'error' | 'not-deployed';
+  /** The last read's failure, in plain words (the figures shown are then the previous read's). */
+  error: string | null;
+  /** When the figures were last read, on this computer's clock (ms). */
+  readAt: number | null;
+}
 
 export interface AppState {
-  scenario: Scenario;
-  chain: ChainState;
-  /** The connected wallet, or null when no wallet is connected. */
-  wallet: WalletState | null;
-  /** The chain shown, its explorer and the contract addresses (the network module). */
+  /** The chain shown, its RPC, its explorer and the contract addresses (the network module). */
   network: Network;
-  /** Preview only: switch the network, to see the explorer links on each chain. */
-  setChainId: (id: ChainId) => void;
-  toggleWallet: () => void;
-  setScenario: (id: string) => void;
+  /** Every figure, read from the chain at one block; null until the first read. */
+  chain: ChainState | null;
+  /** The connected wallet's figures, or null when no wallet is connected. */
+  wallet: WalletState | null;
+  /** The connected address (an injected wallet's account, or the local test wallet picked). */
+  account: Address | null;
+  /** The label of the local test wallet in use. */
+  accountLabel: string | null;
+  data: DataStatus;
+  client: PublicClient;
+  /** Reads every figure again now. */
+  refresh: () => Promise<void>;
+  /** Connects the injected wallet, or opens the local test wallet picker. */
+  connect: () => void;
+  disconnect: () => void;
+  /** The injected wallet is on another chain than the site's. */
+  wrongNetwork: boolean;
+  switchNetwork: () => void;
   toast: (message: string) => void;
 }
 
@@ -28,44 +51,35 @@ export function useApp(): AppState {
   return ctx;
 }
 
-/** The small badge that marks placeholder figures, one per card header. Phase two removes it with SAMPLE_FIGURES. */
-export function SampleBadge() {
-  if (!SAMPLE_FIGURES) return null;
-  return (
-    <span class="sample-badge" title="Placeholder figures for the design preview, not read from the contracts">
-      Sample figures
-    </span>
-  );
+/** The figures, on pages that are only shown once they have been read. */
+export function useChain(): ChainState {
+  const { chain } = useApp();
+  if (!chain) throw new Error('figures not read yet');
+  return chain;
 }
 
-/** A card with an optional title and the sample badge in its header. */
+/** A card with an optional title. */
 export function Card({
   title,
   children,
-  sample = true,
   class: cls,
   id,
   action,
 }: {
   title?: ComponentChildren;
   children: ComponentChildren;
-  /** Show the "Sample figures" badge (cards that hold placeholder figures). */
-  sample?: boolean;
   class?: string;
   id?: string;
-  /** Something small at the right of the header, before the badge. */
+  /** Something small at the right of the header. */
   action?: ComponentChildren;
 }) {
-  const hasHead = title || (sample && SAMPLE_FIGURES) || action;
+  const hasHead = title || action;
   return (
     <section class={`card${cls ? ' ' + cls : ''}`} id={id}>
       {hasHead && (
         <div class="card-head">
           {title ? <h2 class="card-title">{title}</h2> : <span />}
-          <div class="card-head-end">
-            {action}
-            {sample && <SampleBadge />}
-          </div>
+          {action && <div class="card-head-end">{action}</div>}
         </div>
       )}
       {children}
@@ -161,42 +175,130 @@ export function Details({ summary = 'Details', children }: { summary?: string; c
   );
 }
 
-/** A button that would send a transaction in phase two. In the preview it explains itself. */
-export function ActionButton({
-  label,
-  explain,
-  variant = 'primary',
-  disabled,
-  block,
-}: {
-  label: string;
-  explain: string;
-  variant?: 'primary' | 'secondary' | 'danger';
-  disabled?: boolean;
-  block?: boolean;
-}) {
-  const { toast } = useApp();
+/** Shown where a wallet is needed and none is connected. */
+export function ConnectPrompt({ what, block }: { what: string; block?: boolean }) {
+  const { connect, network } = useApp();
   return (
-    <button
-      type="button"
-      class={`btn btn-${variant}${block ? ' btn-block' : ''}`}
-      disabled={disabled}
-      onClick={() => toast(`Preview only: nothing was sent. In the finished site this button will ${explain}`)}
-    >
-      {label}
-    </button>
+    <div class="connect-prompt">
+      <p>{network.local ? `Pick a local test wallet to see ${what}.` : `Connect a wallet to see ${what}.`}</p>
+      <button type="button" class={`btn btn-primary${block ? ' btn-block' : ''}`} onClick={connect}>
+        {network.local ? 'Pick a test wallet' : 'Connect wallet'}
+      </button>
+    </div>
   );
 }
 
-/** Shown where a wallet is needed and none is connected. */
-export function ConnectPrompt({ what, block }: { what: string; block?: boolean }) {
-  const { toggleWallet } = useApp();
+// ---------------------------------------------------------------------------------------------
+// Transactions: one state per form, a status line under its buttons.
+// ---------------------------------------------------------------------------------------------
+
+export type TxPhase = 'idle' | 'checking' | 'wallet' | 'pending' | 'done' | 'failed';
+
+export interface TxState {
+  phase: TxPhase;
+  /** What is being done, e.g. "Claim WETH". */
+  label?: string;
+  hash?: string;
+  /** The outcome in plain words. */
+  message?: string;
+  gasUsed?: bigint;
+  /** The custom error's name when the contract refused (kept for the record in data-error). */
+  error?: string | null;
+}
+
+export interface Tx extends TxState {
+  busy: boolean;
+  /** Checks, sends `build()` from the connected wallet, waits for it, then reads every figure again. */
+  run: (label: string, build: () => TxRequest, onDone: (r: TransactionReceipt) => string) => Promise<void>;
+  reset: () => void;
+}
+
+export function useTx(): Tx {
+  const app = useApp();
+  const [st, setSt] = useState<TxState>({ phase: 'idle' });
+  const run: Tx['run'] = async (label, build, onDone) => {
+    if (!app.account) {
+      app.connect();
+      return;
+    }
+    setSt({ phase: 'checking', label });
+    let hash: string | undefined;
+    try {
+      const req = build();
+      setSt({ phase: 'wallet', label });
+      hash = await sendTx(app.network, app.client, app.account, req);
+      setSt({ phase: 'pending', label, hash });
+      const receipt = await waitForTx(app.client, hash as `0x${string}`);
+      if (receipt.status === 'success') {
+        setSt({ phase: 'done', label, hash, gasUsed: receipt.gasUsed, message: onDone(receipt) });
+      } else {
+        setSt({ phase: 'failed', label, hash, gasUsed: receipt.gasUsed, message: 'The transaction was included but failed, so nothing changed; only its gas was spent.' });
+      }
+    } catch (e) {
+      const { message, name } = explainError(e);
+      setSt({ phase: 'failed', label, hash, message, error: name });
+    }
+    await app.refresh();
+  };
+  return { ...st, busy: st.phase === 'checking' || st.phase === 'wallet' || st.phase === 'pending', run, reset: () => setSt({ phase: 'idle' }) };
+}
+
+/** The status of a form's last transaction: pending, the hash, then success or failure in plain words. */
+export function TxStatus({ tx }: { tx: Tx }) {
+  const { network, accountLabel } = useApp();
+  if (tx.phase === 'idle') return null;
+  const link = tx.hash ? txUrl(network, tx.hash) : null;
+  const hash = tx.hash ? (
+    <span class="tx-hash">
+      Transaction{' '}
+      {link ? (
+        <a href={link} target="_blank" rel="noopener noreferrer" title={tx.hash}>
+          <code>{shortAddress(tx.hash)}</code>
+          <ExternalIcon size={12} />
+        </a>
+      ) : (
+        <code title={tx.hash}>{shortAddress(tx.hash)}</code>
+      )}
+    </span>
+  ) : null;
+  const kind = tx.phase === 'failed' ? 'failed' : tx.phase === 'done' ? 'done' : 'pending';
   return (
-    <div class="connect-prompt">
-      <p>Connect a wallet to see {what}.</p>
-      <button type="button" class={`btn btn-primary${block ? ' btn-block' : ''}`} onClick={toggleWallet}>
-        Connect wallet
-      </button>
+    <div
+      class={`tx-status ${kind}`}
+      role="status"
+      aria-live="polite"
+      data-phase={tx.phase}
+      data-hash={tx.hash ?? ''}
+      data-gas={tx.gasUsed?.toString() ?? ''}
+      data-error={tx.error ?? ''}
+    >
+      {kind === 'pending' && <span class="tx-spinner" aria-hidden="true" />}
+      {kind === 'failed' && <WarnIcon size={16} />}
+      <div>
+        {tx.phase === 'checking' && <p>{tx.label}: checking…</p>}
+        {tx.phase === 'wallet' && (
+          <p>
+            {tx.label}: {network.local ? `sending from ${accountLabel ?? 'the test wallet'}…` : 'confirm it in your wallet…'}
+          </p>
+        )}
+        {tx.phase === 'pending' && <p>{tx.label}: sent, waiting for it to be included.</p>}
+        {tx.phase === 'done' && (
+          <p>
+            <strong>Done.</strong> {tx.message}
+          </p>
+        )}
+        {tx.phase === 'failed' && (
+          <p>
+            <strong>Not done.</strong> {tx.message}
+          </p>
+        )}
+        {(hash || tx.gasUsed !== undefined) && (
+          <p class="small muted">
+            {hash}
+            {tx.gasUsed !== undefined && <span> · gas used {fmtInt(Number(tx.gasUsed))}</span>}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -319,7 +421,7 @@ export function Verify({ links, inline }: { links: VerifyLink[]; inline?: boolea
         <span class="verify-text" aria-disabled="true">
           Don’t trust, verify
         </span>{' '}
-        <span class="verify-note">(no block explorer on the {network.name.toLowerCase()})</span>
+        <span class="verify-note">{network.explorer ? '(not deployed on this network yet)' : `(no block explorer on the ${network.name.toLowerCase()})`}</span>
       </Tag>
     );
   }

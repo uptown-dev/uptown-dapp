@@ -1,5 +1,5 @@
 // Figures the site works out from contract views. Every input is a field of ChainState or
-// WalletState; nothing here invents a number. Phase two keeps these functions as they are.
+// WalletState (read by src/lib/reads.ts); nothing here invents a number.
 import type { ChainState, Tier, WalletState } from '../data/types';
 
 const BPS = 10_000n;
@@ -32,12 +32,6 @@ export function cycleStartTime(chain: ChainState, cycle: number): number {
 /** The buy fee taken from `amountIn` at `feeBps`: ethSpecified * f / 10000 (spec "Fees"). */
 export function buyFee(amountIn: bigint, feeBps: number): bigint {
   return (amountIn * BigInt(feeBps)) / BPS;
-}
-
-/** Mock of the V4Quoter: scales the sample quote. Phase two asks the quoter for each amount. */
-export function quoteTownOut(chain: ChainState, amountIn: bigint): bigint {
-  if (chain.quoter.sampleAmountIn === 0n) return 0n;
-  return (amountIn * chain.quoter.sampleAmountOut) / chain.quoter.sampleAmountIn;
 }
 
 /** The minimum received for a slippage tolerance in basis points. */
@@ -199,11 +193,6 @@ export function streamEnd(chain: ChainState, tier: Tier): number | null {
   const s = chain.staking.streamInfo[tier];
   if (s.rewardRate === 0n || tierEmpty(chain, tier)) return null;
   return s.periodFinish > chain.blockTimestamp ? s.periodFinish : null;
-}
-
-/** The ETH the site sends to open a vault: about 1% above the quote; the contract refunds the rest. */
-export function withMargin(wei: bigint): bigint {
-  return (wei * 101n) / 100n;
 }
 
 /** The fallback price stops counting FALLBACK_MAX_AGE after it was set. */
