@@ -1,0 +1,218 @@
+// Figures the site works out from contract views. Every input is a field of ChainState or
+// WalletState; nothing here invents a number. Phase two keeps these functions as they are.
+import type { ChainState, Tier, WalletState } from '../data/types';
+
+const BPS = 10_000n;
+
+// --- time ---------------------------------------------------------------------------------
+
+/** The Age index (0 to 6) for a cycle: 100-cycle epochs, the Long Lights from cycle 600. */
+export function ageIndex(cycle: number): number {
+  return Math.min(6, Math.floor(cycle / 100));
+}
+
+/** Seconds left in the anti-snipe window, 0 once it has ended. */
+export function dawnTollSecondsLeft(chain: ChainState): number {
+  const end = chain.hook.launchTime + chain.hook.ANTI_SNIPE_DURATION;
+  return Math.max(0, end - chain.blockTimestamp);
+}
+
+/** True while TownHook.currentBuyFeeBps() is above the ordinary 2%. */
+export function dawnTollActive(chain: ChainState): boolean {
+  return chain.hook.currentBuyFeeBps > chain.hook.BUY_FEE_BPS;
+}
+
+/** The start time of a cycle. */
+export function cycleStartTime(chain: ChainState, cycle: number): number {
+  return chain.hook.launchTime + cycle * 86_400;
+}
+
+// --- the Gate -----------------------------------------------------------------------------
+
+/** The buy fee taken from `amountIn` at `feeBps`: ethSpecified * f / 10000 (spec "Fees"). */
+export function buyFee(amountIn: bigint, feeBps: number): bigint {
+  return (amountIn * BigInt(feeBps)) / BPS;
+}
+
+/** Mock of the V4Quoter: scales the sample quote. Phase two asks the quoter for each amount. */
+export function quoteTownOut(chain: ChainState, amountIn: bigint): bigint {
+  if (chain.quoter.sampleAmountIn === 0n) return 0n;
+  return (amountIn * chain.quoter.sampleAmountOut) / chain.quoter.sampleAmountIn;
+}
+
+/** The minimum received for a slippage tolerance in basis points. */
+export function minReceived(estimate: bigint, slippageBps: number): bigint {
+  return (estimate * (BPS - BigInt(slippageBps))) / BPS;
+}
+
+// --- the Furnace --------------------------------------------------------------------------
+
+/** All TOWN destroyed since the mint: sell fees and voluntary burns together. */
+export function burned(chain: ChainState): bigint {
+  return chain.token.INITIAL_SUPPLY - chain.token.totalSupply;
+}
+
+/** TOWN left to burn before the Cornerstone Million: totalSupply - BURN_FLOOR, never negative. */
+export function leftToBurn(chain: ChainState): bigint {
+  const { totalSupply } = chain.token;
+  const floor = chain.hook.BURN_FLOOR;
+  return totalSupply > floor ? totalSupply - floor : 0n;
+}
+
+// --- the Granary --------------------------------------------------------------------------
+
+/** TOWN not yet scheduled for any cycle: RESERVE - totalEmitted. */
+export function reserveUnscheduled(chain: ChainState): bigint {
+  return chain.rewards.RESERVE - chain.rewards.totalEmitted;
+}
+
+/** The sum of the caps of the current cycle and the nine after it. */
+export function nextTenCaps(chain: ChainState): bigint {
+  const c0 = chain.rewards.currentCycle;
+  let sum = 0n;
+  for (let c = c0; c < c0 + 10; c++) sum += chain.rewards.cap[c] ?? 0n;
+  return sum;
+}
+
+/** CR-36: true when less than ten days of caps remain in the reserve. */
+export function reserveNearlySpent(chain: ChainState): boolean {
+  return reserveUnscheduled(chain) < nextTenCaps(chain);
+}
+
+/**
+ * The rebate rate a cycle is heading for, before the claim fee, in basis points (may carry
+ * decimals): 5% while 5% of the cycle's total stays under its cap, else cap / total.
+ */
+export function rebateRateBps(chain: ChainState, cycle: number): number {
+  const total = chain.hook.cycleTotal[cycle] ?? 0n;
+  const cap = chain.rewards.cap[cycle] ?? 0n;
+  if (total === 0n) return 500;
+  const capped = (cap * BPS * 100n) / total; // hundredths of a basis point
+  const bps = capped < 50_000n ? Number(capped) / 100 : 500;
+  return bps;
+}
+
+/** The fee-adjusted share: what reaches the buyer of a gross amount (claim fee 5%). */
+export function afterClaimFee(chain: ChainState, gross: bigint): bigint {
+  return gross - (gross * BigInt(chain.rewards.CLAIM_FEE_BPS)) / BPS;
+}
+
+export type CycleStatus = 'claimed' | 'ready' | 'waiting';
+
+export function cycleStatus(wallet: WalletState, cycle: number, current: number): CycleStatus {
+  if (wallet.claimed[cycle]) return 'claimed';
+  return cycle + 2 <= current ? 'ready' : 'waiting';
+}
+
+/**
+ * The wallet's estimated rebate for one cycle, gross (before the claim fee). For a finalised
+ * cycle it is exact; otherwise it uses min(cap, 5% of the total so far) and is an estimate.
+ */
+export function cycleRebateGross(chain: ChainState, wallet: WalletState, cycle: number): bigint {
+  const mine = wallet.bought[cycle] ?? 0n;
+  const info = chain.rewards.cycleInfo[cycle];
+  const total = info?.total ?? chain.hook.cycleTotal[cycle] ?? 0n;
+  if (total === 0n || mine === 0n) return 0n;
+  if (info?.finalized) return (mine * info.emitted) / total;
+  const cap = chain.rewards.cap[cycle] ?? 0n;
+  const fivePct = (total * 5n) / 100n;
+  const pot = fivePct < cap ? fivePct : cap;
+  return (mine * pot) / total;
+}
+
+/** The wallet's cycles with a non-zero tally, oldest first. */
+export function walletCycles(wallet: WalletState): number[] {
+  return Object.keys(wallet.bought)
+    .map(Number)
+    .filter((c) => (wallet.bought[c] ?? 0n) > 0n)
+    .sort((a, b) => a - b);
+}
+
+/** The cycles a claim includes: ready and unclaimed, oldest first (CR-36). */
+export function readyCycles(chain: ChainState, wallet: WalletState): number[] {
+  const current = chain.rewards.currentCycle;
+  return walletCycles(wallet).filter((c) => cycleStatus(wallet, c, current) === 'ready');
+}
+
+// --- the Town Hall ------------------------------------------------------------------------
+
+/** The Fountain: the ETH balance less the owner reserve. */
+export function fountain(chain: ChainState): bigint {
+  const { balance, ownerEthAvailable } = chain.treasury;
+  return balance > ownerEthAvailable ? balance - ownerEthAvailable : 0n;
+}
+
+/** Gate tolls and any other arrivals: totalEthReceived - TownStaking.totalVaultFees (spec "Frontend"). */
+export function tollsAndOtherArrivals(chain: ChainState): bigint {
+  const r = chain.treasury.totalEthReceived;
+  const v = chain.staking.totalVaultFees;
+  return r > v ? r - v : 0n;
+}
+
+export type BudgetState =
+  | { kind: 'delivered'; amount: bigint }
+  | { kind: 'below-minimum'; amount: bigint }
+  | { kind: 'waiting'; estimate: bigint };
+
+/** What has happened to this Bell's delivery so far. */
+export function budgetState(chain: ChainState): BudgetState {
+  const t = chain.treasury;
+  if (t.lastDistributedCycle === t.currentCycle) return { kind: 'delivered', amount: t.budget };
+  if (t.nextDistributionTime > chain.blockTimestamp) return { kind: 'below-minimum', amount: t.budget };
+  return { kind: 'waiting', estimate: (fountain(chain) * BigInt(t.spendBps)) / BPS };
+}
+
+// --- the Tower ----------------------------------------------------------------------------
+
+/** A tier's share of every delivery, in basis points with decimals: 100/750 -> 1333.33. */
+export function tierShareBps(chain: ChainState, tier: Tier): number {
+  return Math.round((chain.staking.tierWeight[tier] * 1_000_000) / chain.staking.TOTAL_WEIGHT) / 100;
+}
+
+/** A tier's multiplier as text: weight 125 -> "1.25x". */
+export function tierMultiplier(chain: ChainState, tier: Tier): string {
+  return `${chain.staking.tierWeight[tier] / 100}x`;
+}
+
+/** True while a tier has no TOWN staked. */
+export function tierEmpty(chain: ChainState, tier: Tier): boolean {
+  return chain.staking.tierStaked[tier] === 0n;
+}
+
+/**
+ * The WETH a tier's stream has not yet paid out. While the tier is empty its stream is paused
+ * (CL-33): the idle time is added to the stored end, so the remainder is rate * (end - last update).
+ */
+export function unpaidStream(chain: ChainState, tier: Tier): bigint {
+  const s = chain.staking.streamInfo[tier];
+  if (s.rewardRate === 0n) return 0n;
+  if (tierEmpty(chain, tier)) {
+    const left = s.periodFinish - s.lastUpdateTime;
+    return left > 0 ? s.rewardRate * BigInt(left) : 0n;
+  }
+  const left = s.periodFinish - chain.blockTimestamp;
+  return left > 0 ? s.rewardRate * BigInt(left) : 0n;
+}
+
+/** When a non-empty tier's stream runs dry if no new delivery arrives; null while paused or ended. */
+export function streamEnd(chain: ChainState, tier: Tier): number | null {
+  const s = chain.staking.streamInfo[tier];
+  if (s.rewardRate === 0n || tierEmpty(chain, tier)) return null;
+  return s.periodFinish > chain.blockTimestamp ? s.periodFinish : null;
+}
+
+/** The ETH the site sends to open a vault: about 1% above the quote; the contract refunds the rest. */
+export function withMargin(wei: bigint): bigint {
+  return (wei * 101n) / 100n;
+}
+
+/** The fallback price stops counting FALLBACK_MAX_AGE after it was set. */
+export function fallbackExpiresAt(chain: ChainState): number {
+  return chain.staking.fallbackPriceSetAt + chain.staking.FALLBACK_MAX_AGE;
+}
+
+// --- the Sealed Foundation ----------------------------------------------------------------
+
+export function daysUntil(chain: ChainState, ts: number): number {
+  return Math.max(0, Math.floor((ts - chain.blockTimestamp) / 86_400));
+}

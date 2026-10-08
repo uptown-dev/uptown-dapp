@@ -1,0 +1,22 @@
+{
+  "name": "uptown-site",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The UpTown website: a static site, phase one (mock design with placeholder figures).",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "check:copy": "node scripts/check-copy.mjs"
+  },
+  "dependencies": {
+    "preact": "11.0.1",
+    "viem": "2.57.4"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "typescript": "7.0.2",
+    "vite": "8.3.3"
+  }
+}
