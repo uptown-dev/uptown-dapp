@@ -24,7 +24,7 @@ const PLAIN: Record<string, string> = {
   OnlyOwner: 'Only the owner can do this.',
   AlreadyLaunched: 'UpTown has already launched; the launch cannot be repeated.',
   // TownHook
-  OnlyPoolManager: 'Only Uniswap’s pool manager can call the hook.',
+  OnlyPoolManager: 'Only Uniswap’s pool manager can call TownHook.',
   WrongPool: 'This is not the TOWN pool that TownHook serves.',
   AlreadyInitialized: 'The TOWN pool already exists.',
   LiquidityLocked: 'The TOWN pool accepts no liquidity besides the launch position.',

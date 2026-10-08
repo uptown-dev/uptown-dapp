@@ -14,46 +14,50 @@ export function Home() {
     <>
       <section class="hero">
         <div class="wrap hero-inner">
-          <p class="eyebrow">
-            UpTown Token (TOWN) on Ethereum
-            {c !== null && (
-              <>
-                {' '}
-                · <span class="nowrap">{dayName(c)}</span>
-              </>
-            )}
-          </p>
-          <h1>TOWN, the first token that rewards buyers and stakers.</h1>
-          <p class="hero-summary">
-            Every trade in the TOWN pool on Uniswap v4 passes through TownHook, a contract nobody can change or switch off: on each buy it sends 2% of the
-            ETH to the treasury and records the TOWN you bought, and on each sell it burns 2% of the TOWN sold, until only 1,000,000 TOWN are left.{' '}
-            <strong>Buyers</strong> claim up to 5% of their TOWN back from a 500,000,000 TOWN reserve two days later (4.75% after the 5% claim fee, within
-            each day’s limit). <strong>Stakers</strong> receive part of the treasury’s ETH each day as WETH, spread over seven days.
-          </p>
-          <div class="btn-row hero-cta">
-            <a class="btn btn-primary btn-large" href="#/buy">
-              Buy TOWN
-            </a>
-            <a class="btn btn-secondary btn-large" href="#/stake">
-              Stake TOWN
-            </a>
+          <div class="hero-text">
+            <p class="eyebrow">
+              UpTown Token (TOWN) on Ethereum
+              {c !== null && (
+                <>
+                  {' '}
+                  · <span class="nowrap">{dayName(c)}</span>
+                </>
+              )}
+            </p>
+            <h1>TOWN, the first token that rewards buyers and stakers.</h1>
+            <p class="hero-summary">
+              Every trade in the TOWN pool on Uniswap v4 passes through TownHook, a contract managed by no one: it sends 2% of each buy, charged in ETH, to
+              the treasury, records the TOWN bought, and burns 2% of every TOWN sold into the pool. Every day, buyers claim up to 5% of their TOWN buys back
+              from a 500,000,000 TOWN reserve. 90% of the treasury’s ETH funds staker rewards, which stream to stakers every day as WETH.
+            </p>
+            <div class="btn-row hero-cta">
+              <a class="btn btn-primary btn-large" href="#/buy">
+                Buy TOWN
+              </a>
+              <a class="btn btn-secondary btn-large" href="#/stake">
+                Stake TOWN
+              </a>
+            </div>
+            <ul class="rule-list" aria-label="The rules are fixed">
+              <li class="rule-list-head">The rules are fixed:</li>
+              {FIXED_RULES.map((r) => (
+                <li key={r}>
+                  <CheckIcon size={15} />
+                  {r}
+                </li>
+              ))}
+            </ul>
+            <Verify
+              links={[
+                { label: 'TownHook code', what: 'TownHook’s code', href: contractUrl(network, 'TownHook', 'code') },
+                { label: 'the supply', what: 'TOWN’s total supply', href: tokenUrl(network, town) },
+                { label: 'the lock', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
+              ]}
+            />
           </div>
-          <ul class="rule-list" aria-label="The rules are fixed">
-            <li class="rule-list-head">The rules are fixed:</li>
-            {FIXED_RULES.map((r) => (
-              <li key={r}>
-                <CheckIcon size={15} />
-                {r}
-              </li>
-            ))}
-          </ul>
-          <Verify
-            links={[
-              { label: 'the hook’s code', what: 'TownHook’s code', href: contractUrl(network, 'TownHook', 'code') },
-              { label: 'the supply', what: 'TOWN’s total supply', href: tokenUrl(network, town) },
-              { label: 'the lock', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
-            ]}
-          />
+          <figure class="flow-card hero-flow">
+            <FlowGraphic />
+          </figure>
         </div>
       </section>
 
@@ -74,7 +78,7 @@ export function Home() {
             </span>
             <h2>ETH for stakers</h2>
             <p class="feature-number num">2% of every buy</p>
-            <p>goes to the treasury in ETH; part of it is paid to stakers every day as WETH.</p>
+            <p>goes to the treasury in ETH; 90% of it streams to stakers as WETH.</p>
             <Verify links={[{ what: 'TownHook’s code (the 2% fee)', href: contractUrl(network, 'TownHook', 'code') }]} />
           </article>
           <article class="feature">
@@ -95,48 +99,43 @@ export function Home() {
             How it works
           </h2>
           <div class="how">
-            <div>
-              <ol class="steps">
-                <li>
-                  <span class="step-no">1</span>
-                  <div>
-                    <h3>Every trade goes through TownHook</h3>
-                    <p>Buy or sell TOWN in its Uniswap v4 pool and the trade passes through TownHook, which nobody can change or switch off.</p>
-                  </div>
-                </li>
-                <li>
-                  <span class="step-no">2</span>
-                  <div>
-                    <h3>On a buy, the hook pays the treasury and records you</h3>
-                    <p>
-                      2% of the ETH goes to the treasury, and the TOWN you bought is written into the day’s tally that rebates are paid from. In the first 15
-                      minutes after launch the buy fee starts at 90% and falls to 2%.
-                    </p>
-                  </div>
-                </li>
-                <li>
-                  <span class="step-no">3</span>
-                  <div>
-                    <h3>On a sell, the hook burns TOWN</h3>
-                    <p>2% of the TOWN sold is burned, until only 1,000,000 TOWN remain.</p>
-                  </div>
-                </li>
-                <li>
-                  <span class="step-no">4</span>
-                  <div>
-                    <h3>Buyers and stakers are rewarded</h3>
-                    <p>
-                      Two days after a buy you can claim up to 5% of your TOWN back from the reserve (4.75% after the claim fee). Each day the treasury pays
-                      part of its ETH to stakers as WETH, streamed over seven days.
-                    </p>
-                  </div>
-                </li>
-              </ol>
-              <Verify links={[{ what: 'TownHook’s code', href: contractUrl(network, 'TownHook', 'code') }]} />
-            </div>
-            <figure class="flow-card">
-              <FlowGraphic />
-            </figure>
+            <ol class="steps">
+              <li>
+                <span class="step-no">1</span>
+                <div>
+                  <h3>Every trade goes through TownHook</h3>
+                  <p>Buy or sell TOWN in its Uniswap v4 pool and the trade passes through TownHook, which nobody can change or switch off.</p>
+                </div>
+              </li>
+              <li>
+                <span class="step-no">2</span>
+                <div>
+                  <h3>On a buy, TownHook pays the treasury and records you</h3>
+                  <p>
+                    2% of the ETH goes to the treasury, and the TOWN you bought is written into the day’s tally that rebates are paid from. In the first 15
+                    minutes after launch the buy fee starts at 90% and falls to 2%.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span class="step-no">3</span>
+                <div>
+                  <h3>On a sell, TownHook burns TOWN</h3>
+                  <p>2% of the TOWN sold is burned, until only 1,000,000 TOWN remain.</p>
+                </div>
+              </li>
+              <li>
+                <span class="step-no">4</span>
+                <div>
+                  <h3>Buyers and stakers are rewarded</h3>
+                  <p>
+                    Two days after a buy you can claim up to 5% of your TOWN back from the reserve (4.75% after the claim fee). Each day the treasury pays
+                    part of its ETH to stakers as WETH, streamed over seven days.
+                  </p>
+                </div>
+              </li>
+            </ol>
+            <Verify links={[{ what: 'TownHook’s code', href: contractUrl(network, 'TownHook', 'code') }]} />
           </div>
         </div>
       </section>

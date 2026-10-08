@@ -58,7 +58,10 @@ export const OWNER_CANNOT: string[] = [
 
 /** Things to know: practical points only, one line each (CR-40). */
 export const THINGS_TO_KNOW: { title: string; body: string }[] = [
-  { title: 'Payouts depend on trading', body: 'Rebates and stakers’ ETH come only from buys and sells, so they can be small or none.' },
+  {
+    title: 'Payouts depend on buying',
+    body: 'Rebates depend on buying, and stakers’ ETH comes from buy fees and vault purchases, so both can be small or none.',
+  },
   { title: 'Rebates are a ceiling', body: 'At most 4.75% of what you buy; less on busy days, and less or nothing near the end of the reserve.' },
   { title: 'Gas costs real money', body: 'Every buy, claim and vault action costs Ethereum gas, which can be more than a small reward.' },
   { title: 'The vault price is paid once', body: 'It goes to the treasury and is not refunded when you unstake; unstaking gives back your TOWN.' },

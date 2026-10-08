@@ -8,7 +8,7 @@ import { addressUrl, contractUrl, positionUrl, tokenUrl } from '../lib/network';
 
 /** The table of contents, in order (CR-40). Each section is reachable as #/docs/<id>. */
 const SECTIONS: { id: string; title: string }[] = [
-  { id: 'hook', title: 'The hook' },
+  { id: 'hook', title: 'TownHook' },
   { id: 'rebates', title: 'Rebates for buyers' },
   { id: 'staking', title: 'Staking' },
   { id: 'treasury', title: 'The treasury' },
@@ -104,7 +104,7 @@ export function Docs() {
           <Section id="treasury">
             <ul class="doc-list">
               <li>
-                The treasury receives the hook’s 2% buy fee and the vault prices in ETH, and the claim fees in TOWN.{' '}
+                The treasury receives TownHook’s 2% buy fee and the vault prices in ETH, and the claim fees in TOWN.{' '}
                 <Verify
                   inline
                   links={[
@@ -129,7 +129,7 @@ export function Docs() {
                 <Verify inline links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, town) }]} />
               </li>
               <li>Every sell burns 2% of the TOWN sold, so the supply only falls.</li>
-              <li>The burn stops when the supply reaches 1,000,000 TOWN; after that, sells pay no hook fee.</li>
+              <li>The burn stops when the supply reaches 1,000,000 TOWN; after that, sells pay no TownHook fee.</li>
             </ul>
           </Section>
 
