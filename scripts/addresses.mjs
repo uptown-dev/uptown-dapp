@@ -73,6 +73,7 @@ const uniswap = {
   positionManager: pick('positionManager'),
   v4Quoter: pick('v4Quoter'),
   universalRouter: pick('universalRouter_2_1_2'),
+  permit2: pick('permit2'),
   multicall3: pick('multicall3'),
   weth: pick('weth'),
 };

@@ -43,7 +43,7 @@ export interface Network {
   explorerName: string | null;
   /** The Uniswap app's name for the chain, for the sell link; `null` where the app does not run. */
   uniswapChain: string | null;
-  /** Uniswap v4 and helper contracts (PositionManager, V4Quoter, Universal Router 2.1.2, Multicall3, WETH). */
+  /** Uniswap v4 and helper contracts (PositionManager, V4Quoter, Universal Router 2.1.2, Permit2, Multicall3, WETH). */
   uniswap: ChainContracts | null;
   /** The seven contracts, the owner and the locked position; `null`: not deployed on this chain yet. */
   deployment: Deployment | null;
@@ -75,6 +75,7 @@ function readFile(chainId: ChainId, file: AddressFile): Network {
           positionManager: getAddress(u.positionManager),
           v4Quoter: getAddress(u.v4Quoter),
           universalRouter: getAddress(u.universalRouter),
+          permit2: getAddress(u.permit2),
           multicall3: getAddress(u.multicall3),
           weth: getAddress(u.weth),
         }

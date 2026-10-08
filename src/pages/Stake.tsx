@@ -320,7 +320,7 @@ function OpenForm({ tx }: { tx: Tx }) {
           {wallet?.townBalance === 0n && (
             <>
               {' '}
-              · <a href="#/buy">Buy TOWN first</a>
+              · <a href="#/trade">Buy TOWN first</a>
             </>
           )}
           {wallet && wallet.townAllowanceToStaking > 0n && (

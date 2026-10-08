@@ -6,7 +6,7 @@ import type { PublicClient, TransactionReceipt } from 'viem';
 import type { Address, ChainState, WalletState } from '../data/types';
 import { ChevronIcon, ExternalIcon, InfoIcon, NoteIcon, WarnIcon } from './icons';
 import { txUrl, type Network } from '../lib/network';
-import { explainError } from '../lib/errors';
+import { explainError, type TradeKind } from '../lib/errors';
 import { sendTx, waitForTx, type TxRequest } from '../lib/wallet';
 import { fmtInt, shortAddress } from '../lib/format';
 
@@ -209,14 +209,15 @@ export interface TxState {
 export interface Tx extends TxState {
   busy: boolean;
   /** Checks, sends `build()` from the connected wallet, waits for it, then reads every figure again. */
-  run: (label: string, build: () => TxRequest, onDone: (r: TransactionReceipt) => string) => Promise<void>;
+  /** `kind` makes a failed trade's sentence fit a buy or a sell (CR-43). */
+  run: (label: string, build: () => TxRequest, onDone: (r: TransactionReceipt) => string, kind?: TradeKind) => Promise<void>;
   reset: () => void;
 }
 
 export function useTx(): Tx {
   const app = useApp();
   const [st, setSt] = useState<TxState>({ phase: 'idle' });
-  const run: Tx['run'] = async (label, build, onDone) => {
+  const run: Tx['run'] = async (label, build, onDone, kind) => {
     if (!app.account) {
       app.connect();
       return;
@@ -235,7 +236,7 @@ export function useTx(): Tx {
         setSt({ phase: 'failed', label, hash, gasUsed: receipt.gasUsed, message: 'The transaction was included but failed, so nothing changed; only its gas was spent.' });
       }
     } catch (e) {
-      const { message, name } = explainError(e);
+      const { message, name } = explainError(e, kind);
       setSt({ phase: 'failed', label, hash, message, error: name });
     }
     await app.refresh();

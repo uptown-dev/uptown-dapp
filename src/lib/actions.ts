@@ -1,7 +1,7 @@
-// The nine actions the site sends (docs/tasks/F8b-frontend.md, "Transactions"), each built as one
+// The actions the site sends (docs/tasks/F8b-frontend.md, "Transactions"), each built as one
 // contract call. Nothing here sends: `wallet.ts` does, after its checks.
 import { encodeAbiParameters, type Abi } from 'viem';
-import { REWARDS_ABI, ROUTER_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
+import { PERMIT2_ABI, REWARDS_ABI, ROUTER_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
 import type { Network } from './network';
 import { buyerHookData, poolKey } from './reads';
 import type { TxRequest } from './wallet';
@@ -10,8 +10,14 @@ import type { Address, Tier } from '../data/types';
 /** Staking transactions carry this gas limit so the day's payout can run alongside (spec "Frontend -> Stake"; CR-25, CR-32, CR-35). */
 export const STAKING_GAS_LIMIT = 700_000n;
 
-/** How long a buy may wait to be included before the router refuses it. */
+/** How long a buy or a sell may wait to be included before the router refuses it. */
 export const BUY_DEADLINE_SECONDS = 20 * 60;
+
+/** How long the router's Permit2 allowance (a sell's step 2) lasts: 30 days, as the Uniswap app uses. */
+export const ROUTER_ALLOWANCE_SECONDS = 30 * 24 * 60 * 60;
+
+/** The largest Permit2 allowance (uint160). */
+const MAX_UINT160 = 2n ** 160n - 1n;
 
 // Universal Router command and action codes (R1b A2).
 const V4_SWAP = '0x10';
@@ -65,6 +71,43 @@ export function buyTx(n: Network, buyer: Address, amountIn: bigint, minOut: bigi
     functionName: 'execute',
     args: [V4_SWAP, [input], deadline],
     value: amountIn,
+  };
+}
+
+/**
+ * Sell TOWN: Universal Router 2.1.2 `execute(0x10, [abi.encode(actions, params)], deadline)`, one
+ * exact-input single swap of TOWN for ETH (`zeroForOne = false`, no `hookData`), the minimum ETH
+ * as `amountOutMinimum` (and as TAKE_ALL's minimum), `minHopPriceX36 = 0`, then SETTLE_ALL (TOWN
+ * in, paid through Permit2 after the swap, spec "Known risks -> Pay-first routers") and TAKE_ALL
+ * (ETH out to the seller). No ETH is sent with it.
+ */
+export function sellTx(n: Network, amountIn: bigint, minOut: bigint, deadline: bigint): TxRequest {
+  const key = poolKey(n);
+  const swap = encodeAbiParameters(EXACT_INPUT_SINGLE, [{ poolKey: key, zeroForOne: false, amountIn, amountOutMinimum: minOut, minHopPriceX36: 0n, hookData: '0x' }]);
+  const settle = encodeAbiParameters(CURRENCY_AMOUNT, [key.currency1, amountIn]);
+  const take = encodeAbiParameters(CURRENCY_AMOUNT, [key.currency0, minOut]);
+  const input = encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes[]' }], [SWAP_EXACT_IN_SINGLE_SETTLE_ALL_TAKE_ALL, [swap, settle, take]]);
+  return {
+    address: n.uniswap!.universalRouter,
+    abi: ROUTER_ABI as Abi,
+    functionName: 'execute',
+    args: [V4_SWAP, [input], deadline],
+  };
+}
+
+/** A sell's step 1: `UpTownToken.approve(Permit2, amount)`. */
+export function approvePermit2Tx(n: Network, amount: bigint): TxRequest {
+  return { address: n.deployment!.contracts.UpTownToken, abi: TOKEN_ABI as Abi, functionName: 'approve', args: [n.uniswap!.permit2, amount] };
+}
+
+/** A sell's step 2: `Permit2.approve(TOWN, Universal Router, amount, expiration)`, an on-chain approval (no signed message). */
+export function allowRouterTx(n: Network, amount: bigint, expiration: bigint): TxRequest {
+  const a = amount > MAX_UINT160 ? MAX_UINT160 : amount;
+  return {
+    address: n.uniswap!.permit2,
+    abi: PERMIT2_ABI as Abi,
+    functionName: 'approve',
+    args: [n.deployment!.contracts.UpTownToken, n.uniswap!.universalRouter, a, expiration],
   };
 }
 

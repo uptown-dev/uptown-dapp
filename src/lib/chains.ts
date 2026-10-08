@@ -15,8 +15,10 @@ export interface ChainContracts {
   positionManager: `0x${string}`;
   /** V4Quoter: the buy form's estimate (CL-41). */
   v4Quoter: `0x${string}`;
-  /** Universal Router 2.1.2: the site's buys (CL-40, CL-41). */
+  /** Universal Router 2.1.2: the site's buys and sells (CL-40, CL-41, CR-43). */
   universalRouter: `0x${string}`;
+  /** Permit2: a sell's TOWN reaches the router through it (CR-43; R1b A1). */
+  permit2: `0x${string}`;
   /** Multicall3: every figure is read through it in one call. */
   multicall3: `0x${string}`;
   weth: `0x${string}`;
@@ -40,6 +42,8 @@ export interface ChainInfo {
 }
 
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
+/** Permit2: the same address on every chain (R1b A1, A6). */
+const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 
 export const CHAINS: Record<ChainId, ChainInfo> = {
   1: {
@@ -56,6 +60,7 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
       positionManager: '0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e',
       v4Quoter: '0x52F0E24D1c21C8A0cB1e5a5dD6198556BD9E1203',
       universalRouter: '0x23617e59A5925b2A4Bf75d73ff6711cD0b29De85',
+      permit2: PERMIT2,
       multicall3: MULTICALL3,
       weth: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
     },
@@ -75,6 +80,7 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
       positionManager: '0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4',
       v4Quoter: '0x61B3f2011A92d183C7dbaDBdA940a7555Ccf9227',
       universalRouter: '0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3',
+      permit2: PERMIT2,
       multicall3: MULTICALL3,
       weth: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14',
     },

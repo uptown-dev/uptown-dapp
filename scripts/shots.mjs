@@ -4,7 +4,7 @@
 //
 // Usage (with the built site served, e.g. `npx vite preview --port 4191 --strictPort`):
 //   node scripts/shots.mjs <outDir> <desktop|mobile> <light|dark> [routes] [wallets] [baseUrl]
-//   routes:    comma list, '' for home (default: ,buy,rewards,stake,stats,docs)
+//   routes:    comma list, '' for home (default: ,trade,trade/sell,rewards,stake,stats,docs)
 //   wallets:   comma list of local test wallet addresses to connect, 'none' for no wallet (default: none)
 //   baseUrl:   default http://127.0.0.1:4191/
 //   'open' as an eighth argument opens every "Details" expander before the pictures are taken.
@@ -20,7 +20,7 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const OUT = process.argv[2] || 'review-shots';
 const MODE = process.argv[3] || 'desktop';
 const THEME = process.argv[4] || 'light';
-const PAGES = (process.argv[5] ?? ',buy,rewards,stake,stats,docs').split(',');
+const PAGES = (process.argv[5] ?? ',trade,trade/sell,rewards,stake,stats,docs').split(',');
 const WALLETS = (process.argv[6] || 'none').split(',');
 const BASE = process.argv[7] || 'http://127.0.0.1:4191/';
 const OPEN = process.argv[8] === 'open';
@@ -114,7 +114,7 @@ for (const wallet of WALLETS) {
     const check = await evalJs(OVERFLOW);
     if (check.scrollW > check.vw || check.out.length) problems.push({ scen, page: p || 'home', ...check });
     const total = await evalJs('document.documentElement.scrollHeight');
-    const name = p || 'home';
+    const name = (p || 'home').replace(/\//g, '-');
     let n = 0;
     for (let y = 0; y < total; y += SLICE) {
       const h = Math.min(SLICE, total - y);

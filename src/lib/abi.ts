@@ -1,6 +1,6 @@
 // The contract interfaces the site calls, in viem's human-readable form. Copied by hand from
 // src/interfaces/** (the seven UpTown contracts), the ERC-20 standard, and Uniswap's V4Quoter and
-// Universal Router (R1b A1 and A2). Only what the site reads or sends is listed, plus every custom
+// Universal Router and Permit2 (R1b A1 and A2). Only what the site reads or sends is listed, plus every custom
 // error the interfaces declare, so a failed call can be explained in plain words.
 import { parseAbi } from 'viem';
 
@@ -63,6 +63,9 @@ export const OTHER_ERRORS = [
   'error NotEnoughLiquidity(bytes32 poolId)',
   'error InsufficientETH()',
   'error UnexpectedRevertBytes(bytes revertData)',
+  // Permit2 (a sell's TOWN reaches the router through it; CR-43).
+  'error AllowanceExpired(uint256 deadline)',
+  'error InsufficientAllowance(uint256 amount)',
 ] as const;
 
 export const ERRORS_ABI = parseAbi([...UPTOWN_ERRORS, ...OTHER_ERRORS]);
@@ -176,6 +179,13 @@ export const QUOTER_ABI = parseAbi([
   'struct PoolKey { address currency0; address currency1; uint24 fee; int24 tickSpacing; address hooks; }',
   'struct QuoteExactSingleParams { PoolKey poolKey; bool zeroForOne; uint128 exactAmount; bytes hookData; }',
   'function quoteExactInputSingle(QuoteExactSingleParams params) returns (uint256 amountOut, uint256 gasEstimate)',
+  ...OTHER_ERRORS,
+]);
+
+/** Permit2 (R1b A1): the router's allowance to move a wallet's TOWN, set by an on-chain approval (CR-43). */
+export const PERMIT2_ABI = parseAbi([
+  'function allowance(address user, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)',
+  'function approve(address token, address spender, uint160 amount, uint48 expiration)',
   ...OTHER_ERRORS,
 ]);
 

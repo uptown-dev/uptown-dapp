@@ -66,7 +66,7 @@ function YourRebate() {
         <p class="muted">This wallet has no buys yet, so there is nothing to claim.</p>
         <TxStatus tx={tx} />
         <p class="small muted">
-          A buy made today on the <a href="#/buy">Buy page</a> can be claimed from {dayName(current + 2)}.
+          A buy made today on the <a href="#/trade">Trade page</a> can be claimed from {dayName(current + 2)}.
         </p>
       </Card>
     );

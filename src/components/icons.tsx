@@ -155,7 +155,7 @@ export const FlameIcon = (p: IconProps) => (
 function Node({ x, y, w, title, sub, cls = 'fg-node' }: { x: number; y: number; w: number; title: string; sub: string[]; cls?: string }) {
   return (
     <g>
-      <rect x={x} y={y} width={w} height={nodeHeight(sub)} rx="10" class={cls} />
+      <rect x={x} y={y} width={w} height={nodeHeight(sub)} class={cls} />
       <text x={x + w / 2} y={y + 22} class="fg-title" text-anchor="middle">
         {title}
       </text>
@@ -190,7 +190,7 @@ export function FlowGraphic() {
       viewBox="0 0 360 434"
       class="flow-graphic"
       role="img"
-      aria-label="Flow: every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet; on a sell it burns 2% of the TOWN sold, until the supply is 1,000,000 TOWN. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim up to 5% of the TOWN they bought from the reserve, from the day after next."
+      aria-label="Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet; on a sell it burns 2% of the TOWN sold, until the supply is 1,000,000 TOWN. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim up to 5% of the TOWN they bought from the reserve, from the day after next."
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -201,15 +201,18 @@ export function FlowGraphic() {
         </marker>
       </defs>
 
-      {/* The trader */}
-      <Node x={110} y={8} w={140} title="You" sub={['buy or sell TOWN']} />
+      {/* The trade (CR-43: one line, no "You") */}
+      <rect x="110" y="8" width="140" height="52" class="fg-node" />
+      <text x="180" y="39" class="fg-title" text-anchor="middle">
+        Buy or sell TOWN
+      </text>
       <path d="M160 62v38" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
       <text x="152" y="86" class="fg-label" text-anchor="end">ETH in</text>
       <path d="M200 100V62" class="fg-town" marker-end="url(#fg-arrow-town)" />
       <text x="208" y="86" class="fg-label">TOWN out</text>
 
       {/* The hook, at the centre */}
-      <rect x="8" y="104" width="344" height="64" rx="12" class="fg-hook" />
+      <rect x="8" y="104" width="344" height="64" class="fg-hook" />
       <text x="180" y="132" class="fg-hook-title" text-anchor="middle">TownHook</text>
       <text x="180" y="152" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the TOWN pool</text>
 

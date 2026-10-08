@@ -200,6 +200,10 @@ export interface WalletState {
   townBalance: bigint;
   /** UpTownToken.allowance(wallet, TownStaking) */
   townAllowanceToStaking: bigint;
+  /** UpTownToken.allowance(wallet, Permit2): a sell's step 1 (CR-43). */
+  townAllowanceToPermit2: bigint;
+  /** Permit2.allowance(wallet, TOWN, Universal Router): a sell's step 2, with its expiry (unix seconds). */
+  routerAllowance: { amount: bigint; expiration: number };
   /** TownHook.bought(c, wallet) for every cycle since launch; only non-zero entries are kept. */
   bought: Record<number, bigint>;
   /** BuyerRewards.claimed(wallet, c), for the cycles in `bought`. */

@@ -3,7 +3,7 @@
 // wallet's own refusals. Unknown failures get a general sentence plus the error's name.
 import { BaseError, ContractFunctionRevertedError, decodeErrorResult, type Hex } from 'viem';
 import { ERRORS_ABI } from './abi';
-import { fmtTown } from './format';
+import { fmtEth, fmtTown } from './format';
 
 const PLAIN: Record<string, string> = {
   // BuyerRewards, Treasury, LPVault
@@ -60,6 +60,23 @@ const PLAIN: Record<string, string> = {
   PriceLimitAlreadyExceeded: 'The pool’s price moved past the limit, so the buy was cancelled.',
   NotEnoughLiquidity: 'The pool does not hold enough TOWN for this buy. Try a smaller amount.',
   InsufficientETH: 'Not enough ETH was sent with the buy.',
+  // Permit2 (a sell's step 2)
+  AllowanceExpired: 'The router’s permission to move your TOWN has expired. Do step 2, “Allow the router”, again, then sell.',
+  InsufficientAllowance: 'The router may not move that much of your TOWN yet. Do step 2, “Allow the router”, for at least this amount, then sell.',
+};
+
+/** What a trade is, for the errors that read differently on a sell (CR-43). */
+export type TradeKind = 'buy' | 'sell';
+
+/** Sentences that differ on a sell: the seller keeps TOWN, not ETH. */
+const SELL: Record<string, string> = {
+  PartialFill: 'The pool could not fill the whole sale, so it was cancelled and you keep your TOWN. Try a smaller amount.',
+  V4TooMuchRequested: 'The sale would take more TOWN than allowed, so it was cancelled and you keep your TOWN.',
+  TransactionDeadlinePassed: 'The sale waited too long to be included and was cancelled. Try again.',
+  DeadlinePassed: 'The sale waited too long to be included and was cancelled. Try again.',
+  PriceLimitAlreadyExceeded: 'The pool’s price moved past the limit, so the sale was cancelled.',
+  NotEnoughLiquidity: 'The pool does not hold enough ETH for this sale. Try a smaller amount.',
+  ERC20InsufficientAllowance: 'Permit2 may not move that much of your TOWN yet. Do step 1, “Approve TOWN”, for at least this amount, then sell.',
 };
 
 /** The custom error inside a revert, unwrapping the Universal Router's and the pool manager's wrappers. */
@@ -77,23 +94,42 @@ function decodeInner(data: Hex | undefined, depth = 0): { name: string; args: re
   }
 }
 
-function sentence(name: string, args: readonly unknown[]): string {
+function sentence(name: string, args: readonly unknown[], kind?: TradeKind): string {
   if (name === 'V4TooLittleReceived') {
     const [min, got] = args as [bigint, bigint];
+    if (kind === 'sell')
+      return `You would receive ${fmtEth(got, 6)} ETH, less than your minimum of ${fmtEth(min, 6)} ETH, so the sale was cancelled and you keep your TOWN. Lower the minimum or try again.`;
     return `You would receive ${fmtTown(got)} TOWN, less than your minimum of ${fmtTown(min)} TOWN, so the buy was cancelled and you keep your ETH. Lower the minimum or try again.`;
   }
+  if (kind === 'sell' && SELL[name]) return SELL[name];
   return PLAIN[name] ?? `The contract refused this (${name}). Nothing was changed.`;
 }
 
+/**
+ * Permit2 moves TOWN with a transfer that hides the token's own error and reverts with the text
+ * TRANSFER_FROM_FAILED: on a sell, step 1 does not cover the amount or the wallet holds less TOWN.
+ */
+function reasonSentence(reason: string, kind?: TradeKind): { message: string; name: string } {
+  if (reason === 'TRANSFER_FROM_FAILED' && kind === 'sell')
+    return {
+      message: 'Permit2 could not move your TOWN: step 1, “Approve TOWN”, does not cover this amount, or the wallet holds less TOWN than this. Check both, then sell.',
+      name: 'TRANSFER_FROM_FAILED',
+    };
+  return { message: `The contract refused this: ${reason}.`, name: 'Error' };
+}
+
 /** What went wrong, in one plain sentence, and the error's name for the record (if any). */
-export function explainError(e: unknown): { message: string; name: string | null } {
+export function explainError(e: unknown, kind?: TradeKind): { message: string; name: string | null } {
   if (e instanceof BaseError) {
     const reverted = e.walk((x) => x instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null;
     if (reverted) {
       const inner = decodeInner((reverted as unknown as { raw?: Hex }).raw);
-      if (inner) return { message: sentence(inner.name, inner.args), name: inner.name };
-      if (reverted.data?.errorName) return { message: sentence(reverted.data.errorName, (reverted.data.args ?? []) as readonly unknown[]), name: reverted.data.errorName };
-      if (reverted.reason) return { message: `The contract refused this: ${reverted.reason}.`, name: 'Error' };
+      if (inner) return inner.name === 'Error' ? reasonSentence(String(inner.args[0]), kind) : { message: sentence(inner.name, inner.args, kind), name: inner.name };
+      if (reverted.data?.errorName)
+        return reverted.data.errorName === 'Error'
+          ? reasonSentence(String((reverted.data.args ?? [])[0]), kind)
+          : { message: sentence(reverted.data.errorName, (reverted.data.args ?? []) as readonly unknown[], kind), name: reverted.data.errorName };
+      if (reverted.reason) return reasonSentence(reverted.reason, kind);
       return { message: 'The contract refused this without giving a reason. Nothing was changed.', name: null };
     }
     const codeOf = (x: unknown) => (x as { code?: number }).code;

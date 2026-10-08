@@ -31,7 +31,7 @@ export function Home() {
               from a 500,000,000 TOWN reserve. 90% of the treasury’s ETH funds staker rewards, which stream to stakers every day as WETH.
             </p>
             <div class="btn-row hero-cta">
-              <a class="btn btn-primary btn-large" href="#/buy">
+              <a class="btn btn-primary btn-large" href="#/trade">
                 Buy TOWN
               </a>
               <a class="btn btn-secondary btn-large" href="#/stake">

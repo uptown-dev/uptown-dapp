@@ -10,7 +10,7 @@ import { explainError } from './lib/errors';
 import { dayName, fmtInt, shortAddress } from './lib/format';
 import { chooseTheme, currentTheme, storedTheme, type Theme } from './lib/theme';
 import { Home } from './pages/Home';
-import { Buy } from './pages/Buy';
+import { Trade } from './pages/Trade';
 import { Rewards } from './pages/Rewards';
 import { Stake } from './pages/Stake';
 import { Stats } from './pages/Stats';
@@ -18,7 +18,7 @@ import { Docs } from './pages/Docs';
 
 const NAV: { page: string; label: string; title: string }[] = [
   { page: '', label: 'Home', title: 'UpTown (TOWN)' },
-  { page: 'buy', label: 'Buy', title: 'Buy TOWN · UpTown' },
+  { page: 'trade', label: 'Trade', title: 'Trade TOWN · UpTown' },
   { page: 'rewards', label: 'Rewards', title: 'Buyer rebates · UpTown' },
   { page: 'stake', label: 'Stake', title: 'Stake TOWN · UpTown' },
   { page: 'stats', label: 'Stats', title: 'Treasury and stats · UpTown' },
@@ -26,13 +26,18 @@ const NAV: { page: string; label: string; title: string }[] = [
 ];
 
 /** Pages made of live figures: shown once the figures have been read. */
-const LIVE_PAGES = new Set(['buy', 'rewards', 'stake', 'stats']);
+const LIVE_PAGES = new Set(['trade', 'rewards', 'stake', 'stats']);
 
 /** How often the figures are read again while the page is open (and after every transaction). */
 const REFRESH_MS = 15_000;
 
 /** The local test wallet last picked (a convenience on this computer only). */
 const LOCAL_WALLET_KEY = 'uptown-local-wallet';
+
+/** Addresses from before CR-43 (`#/buy`, `#/buy/...`) open the Trade page. */
+function canonicalHash(hash: string): string {
+  return hash.replace(/^#\/?buy(?=\/|$)/, '#/trade');
+}
 
 /** `#/docs/owner` is the page docs scrolled to its section owner (element id docs-owner). */
 function parseHash(hash: string): { page: string; section: string } {
@@ -60,7 +65,7 @@ interface Toast {
 export function App() {
   const network = NETWORK;
   const client = useMemo(() => makeClient(network), [network]);
-  const [hash, setHash] = useState<string>(() => window.location.hash);
+  const [hash, setHash] = useState<string>(() => canonicalHash(window.location.hash));
   const { page, section } = parseHash(hash);
   const [navOpen, setNavOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -173,10 +178,21 @@ export function App() {
 
   // ---- page and theme --------------------------------------------------------------------------
   useEffect(() => {
-    const onHash = () => setHash(window.location.hash);
+    const onHash = () => setHash(canonicalHash(window.location.hash));
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  // An old #/buy address: show #/trade in the address bar too, without a new history entry.
+  useEffect(() => {
+    if (window.location.hash !== hash && canonicalHash(window.location.hash) === hash) {
+      try {
+        window.history.replaceState(null, '', hash);
+      } catch {
+        /* the address bar keeps the old address; the page shown is the same */
+      }
+    }
+  }, [hash]);
 
   // Follow the system setting while the visitor has not chosen a theme.
   useEffect(() => {
@@ -234,8 +250,8 @@ export function App() {
   const view = (() => {
     if (LIVE_PAGES.has(page) && !chain) return <ChainPending title={NAV.find((n) => n.page === page)!.label} data={data} onRetry={refresh} />;
     switch (page) {
-      case 'buy':
-        return <Buy />;
+      case 'trade':
+        return <Trade sell={section === 'sell'} />;
       case 'rewards':
         return <Rewards />;
       case 'stake':

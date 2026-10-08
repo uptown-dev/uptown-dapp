@@ -3,7 +3,7 @@
 // each a single eth_call: the global views and the current day; then the day-dependent views
 // (the limits, today's total, the wallet's tally per day); then the views for the wallet's days.
 import { createPublicClient, defineChain, encodeAbiParameters, http, type Hex, type PublicClient } from 'viem';
-import { HOOK_ABI, LPVAULT_ABI, QUOTER_ABI, REWARDS_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
+import { HOOK_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
 import type { Network } from './network';
 import { PriceSource, TIERS, type Address, type ChainState, type CycleInfo, type PerTier, type StreamInfo, type Tier, type WalletState } from '../data/types';
 
@@ -187,6 +187,18 @@ export async function readAll(client: PublicClient, n: Network, account: Address
           functionName: 'allowance',
           args: [account, k.TownStaking],
         }),
+        permit2Allowance: a.add('UpTownToken.allowance(wallet, Permit2)', {
+          address: k.UpTownToken,
+          abi: TOKEN_ABI,
+          functionName: 'allowance',
+          args: [account, n.uniswap.permit2],
+        }),
+        routerAllowance: a.add('Permit2.allowance(wallet, TOWN, router)', {
+          address: n.uniswap.permit2,
+          abi: PERMIT2_ABI,
+          functionName: 'allowance',
+          args: [account, k.UpTownToken, n.uniswap.universalRouter],
+        }),
         position: S('positionOf', [account]),
         earned: S('earned', [account]),
       }
@@ -353,6 +365,11 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       ethBalance: r1.get(w.eth),
       townBalance: r1.get(w.town),
       townAllowanceToStaking: r1.get(w.allowance),
+      townAllowanceToPermit2: r1.get(w.permit2Allowance),
+      routerAllowance: (() => {
+        const [amount, expiration] = r1.get<readonly [bigint, number]>(w.routerAllowance);
+        return { amount, expiration: Number(expiration) };
+      })(),
       bought,
       claimed,
       claimable: claimableIdx >= 0 ? r3.get<bigint>(claimableIdx) : 0n,
@@ -373,6 +390,20 @@ export function poolKey(n: Network) {
 /** `hookData` naming the buyer: the address in 32 bytes (spec "Buy tally", attribution rule 1). */
 export function buyerHookData(buyer: Address): Hex {
   return encodeAbiParameters([{ type: 'address' }], [buyer]);
+}
+
+/**
+ * The ETH a sell of `amountIn` TOWN would receive now, from Uniswap's V4Quoter (CL-41, CR-43): an
+ * estimate after the 2% sell fee (burned) and the pool fee. A sell carries no `hookData`.
+ */
+export async function quoteSell(client: PublicClient, n: Network, amountIn: bigint): Promise<bigint> {
+  const { result } = await client.simulateContract({
+    address: n.uniswap!.v4Quoter,
+    abi: QUOTER_ABI,
+    functionName: 'quoteExactInputSingle',
+    args: [{ poolKey: poolKey(n), zeroForOne: false, exactAmount: amountIn, hookData: '0x' }],
+  });
+  return (result as readonly [bigint, bigint])[0];
 }
 
 /**
