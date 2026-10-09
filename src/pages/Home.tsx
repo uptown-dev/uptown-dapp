@@ -60,23 +60,28 @@ export function Home() {
             />
           </div>
           <figure class="flow-card hero-flow">
-            <FlowGraphic floor={fmtTown(burnFloor(chain))} />
+            <FlowGraphic />
           </figure>
         </div>
       </section>
 
-      {/* The problem, and UpTown's answer (CR-66: the owner's concept, in the Lead's words, as written) */}
-      <section class="section" aria-labelledby="problem-title">
+      {/* Why $TOWN? The problem, and UpTown's answer (CR-66 text; CR-68: styled like "How it works", no card) */}
+      <section class="section" aria-labelledby="why-title">
         <div class="wrap">
-          <Card title={<span id="problem-title">The problem</span>} class="problem">
-            <div class="split">
-              <p class="problem-text">
-                Most projects that earn revenue have no system that keeps it coming. Attention fades after launch, trading slows, and the project fades with
-                it.
-              </p>
-              <div class="side-notes">
-                <h3 class="side-title">UpTown’s answer: a flywheel in the pool itself</h3>
-                <p class="problem-lead">Every trade in the TOWN pool passes through TownHook, a contract no one controls. It turns trading into reasons to take part:</p>
+          <h2 id="why-title" class="section-title">
+            Why $TOWN?
+          </h2>
+          <div class="how">
+            <div class="steps">
+              <div>
+                <p>
+                  Most projects that earn revenue have no system that keeps it coming. Attention fades after launch, trading slows, and the project fades
+                  with it.
+                </p>
+              </div>
+              <div>
+                <h3>UpTown’s answer: a flywheel in the pool itself</h3>
+                <p>Every trade in the TOWN pool passes through TownHook, a contract no one controls. It turns trading into reasons to take part:</p>
                 <ul class="plain-list">
                   <li>
                     <strong>Buy</strong> and claim a TOWN rebate the next day.
@@ -88,10 +93,10 @@ export function Home() {
                     <strong>Sell</strong>, and 2% is burned or sent to the treasury in ETH.
                   </li>
                 </ul>
-                <p class="problem-close">The rules are written into the contracts and cannot be changed.</p>
+                <p>The rules are written into the contracts and cannot be changed.</p>
               </div>
             </div>
-          </Card>
+          </div>
         </div>
       </section>
 

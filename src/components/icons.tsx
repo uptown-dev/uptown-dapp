@@ -155,7 +155,8 @@ export const FlameIcon = (p: IconProps) => (
 // distribution", "Finalising a cycle").
 //
 // Three columns, 360 units wide in all: buy tally and rebates (x 8-116), treasury and stakers
-// (x 126-220), the sell fee (x 230-352).
+// (x 126-220), the sell fee (x 230-352). The "Dynamic" box shows only its title and the owner's
+// text; the burn floor is explained on the Docs page (CR-68).
 // ---------------------------------------------------------------------------------------------
 
 /** A box with a title and one or more lines under it; 52 units tall for one line, 14 more per extra line. */
@@ -191,24 +192,18 @@ function Down({ ax, y1, y2, kind, lines }: { ax: number; y1: number; y2: number;
   );
 }
 
-// The sell fee's box (CR-66): the owner's text, then the burn floor under a thin rule.
+// The sell fee's box (CR-66): the owner's text only (CR-68: no floor line).
 const DYN = { x: 230, y: 230, w: 122 };
 const DYN_TEXT = ['charged in TOWN', 'and burnt from', 'day 1, switches', 'to ETH when a', 'previous day’s burn', 'exceeds rebates'];
-const dynFloor = (floor: string) => ['always ETH once', 'TOWN supply is', `${floor} or less`];
-/** The thin rule sits 9 units under the last text line's baseline. */
-const DYN_RULE_Y = DYN.y + 39 + (DYN_TEXT.length - 1) * 14 + 9;
-/** The floor lines under the rule (17, 31 and 45 units down), then the usual 13 units of padding. */
-const DYN_H = DYN_RULE_Y - DYN.y + 17 + (dynFloor('').length - 1) * 14 + 13;
 
-/** `floor` is the burn floor in whole TOWN, as text: TownHook.BURN_FLOOR() (CR-55). */
-export function FlowGraphic({ floor }: { floor: string }) {
-  const dynBottom = DYN.y + DYN_H;
+export function FlowGraphic() {
+  const dynBottom = DYN.y + nodeHeight(DYN_TEXT);
   return (
     <svg
       viewBox="0 0 360 508"
       class="flow-graphic"
       role="img"
-      aria-label={`Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in TOWN and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates; once the supply is ${floor} TOWN or less it is always ETH. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
+      aria-label={`Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in TOWN and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -239,30 +234,18 @@ export function FlowGraphic({ floor }: { floor: string }) {
       <path d="M146 172V296" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
       <text x="156" y="198" class="fg-label">2% of ETH</text>
       <text x="156" y="212" class="fg-label">on buys</text>
-      {/* The sell fee leaves the hook in one of two currencies: an ETH line beside a TOWN line */}
-      <path d="M242 172V226" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
-      <path d="M258 172V226" class="fg-town" marker-end="url(#fg-arrow-town)" />
-      <text x="268" y="203" class="fg-label">2% of sells</text>
+      {/* The sell fee leaves the hook in one of two currencies: its label sits between an ETH line and a TOWN line (CR-68) */}
+      <path d="M244 172V226" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
+      <text x="291" y="203" class="fg-label" text-anchor="middle">
+        2% of sells
+      </text>
+      <path d="M338 172V226" class="fg-town" marker-end="url(#fg-arrow-town)" />
 
       <Node x={8} y={230} w={108} title="Buy tally" sub={['TOWN per wallet,', 'per day']} />
       <Node x={126} y={300} w={94} title="Treasury" sub={['90% to stakers', '10% owner']} />
 
       {/* The sell fee (CR-66) */}
-      <rect x={DYN.x} y={DYN.y} width={DYN.w} height={DYN_H} class="fg-node" />
-      <text x={DYN.x + DYN.w / 2} y={DYN.y + 22} class="fg-title" text-anchor="middle">
-        Dynamic
-      </text>
-      {DYN_TEXT.map((l, i) => (
-        <text key={l} x={DYN.x + DYN.w / 2} y={DYN.y + 39 + i * 14} class="fg-sub" text-anchor="middle">
-          {l}
-        </text>
-      ))}
-      <path d={`M${DYN.x + 12} ${DYN_RULE_Y}H${DYN.x + DYN.w - 12}`} class="fg-rule" />
-      {dynFloor(floor).map((l, i) => (
-        <text key={l} x={DYN.x + DYN.w / 2} y={DYN_RULE_Y + 17 + i * 14} class="fg-sub" text-anchor="middle">
-          {l}
-        </text>
-      ))}
+      <Node x={DYN.x} y={DYN.y} w={DYN.w} title="Dynamic" sub={DYN_TEXT} />
       {/* ETH days: the sell fee's ETH goes to the treasury, like the buy fee */}
       <path d={`M${DYN.x} 262H198V296`} class="fg-eth" marker-end="url(#fg-arrow-eth)" />
       <text x={DYN.x - 4} y="255" class="fg-label" text-anchor="end">
