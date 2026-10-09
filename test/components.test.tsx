@@ -223,9 +223,18 @@ async function run() {
     const el = await mount(<Rewards />, chain, wallet, 'Rewards page, only sells behind today');
     const t = text(el);
     check(
-      'CR-47 only sells behind today: 5.5%, 5.225% after the fee, lean −1.00, "More selling than buying"',
-      t.includes('Today’s rate, before fee 5.5%') && t.includes('5.225%') && t.includes('−1.00') && t.includes('More selling than buying over the last three days'),
+      'CR-47 only sells behind today: 5.5%, 5.39% after the 2% fee (CR-60), lean −1.00, "More selling than buying"',
+      t.includes('Today’s rate, before fee 5.5%') &&
+        t.includes('Today’s rate, after the 2% fee 5.39%') &&
+        t.includes('−1.00') &&
+        t.includes('More selling than buying over the last three days'),
       t.match(/Today’s rate, before fee.*?Today’s limit/)?.[0] ?? '',
+    );
+    const all = (el.textContent ?? '').replace(/\s+/g, ' '); // the Rules list sits in a closed Details
+    check(
+      'CR-60 the claim fee is read from the chain: CLAIM_FEE_BPS 200, "Claimable now, after the 2% fee", "4.9% to 5.39% back"',
+      base.rewards.CLAIM_FEE_BPS === 200 && all.includes('Claimable now, after the 2% fee') && all.includes('so a buyer gets 4.9% to 5.39% back'),
+      `CLAIM_FEE_BPS ${base.rewards.CLAIM_FEE_BPS}; ${all.match(/Claimable now, after the \S+ fee/)?.[0] ?? 'no claimable label'}; ${all.match(/so a buyer gets[^.]*/)?.[0] ?? 'no rule line'}`,
     );
   }
 

@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useApp, Details, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
 import { OWNER_CANNOT, OWNER_POWERS, THINGS_TO_KNOW } from '../content/docs';
 import { PriceSource } from '../data/types';
-import { afterFeeBps, burnFloor, fallbackExpiresAt, pausePending, rateRange, stakingChange, stakingReplaced } from '../lib/derive';
+import { afterFeeBps, burnFloor, claimFeeBps, fallbackExpiresAt, pausePending, rateRange, stakingChange, stakingReplaced } from '../lib/derive';
 import { fmtBps, fmtDate, fmtDateTime, fmtEth, fmtTown, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
 import { addressUrl, contractUrl, positionUrl, readUrl, tokenUrl } from '../lib/network';
 
@@ -88,7 +88,7 @@ export function Docs() {
                 {fmtBps(r.high)} after days of only selling. The <a href="#/rewards">Rewards page</a> shows today’s rate and the three-day lean behind it.
               </li>
               <li>
-                5% of every claim goes to the treasury for the owner, so {fmtRate(afterFeeBps(chain, r.low))} to {fmtRate(afterFeeBps(chain, r.high))}{' '}
+                {fmtBps(claimFeeBps(chain))} of every claim goes to the treasury for the owner, so {fmtRate(afterFeeBps(chain, r.low))} to {fmtRate(afterFeeBps(chain, r.high))}{' '}
                 reaches you.
               </li>
               <li>
@@ -181,7 +181,7 @@ export function Docs() {
                 No contract can be upgraded, and trading never pauses. The one moving part: the owner can pause the treasury’s daily payout or point it at a
                 new staking contract, each after a 2-day public wait.
               </li>
-              <li>The fees are fixed: 2% on buys, 2% on sells, the 0.5% pool fee and the 5% claim fee.</li>
+              <li>The fees are fixed: 2% on buys, 2% on sells, the 0.5% pool fee and the {fmtBps(claimFeeBps(chain))} claim fee.</li>
               <li>The supply (1,000,000,000 TOWN), the vault tiers and their dollar prices are fixed.</li>
               <li>
                 UpTownToken, TownHook and BuyerRewards have no owner at all.{' '}
@@ -267,7 +267,7 @@ function Owner() {
           on the days they are charged in ETH, and vault purchases.
         </li>
         <li>
-          <strong>The 5% claim fee</strong> on every rebate claim, in TOWN.
+          <strong>The {fmtBps(claimFeeBps(chain))} claim fee</strong> on every rebate claim, in TOWN.
         </li>
       </ol>
       {t && (

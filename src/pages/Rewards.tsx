@@ -87,7 +87,7 @@ function YourRebate() {
       <div>
       <Figures cols={2}>
         <Fig
-          label="Claimable now, after the 5% fee"
+          label={`Claimable now, after the ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} fee`}
           value={fmtTown(wallet.claimable)}
           unit="TOWN"
           view="BuyerRewards.claimable(wallet, readyCycles)"
@@ -108,7 +108,7 @@ function YourRebate() {
               void tx.run(
                 `Claim ${days.length === 1 ? 'day' : 'days'} ${listDays(days)}`,
                 () => claimRebatesTx(network, days),
-                () => `${fmtTown(net)} TOWN for ${days.length === 1 ? 'day' : 'days'} ${listDays(days)} went to your wallet, after the 5% claim fee.`,
+                () => `${fmtTown(net)} TOWN for ${days.length === 1 ? 'day' : 'days'} ${listDays(days)} went to your wallet, after the ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee.`,
               );
             }}
           >

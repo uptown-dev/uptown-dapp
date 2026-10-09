@@ -32,7 +32,7 @@ export function fmtBps(bps: number, maxFrac = 2): string {
 
 /**
  * A rebate rate in basis points as a percentage, cut (never rounded up) to `maxFrac` decimals:
- * 497.8 -> "4.978%", 496.85 -> "4.968%" (CR-47; a rate after the claim fee can carry decimals).
+ * 513.52 -> "5.135%", 514.5 -> "5.145%" (CR-47; a rate after the claim fee can carry decimals).
  */
 export function fmtRate(bps: number, maxFrac = 3): string {
   const scale = 10 ** maxFrac;

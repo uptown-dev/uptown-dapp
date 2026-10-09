@@ -163,9 +163,17 @@ export function dayRateBps(chain: ChainState, cycle: number): number {
   return chain.rewards.rateBps[cycle] ?? chain.rewards.RATE_BASE_BPS;
 }
 
+/** The spec's claim fee (CR-60: 2%), used only where the contracts are not deployed on this network yet. */
+export const SPEC_CLAIM_FEE_BPS = 200;
+
+/** The claim fee in basis points: BuyerRewards.CLAIM_FEE_BPS(), or the spec's figure before deployment. */
+export function claimFeeBps(chain: ChainState | null): number {
+  return chain ? chain.rewards.CLAIM_FEE_BPS : SPEC_CLAIM_FEE_BPS;
+}
+
 /** A rate after the claim fee: rate x (1 - CLAIM_FEE_BPS / 10000), in basis points with decimals. */
 export function afterFeeBps(chain: ChainState | null, rateBps: number): number {
-  const fee = chain ? chain.rewards.CLAIM_FEE_BPS : 500;
+  const fee = claimFeeBps(chain);
   return (rateBps * (10_000 - fee)) / 10_000;
 }
 
@@ -208,7 +216,7 @@ export function leanToday(chain: ChainState): { days: number[]; bought: bigint; 
   return { days, bought, sold, lean: Number(raw) / 1e18 };
 }
 
-/** The fee-adjusted share: what reaches the buyer of a gross amount (claim fee 5%). */
+/** The fee-adjusted share: what reaches the buyer of a gross amount (less CLAIM_FEE_BPS, 2% since CR-60). */
 export function afterClaimFee(chain: ChainState, gross: bigint): bigint {
   return gross - (gross * BigInt(chain.rewards.CLAIM_FEE_BPS)) / BPS;
 }
