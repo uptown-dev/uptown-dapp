@@ -85,7 +85,7 @@ export function Home() {
                     <strong>Stake</strong> and receive a daily share of the ETH the treasury collects.
                   </li>
                   <li>
-                    <strong>Sell</strong>, and 2% is burned or added to the stakers’ ETH.
+                    <strong>Sell</strong>, and 2% is burned or sent to the treasury in ETH.
                   </li>
                 </ul>
                 <p class="problem-close">The rules are written into the contracts and cannot be changed.</p>
