@@ -1,7 +1,9 @@
 // The fixed facts about each chain the site knows: its name, the public RPC the site reads
 // through, its block explorer and the Uniswap and helper contracts it uses. Pure data, no
-// imports: `vite.config.ts` reads the RPC URLs from here to write the content-security policy's
-// connect-src, so the policy always lists exactly the RPC hosts below.
+// imports: `vite.config.ts` reads it to write the content-security policy's connect-src (the
+// build's own chain's RPC host only, F9h) and to give a build only its own chain's entry. The site
+// itself imports no value from here, only types: the entry it carries comes through
+// `virtual:uptown-site-chains` (see `src/lib/network.ts`).
 //
 // Sources: docs/research/R1b-ethereum-report.md A1 (mainnet), A5 (Multicall3), A6 (Sepolia),
 // A7 (public RPCs). The UpTown contracts themselves are not here: they are in the address file
@@ -108,10 +110,34 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
   },
 };
 
-/** The order in which the site picks its chain when the build names none: launch chain first. */
+/**
+ * The order in which the development server picks its chain when VITE_CHAIN_ID is not set:
+ * launch chain first. A production build always names its chain (`buildChain` below).
+ */
 export const CHAIN_ORDER: ChainId[] = [1, 11155111, 31337];
 
-/** The origin (scheme, host and port) of every RPC URL, for the content-security policy. */
+/** The origin (scheme, host and port) of one chain's RPC URL, for the content-security policy. */
+export function rpcOrigin(id: ChainId): string {
+  return new URL(CHAINS[id].rpcUrl).origin;
+}
+
+/** The origin of every RPC URL: the development server's policy, which may show any chain. */
 export function rpcOrigins(): string[] {
-  return CHAIN_ORDER.map((id) => new URL(CHAINS[id].rpcUrl).origin);
+  return CHAIN_ORDER.map(rpcOrigin);
+}
+
+/**
+ * The chain a production build is for (F9h, CL-53). Every `npm run build` names its network in
+ * VITE_CHAIN_ID, and the built site then carries that chain's address file, network entry and RPC
+ * host and no other chain's. Gives the chain ID, or the message the build stops with.
+ */
+export function buildChain(value: string | undefined): { chainId: ChainId; error?: undefined } | { chainId?: undefined; error: string } {
+  const v = (value ?? '').trim();
+  if (/^\d+$/.test(v) && CHAIN_ORDER.includes(Number(v) as ChainId)) return { chainId: Number(v) as ChainId };
+  const said = v === '' ? 'VITE_CHAIN_ID is not set' : `VITE_CHAIN_ID is "${v}", which is not a network the site knows`;
+  return {
+    error:
+      `${said}. Every build must name its network: VITE_CHAIN_ID=1 (Ethereum mainnet), VITE_CHAIN_ID=11155111 (Sepolia) ` +
+      'or VITE_CHAIN_ID=31337 (the local test chain). For example: VITE_CHAIN_ID=1 npm run build.',
+  };
 }

@@ -6,17 +6,18 @@
 // Verify"). Links are plain navigation the visitor clicks; the site itself never contacts the
 // explorer.
 //
-// Which chain a build shows: `VITE_CHAIN_ID` (1, 11155111 or 31337) when the build sets it;
-// otherwise the first chain, in the order mainnet, Sepolia, local, whose address file names the
-// contracts. So filling Sepolia's file (milestone 9) or mainnet's (launch) is all it takes.
+// Which chain a build shows (F9h, CL-53): every production build names it in `VITE_CHAIN_ID` (1,
+// 11155111 or 31337; `npm run build` stops without it) and carries only that chain's network entry
+// and address file, through the module `virtual:uptown-site-chains` that `vite.config.ts` writes.
+// So a mainnet or Sepolia build holds no local test wallet, no local owner and no local RPC host.
+// Only the development server without `VITE_CHAIN_ID` carries all three chains and picks at run
+// time: the first, in the order mainnet, Sepolia, local, whose address file names the contracts.
 
 import { getAddress } from 'viem';
-import mainnetFile from '../addresses/1.json';
-import sepoliaFile from '../addresses/11155111.json';
-import localFile from '../addresses/31337.json';
+import { ADDRESS_FILES, CHAIN_IDS, CHAIN_INFO, FIXED_CHAIN_ID } from 'virtual:uptown-site-chains';
 import type { Address, ContractName, Deployment } from '../data/types';
 import { CONTRACT_NAMES } from '../data/types';
-import { CHAINS, CHAIN_ORDER, type ChainContracts, type ChainId } from './chains';
+import type { ChainContracts, ChainId, ChainInfo } from './chains';
 
 export type { ChainId } from './chains';
 
@@ -96,8 +97,8 @@ function stakingContracts(chainId: ChainId, deployment: Deployment | null): Stak
   }));
 }
 
-function readFile(chainId: ChainId, file: AddressFile): Network {
-  const info = CHAINS[chainId];
+function readFile(chainId: ChainId, info: ChainInfo, file: AddressFile): Network {
+  if (info.chainId !== chainId) throw new Error(`network entry for chain ${chainId} names chain ${info.chainId}`);
   if (file.chainId !== chainId) throw new Error(`address file for chain ${chainId} names chain ${file.chainId}`);
   let deployment: Deployment | null = null;
   if (file.contracts) {
@@ -144,21 +145,21 @@ function readFile(chainId: ChainId, file: AddressFile): Network {
   };
 }
 
-export const NETWORKS: Record<ChainId, Network> = {
-  1: readFile(1, mainnetFile as AddressFile),
-  11155111: readFile(11155111, sepoliaFile as AddressFile),
-  31337: readFile(31337, localFile as AddressFile),
-};
+const CARRIED = CHAIN_IDS as ChainId[];
+
+/** The networks this build carries: one in a production build (F9h), all three only on the development server. */
+export const NETWORKS: Partial<Record<ChainId, Network>> = Object.fromEntries(
+  CARRIED.map((id) => [id, readFile(id, CHAIN_INFO[id] as ChainInfo, ADDRESS_FILES[id] as AddressFile)]),
+);
 
 function chooseChain(): ChainId {
-  const fromBuild = Number(import.meta.env.VITE_CHAIN_ID ?? '');
-  if (CHAIN_ORDER.includes(fromBuild as ChainId)) return fromBuild as ChainId;
-  return CHAIN_ORDER.find((id) => NETWORKS[id].deployment !== null) ?? 1;
+  if (FIXED_CHAIN_ID !== null) return FIXED_CHAIN_ID as ChainId;
+  return CARRIED.find((id) => NETWORKS[id]!.deployment !== null) ?? CARRIED[0];
 }
 
 /** The chain this build of the site shows and transacts on. Nothing is ever sent to any other. */
 export const SITE_CHAIN_ID: ChainId = chooseChain();
-export const NETWORK: Network = NETWORKS[SITE_CHAIN_ID];
+export const NETWORK: Network = NETWORKS[SITE_CHAIN_ID]!;
 
 // ---------------------------------------------------------------------------------------------
 // Link builders. Each gives null when the chain has no explorer (the local chain) or the

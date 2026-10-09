@@ -8,11 +8,11 @@
     "addresses": "node scripts/addresses.mjs",
     "predev": "node scripts/addresses.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/addresses.mjs",
+    "prebuild": "node scripts/check-chain.mjs && node scripts/addresses.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "check:copy": "node scripts/check-copy.mjs",
-    "test": "node scripts/test-addresses.mjs && node scripts/test.mjs"
+    "test": "node scripts/test-addresses.mjs && node scripts/test-hosting.mjs && node scripts/test.mjs"
   },
   "dependencies": {
     "preact": "11.0.1",
