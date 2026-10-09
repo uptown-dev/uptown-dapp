@@ -144,19 +144,21 @@ export const FlameIcon = (p: IconProps) => (
 );
 
 // ---------------------------------------------------------------------------------------------
-// The one flow graphic, shown in the home page's hero, with the hook at its centre: every trade
-// passes through TownHook, which sends 2% of a buy's ETH to the treasury and records the buy in the
-// tally. The 2% of a sell goes to the "Dynamic" box (CR-66): charged in TOWN and burned, or, on a
-// day after one whose burn exceeded its rebates (and always at the burn floor), charged in ETH and
-// sent to the treasury like the buy fee (CR-55 to CR-57). So the treasury sits in the middle
-// column, where the buy fee and the sell fee's ETH-day path both reach it. The treasury keeps 10%
-// of its ETH for the owner and pays the other 90% to stakers as WETH; the tally decides the
-// buyers' rebates (spec "At a glance", "Fees", "Sell fee currency", "Owner reserve", "Budget and
-// distribution", "Finalising a cycle").
+// The one flow graphic, shown in the home page's hero, with the hook at its top (CR-69: no "Buy
+// or sell TOWN" box or ETH in / TOWN out arrows above it): every trade passes through TownHook,
+// which sends 2% of a buy's ETH to the treasury and records the buy in the tally. The 2% of a
+// sell goes to the "Dynamic" box (CR-66): charged in TOWN and burned, or, on a day after one
+// whose burn exceeded its rebates (and always at the burn floor), charged in ETH and sent to the
+// treasury like the buy fee (CR-55 to CR-57). So the treasury sits in the middle column, where
+// the buy fee and the sell fee's ETH-day path both reach it. The treasury keeps 10% of its ETH
+// for the owner and pays the other 90% to stakers as WETH; the tally decides the buyers' rebates
+// (spec "At a glance", "Fees", "Sell fee currency", "Owner reserve", "Budget and distribution",
+// "Finalising a cycle").
 //
-// Three columns, 360 units wide in all: buy tally and rebates (x 8-116), treasury and stakers
-// (x 126-220), the sell fee (x 230-352). The "Dynamic" box shows only its title and the owner's
-// text; the burn floor is explained on the Docs page (CR-68).
+// 360 x 412 units. The hook spans the top (y 8-72); under it, three columns: buy tally and
+// rebates (x 8-116), treasury and stakers (x 126-220), the sell fee (x 230-352). The "Dynamic"
+// box shows only its title and the owner's text; the burn floor is explained on the Docs page
+// (CR-68).
 // ---------------------------------------------------------------------------------------------
 
 /** A box with a title and one or more lines under it; 52 units tall for one line, 14 more per extra line. */
@@ -193,17 +195,17 @@ function Down({ ax, y1, y2, kind, lines }: { ax: number; y1: number; y2: number;
 }
 
 // The sell fee's box (CR-66): the owner's text only (CR-68: no floor line).
-const DYN = { x: 230, y: 230, w: 122 };
+const DYN = { x: 230, y: 134, w: 122 };
 const DYN_TEXT = ['charged in TOWN', 'and burnt from', 'day 1, switches', 'to ETH when a', 'previous day’s burn', 'exceeds rebates'];
 
 export function FlowGraphic() {
   const dynBottom = DYN.y + nodeHeight(DYN_TEXT);
   return (
     <svg
-      viewBox="0 0 360 508"
+      viewBox="0 0 360 412"
       class="flow-graphic"
       role="img"
-      aria-label={`Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in TOWN and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
+      aria-label={`Flow: every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in TOWN and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -214,41 +216,31 @@ export function FlowGraphic() {
         </marker>
       </defs>
 
-      {/* The trade (CR-43: one line, no "You") */}
-      <rect x="110" y="8" width="140" height="52" class="fg-node" />
-      <text x="180" y="39" class="fg-title" text-anchor="middle">
-        Buy or sell TOWN
-      </text>
-      <path d="M160 62v38" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
-      <text x="152" y="86" class="fg-label" text-anchor="end">ETH in</text>
-      <path d="M200 100V62" class="fg-town" marker-end="url(#fg-arrow-town)" />
-      <text x="208" y="86" class="fg-label">TOWN out</text>
-
-      {/* The hook, at the centre */}
-      <rect x="8" y="104" width="344" height="64" class="fg-hook" />
-      <text x="180" y="132" class="fg-hook-title" text-anchor="middle">TownHook</text>
-      <text x="180" y="152" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the TOWN pool</text>
+      {/* The hook, at the top (CR-69: no "Buy or sell TOWN" box above it) */}
+      <rect x="8" y="8" width="344" height="64" class="fg-hook" />
+      <text x="180" y="36" class="fg-hook-title" text-anchor="middle">TownHook</text>
+      <text x="180" y="56" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the TOWN pool</text>
 
       {/* Hook to the tally, the treasury and the sell fee */}
-      <Down ax={28} y1={172} y2={226} kind="data" lines={['records', 'each buy']} />
-      <path d="M146 172V296" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
-      <text x="156" y="198" class="fg-label">2% of ETH</text>
-      <text x="156" y="212" class="fg-label">on buys</text>
+      <Down ax={28} y1={76} y2={130} kind="data" lines={['records', 'each buy']} />
+      <path d="M146 76V200" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
+      <text x="156" y="102" class="fg-label">2% of ETH</text>
+      <text x="156" y="116" class="fg-label">on buys</text>
       {/* The sell fee leaves the hook in one of two currencies: its label sits between an ETH line and a TOWN line (CR-68) */}
-      <path d="M244 172V226" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
-      <text x="291" y="203" class="fg-label" text-anchor="middle">
+      <path d="M244 76V130" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
+      <text x="291" y="107" class="fg-label" text-anchor="middle">
         2% of sells
       </text>
-      <path d="M338 172V226" class="fg-town" marker-end="url(#fg-arrow-town)" />
+      <path d="M338 76V130" class="fg-town" marker-end="url(#fg-arrow-town)" />
 
-      <Node x={8} y={230} w={108} title="Buy tally" sub={['TOWN per wallet,', 'per day']} />
-      <Node x={126} y={300} w={94} title="Treasury" sub={['90% to stakers', '10% owner']} />
+      <Node x={8} y={134} w={108} title="Buy tally" sub={['TOWN per wallet,', 'per day']} />
+      <Node x={126} y={204} w={94} title="Treasury" sub={['90% to stakers', '10% owner']} />
 
       {/* The sell fee (CR-66) */}
       <Node x={DYN.x} y={DYN.y} w={DYN.w} title="Dynamic" sub={DYN_TEXT} />
       {/* ETH days: the sell fee's ETH goes to the treasury, like the buy fee */}
-      <path d={`M${DYN.x} 262H198V296`} class="fg-eth" marker-end="url(#fg-arrow-eth)" />
-      <text x={DYN.x - 4} y="255" class="fg-label" text-anchor="end">
+      <path d={`M${DYN.x} 166H198V200`} class="fg-eth" marker-end="url(#fg-arrow-eth)" />
+      <text x={DYN.x - 4} y="159" class="fg-label" text-anchor="end">
         on ETH days
       </text>
       {/* Burning days: the TOWN is destroyed */}
@@ -259,18 +251,18 @@ export function FlowGraphic() {
       </text>
 
       {/* Treasury to stakers, tally to rebates */}
-      <Down ax={146} y1={370} y2={424} kind="eth" lines={['daily,', 'as WETH']} />
-      <Down ax={28} y1={300} y2={354} kind="town" lines={['from the', 'next day']} />
-      <Node x={126} y={428} w={94} title="Stakers" sub={['streamed over', '7 days']} />
-      <Node x={8} y={358} w={108} title="Rebates" sub={['5% to 5.5%', 'of buys, from', 'the reserve']} />
+      <Down ax={146} y1={274} y2={328} kind="eth" lines={['daily,', 'as WETH']} />
+      <Down ax={28} y1={204} y2={258} kind="town" lines={['from the', 'next day']} />
+      <Node x={126} y={332} w={94} title="Stakers" sub={['streamed over', '7 days']} />
+      <Node x={8} y={262} w={108} title="Rebates" sub={['5% to 5.5%', 'of buys, from', 'the reserve']} />
 
       {/* Legend */}
-      <path d="M16 460h22" class="fg-eth" />
-      <text x="44" y="464" class="fg-sub">ETH, WETH</text>
-      <path d="M16 480h22" class="fg-town" />
-      <text x="44" y="484" class="fg-sub">TOWN</text>
-      <path d="M16 500h22" class="fg-data" />
-      <text x="44" y="504" class="fg-sub">record</text>
+      <path d="M16 364h22" class="fg-eth" />
+      <text x="44" y="368" class="fg-sub">ETH, WETH</text>
+      <path d="M16 384h22" class="fg-town" />
+      <text x="44" y="388" class="fg-sub">TOWN</text>
+      <path d="M16 404h22" class="fg-data" />
+      <text x="44" y="408" class="fg-sub">record</text>
     </svg>
   );
 }

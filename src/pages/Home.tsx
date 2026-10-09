@@ -30,9 +30,10 @@ export function Home() {
             </p>
             <h1>TOWN, the first token that rewards buyers and stakers.</h1>
             <p class="hero-summary">
-              Every trade in the TOWN pool on Uniswap v4 passes through TownHook, a contract managed by no one: it sends 2% of each buy, charged in ETH, to
-              the treasury, records the TOWN bought, and takes 2% of every TOWN sold into the pool: burned, or to the treasury in ETH. Every day, buyers claim up to 5.5% of their TOWN buys back
-              from a 500,000,000 TOWN reserve. 90% of the treasury’s ETH funds staker rewards, which stream to stakers every day as WETH.
+              Every trade in the $TOWN pool on Uniswap v4 passes through TownHook, a contract managed by no one: it sends 2% of every buy, charged in ETH, to
+              the treasury, records the TOWN bought, and dynamically takes 2% of every TOWN sold into the pool: burned when it collects $TOWN, or to the
+              treasury when it collects ETH. Every day, buyers claim up to 5.5% of $TOWN bought from a 500,000,000 TOWN reserve. 90% of the treasury’s ETH
+              funds staker rewards, which stream to stakers every day as WETH.
             </p>
             <div class="btn-row hero-cta">
               <a class="btn btn-primary btn-large" href="#/trade">
@@ -65,37 +66,22 @@ export function Home() {
         </div>
       </section>
 
-      {/* Why $TOWN? The problem, and UpTown's answer (CR-66 text; CR-68: styled like "How it works", no card) */}
+      {/* Why $TOWN? The problem, and UpTown's answer (CR-69: the heading and two plain paragraphs, in the hero description's text size) */}
       <section class="section" aria-labelledby="why-title">
         <div class="wrap">
           <h2 id="why-title" class="section-title">
             Why $TOWN?
           </h2>
-          <div class="how">
-            <div class="steps">
-              <div>
-                <p>
-                  Most projects that earn revenue have no system that keeps it coming. Attention fades after launch, trading slows, and the project fades
-                  with it.
-                </p>
-              </div>
-              <div>
-                <h3>UpTown’s answer: a flywheel in the pool itself</h3>
-                <p>Every trade in the TOWN pool passes through TownHook, a contract no one controls. It turns trading into reasons to take part:</p>
-                <ul class="plain-list">
-                  <li>
-                    <strong>Buy</strong> and claim a TOWN rebate the next day.
-                  </li>
-                  <li>
-                    <strong>Stake</strong> and receive a daily share of the ETH the treasury collects.
-                  </li>
-                  <li>
-                    <strong>Sell</strong>, and 2% is burned or sent to the treasury in ETH.
-                  </li>
-                </ul>
-                <p>The rules are written into the contracts and cannot be changed.</p>
-              </div>
-            </div>
+          <div class="why">
+            <p>
+              Most projects that earn revenue have no system that keeps it coming. Attention fades after launch, trading slows, and the project fades with
+              it.
+            </p>
+            <p>
+              UpTown answers with a flywheel in the pool itself. Every trade in the TOWN pool passes through TownHook, a contract no one controls, and it
+              turns trading into reasons to take part: buyers claim a TOWN rebate the next day, stakers receive a daily share of the ETH the treasury
+              collects, and on every sale 2% is burned or sent to the treasury in ETH. The rules are written into the contracts and cannot be changed.
+            </p>
           </div>
         </div>
       </section>

@@ -584,10 +584,15 @@ main:focus {
   line-height: 1.15;
   margin-bottom: 16px;
 }
-.hero-summary {
+/* "Why $TOWN?" uses the hero description's text size, line height and colour (CR-69). */
+.hero-summary,
+.why p {
   color: var(--text-2);
   max-width: 720px;
   margin-bottom: 0;
+}
+.why p + p {
+  margin-top: 12px;
 }
 .hero-summary strong {
   color: var(--text);
@@ -638,7 +643,8 @@ main:focus {
   .hero h1 {
     font-size: 34px;
   }
-  .hero-summary {
+  .hero-summary,
+  .why p {
     font-size: 15px;
   }
 }
@@ -711,7 +717,6 @@ main:focus {
   display: grid;
   gap: 16px;
 }
-/* Only the steps themselves: "Why $TOWN?" (CR-68) uses .steps with a bulleted list inside. */
 .steps > li {
   display: grid;
   grid-template-columns: 28px 1fr;
@@ -739,10 +744,6 @@ main:focus {
 .steps p {
   color: var(--text-2);
   font-size: 13px;
-}
-.steps .plain-list {
-  font-size: 13px;
-  margin-bottom: 10px;
 }
 .flow-card {
   margin: 0;
