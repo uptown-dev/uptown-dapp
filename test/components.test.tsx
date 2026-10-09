@@ -50,13 +50,12 @@ import {
 } from '../src/lib/wallet';
 import { COMMA_MESSAGE, amountError, parseAmount } from '../src/lib/amount';
 import { minCheck, rpcBehind } from '../src/lib/derive';
-import { StaleNotice, WalletChoices } from '../src/app';
 import { dayName, fmtDateTime, fmtTown } from '../src/lib/format';
 import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
-import { App, navItems } from '../src/app';
+import { App, StaleNotice, WalletChoices, navItems } from '../src/app';
 import type { Address, CandidateCheck, ChainState, OwnerState, WalletState } from '../src/data/types';
 
 const log = document.getElementById('log')!;
