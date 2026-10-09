@@ -1,11 +1,25 @@
 // Every figure the site shows, read from contract views through Multicall3, all at one block
 // (spec "Frontend -> Data rule": no event scanning, no indexer, no server). Three short rounds,
-// each a single eth_call: the global views and the current day; then the day-dependent views
-// (the limits, today's total, the wallet's tally per day); then the views for the wallet's days.
+// each a single eth_call: the global views, the current day and the staking contract the Treasury
+// pays; then the views that depend on those (that contract's figures, the limits, today's rate and
+// the days behind it, the wallet's tally per day, the announced staking contract's answers, the
+// wallet's vaults in replaced staking contracts); then the views for the wallet's days.
 import { createPublicClient, defineChain, encodeAbiParameters, http, type Hex, type PublicClient } from 'viem';
-import { HOOK_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
-import type { Network } from './network';
-import { PriceSource, TIERS, type Address, type ChainState, type CycleInfo, type PerTier, type StreamInfo, type Tier, type WalletState } from '../data/types';
+import { CANDIDATE_ABI, HOOK_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
+import type { Network, StakingRecord } from './network';
+import {
+  PriceSource,
+  TIERS,
+  type Address,
+  type CandidateCheck,
+  type ChainState,
+  type CycleInfo,
+  type OldVault,
+  type PerTier,
+  type StreamInfo,
+  type Tier,
+  type WalletState,
+} from '../data/types';
 
 const MULTICALL3_ABI = [
   {
@@ -23,6 +37,8 @@ const INITIAL_SUPPLY = 1_000_000_000n * 10n ** 18n;
 const MAX_UINT = 2n ** 256n - 1n;
 /** The first cycle of each 100-day epoch, for the halving schedule. */
 const EPOCH_FIRSTS = [0, 100, 200, 300, 400, 500, 600];
+/** The bytes an EIP-7702 delegated wallet's code begins with (CR-49). */
+const DELEGATION_PREFIX = '0xef0100';
 
 /** A viem chain for the network module's chain, with Multicall3. */
 export function viemChain(n: Network) {
@@ -81,22 +97,16 @@ class Reader {
     if (r.status === 'success') return r.result as T;
     throw new Error(`reading ${this.names[i]} failed: ${r.error.message.split('\n')[0]}`);
   }
-  /** The value, or null where the view reverted (vault prices without a price, CL-34). */
+  /** The value, or null where the view reverted (vault prices without a price, CL-34; an announced contract's answers, CR-49). */
   maybe<T>(i: number): T | null {
     const r = this.results[i];
     return r.status === 'success' ? (r.result as T) : null;
-  }
-  /** True when the call did not revert (for calls that return nothing). */
-  ok(i: number): boolean {
-    return this.results[i].status === 'success';
   }
 }
 
 const num = (v: unknown) => Number(v as bigint);
 const isZero = (a: Address) => /^0x0{40}$/i.test(a);
-
-/** The spec's claim delay (CR-44: day c opens on day c + 1), used only on day 0, before the contract can be asked. */
-const SPEC_CLAIM_DELAY_DAYS = 1;
+const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
 /** Per wallet, the tally of past days never changes (only today's grows), so it is kept here. */
 const pastTally = new Map<string, { through: number; bought: Record<number, bigint> }>();
@@ -113,12 +123,12 @@ export async function readAll(client: PublicClient, n: Network, account: Address
   const block = await client.getBlock({ blockTag: 'latest' });
   const bn = block.number;
 
-  // Round 1: global views, constants, the current day, and the wallet's basics.
+  // Round 1: global views, constants, the current day, the staking contract the Treasury pays, and
+  // the wallet's basics.
   const a = new Batch();
   const H = (fn: string, args?: unknown[]) => a.add(`TownHook.${fn}`, { address: k.TownHook, abi: HOOK_ABI, functionName: fn, args });
   const R = (fn: string, args?: unknown[]) => a.add(`BuyerRewards.${fn}`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: fn, args });
   const T = (fn: string, args?: unknown[]) => a.add(`Treasury.${fn}`, { address: k.Treasury, abi: TREASURY_ABI, functionName: fn, args });
-  const S = (fn: string, args?: unknown[]) => a.add(`TownStaking.${fn}`, { address: k.TownStaking, abi: STAKING_ABI, functionName: fn, args });
   const ethBalance = (who: Address) => a.add(`getEthBalance(${who})`, { address: n.uniswap!.multicall3, abi: MULTICALL3_ABI, functionName: 'getEthBalance', args: [who] });
 
   const i = {
@@ -133,6 +143,10 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     BURN_FLOOR: H('BURN_FLOOR'),
     RESERVE: R('RESERVE'),
     CLAIM_FEE_BPS: R('CLAIM_FEE_BPS'),
+    RATE_BASE_BPS: R('RATE_BASE_BPS'),
+    RATE_BUY_SPAN_BPS: R('RATE_BUY_SPAN_BPS'),
+    RATE_SELL_SPAN_BPS: R('RATE_SELL_SPAN_BPS'),
+    LEAN_CYCLES: R('LEAN_CYCLES'),
     rewardsCycle: R('currentCycle'),
     totalEmitted: R('totalEmitted'),
     totalClaimedGross: R('totalClaimedGross'),
@@ -154,11 +168,52 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     totalOwnerEthWithdrawn: T('totalOwnerEthWithdrawn'),
     totalTownWithdrawn: T('totalTownWithdrawn'),
     OWNER_DELAY: T('OWNER_DELAY'),
+    APPLY_WINDOW: T('APPLY_WINDOW'),
+    weth: T('weth'),
     staking: T('staking'),
     pendingStaking: T('pendingStaking'),
     stakingEffectiveAt: T('stakingEffectiveAt'),
     pauseEffectiveAt: T('pauseEffectiveAt'),
     paused: T('paused'),
+    unlockTime: a.add('LPVault.unlockTime', { address: k.LPVault, abi: LPVAULT_ABI, functionName: 'unlockTime' }),
+    lockDuration: a.add('LPVault.lockDuration', { address: k.LPVault, abi: LPVAULT_ABI, functionName: 'lockDuration' }),
+  };
+  const w = account
+    ? {
+        eth: ethBalance(account),
+        town: a.add('UpTownToken.balanceOf(wallet)', { address: k.UpTownToken, abi: TOKEN_ABI, functionName: 'balanceOf', args: [account] }),
+        permit2Allowance: a.add('UpTownToken.allowance(wallet, Permit2)', {
+          address: k.UpTownToken,
+          abi: TOKEN_ABI,
+          functionName: 'allowance',
+          args: [account, n.uniswap.permit2],
+        }),
+        routerAllowance: a.add('Permit2.allowance(wallet, TOWN, router)', {
+          address: n.uniswap.permit2,
+          abi: PERMIT2_ABI,
+          functionName: 'allowance',
+          args: [account, k.UpTownToken, n.uniswap.universalRouter],
+        }),
+      }
+    : null;
+  const r1 = await a.run(client, n, bn);
+
+  const current = num(r1.get(i.rewardsCycle));
+  // The staking contract the Treasury pays now (CR-46, CR-50). Every staking figure, the vaults the
+  // site offers and their approvals come from this contract, whatever the address file names.
+  const stakingAddress = r1.get<Address>(i.staking);
+  const pendingRaw = r1.get<Address>(i.pendingStaking);
+  const pendingStaking = isZero(pendingRaw) ? null : pendingRaw;
+  const LEAN_CYCLES = num(r1.get(i.LEAN_CYCLES));
+
+  // Round 2: the current staking contract's figures and the wallet's vault in it; the limits for
+  // today, the next nine days and each epoch's first day; today's total, rate and lean, and the
+  // bought and sold totals of the days the lean is measured over (CR-47); the wallet's tally for
+  // every day since launch (past days from memory once read); the announced staking contract's
+  // answers (CR-49); the wallet's vaults in replaced staking contracts (CR-50).
+  const b = new Batch();
+  const S = (fn: string, args?: unknown[]) => b.add(`TownStaking.${fn}`, { address: stakingAddress, abi: STAKING_ABI, functionName: fn, args });
+  const si = {
     TOTAL_WEIGHT: S('TOTAL_WEIGHT'),
     STREAM_LENGTH: S('STREAM_LENGTH'),
     PRICE_MAX_AGE: S('PRICE_MAX_AGE'),
@@ -173,8 +228,6 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     totalRewardsNotified: S('totalRewardsNotified'),
     totalRewardsPaid: S('totalRewardsPaid'),
     totalVaultFees: S('totalVaultFees'),
-    unlockTime: a.add('LPVault.unlockTime', { address: k.LPVault, abi: LPVAULT_ABI, functionName: 'unlockTime' }),
-    lockDuration: a.add('LPVault.lockDuration', { address: k.LPVault, abi: LPVAULT_ABI, functionName: 'lockDuration' }),
   };
   const perTier = (fn: string) => {
     const out = {} as PerTier<number>;
@@ -191,48 +244,24 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     tierNotified: perTier('tierNotified'),
     tierPaid: perTier('tierPaid'),
   };
-  const w = account
+  const ws = account
     ? {
-        eth: ethBalance(account),
-        town: a.add('UpTownToken.balanceOf(wallet)', { address: k.UpTownToken, abi: TOKEN_ABI, functionName: 'balanceOf', args: [account] }),
-        allowance: a.add('UpTownToken.allowance(wallet, TownStaking)', {
-          address: k.UpTownToken,
-          abi: TOKEN_ABI,
-          functionName: 'allowance',
-          args: [account, k.TownStaking],
-        }),
-        permit2Allowance: a.add('UpTownToken.allowance(wallet, Permit2)', {
-          address: k.UpTownToken,
-          abi: TOKEN_ABI,
-          functionName: 'allowance',
-          args: [account, n.uniswap.permit2],
-        }),
-        routerAllowance: a.add('Permit2.allowance(wallet, TOWN, router)', {
-          address: n.uniswap.permit2,
-          abi: PERMIT2_ABI,
-          functionName: 'allowance',
-          args: [account, k.UpTownToken, n.uniswap.universalRouter],
-        }),
+        allowance: b.add('UpTownToken.allowance(wallet, staking)', { address: k.UpTownToken, abi: TOKEN_ABI, functionName: 'allowance', args: [account, stakingAddress] }),
         position: S('positionOf', [account]),
         earned: S('earned', [account]),
       }
     : null;
-  const r1 = await a.run(client, n, bn);
 
-  const current = num(r1.get(i.rewardsCycle));
-  const tierMap = <V>(idx: PerTier<number>, f: (v: unknown) => V, maybe = false) => {
-    const out = {} as PerTier<V>;
-    for (const t of TIERS) out[t] = maybe ? (r1.maybe(idx[t]) === null ? (null as V) : f(r1.maybe(idx[t]))) : f(r1.get(idx[t]));
-    return out;
-  };
-  const position = w ? r1.get<readonly [number, bigint]>(w.position) : null;
-
-  // Round 2: the limits for today and the next nine days and each epoch's first day, today's
-  // total, and the wallet's tally for every day since launch (past days from memory once read).
-  const b = new Batch();
   const capDays = [...new Set([...Array.from({ length: 10 }, (_, j) => current + j), ...EPOCH_FIRSTS])];
   const capIdx = capDays.map((c) => b.add(`BuyerRewards.cap(${c})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'cap', args: [BigInt(c)] }));
   const todayTotalIdx = b.add(`TownHook.cycleTotal(${current})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'cycleTotal', args: [BigInt(current)] });
+  // Today's rate and lean (CR-47), and the days they are measured over: c - 1 to c - LEAN_CYCLES.
+  const leanDays = Array.from({ length: LEAN_CYCLES }, (_, j) => current - 1 - j).filter((c) => c >= 0);
+  const rateIdx = b.add(`BuyerRewards.rateBps(${current})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'rateBps', args: [BigInt(current)] });
+  const leanIdx = b.add(`BuyerRewards.lean(${current})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'lean', args: [BigInt(current)] });
+  const leanTotalIdx = leanDays.map((c) => b.add(`TownHook.cycleTotal(${c})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'cycleTotal', args: [BigInt(c)] }));
+  const leanSoldIdx = leanDays.map((c) => b.add(`TownHook.sold(${c})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'sold', args: [BigInt(c)] }));
+
   let boughtIdx: { c: number; i: number }[] = [];
   let known: Record<number, bigint> = {};
   if (account) {
@@ -246,20 +275,32 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       });
     }
   }
-  // The claim delay, from the contract (CR-44): ask BuyerRewards whether it would finalise the day
-  // before today, and the day before that, by running `finalize` as a read (eth_call; nothing is
-  // sent). The smallest k it accepts for day `current - k` is the delay: day c opens on c + k. These
-  // calls come last in the round because an accepted one changes state inside this one read.
-  const probeIdx = [1, 2]
-    .filter((delay) => current - delay >= 0)
-    .map((delay) => ({
-      delay,
-      i: b.add(`BuyerRewards.finalize(${current - delay}) as a read`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'finalize', args: [BigInt(current - delay)] }),
-    }));
-  const r2 = await b.run(client, n, bn);
-  const accepted = probeIdx.find((p) => r2.ok(p.i));
-  // Day 0 has no ended day to ask about: then the spec's value, one day (CR-44).
-  const claimDelay = accepted ? { days: accepted.delay, fromContract: true } : { days: SPEC_CLAIM_DELAY_DAYS, fromContract: false };
+  // The announced staking contract, asked which Treasury and which WETH it names (CR-49). Anything
+  // can sit at that address, so a failed answer is a finding to show, not a read error.
+  const candIdx = pendingStaking
+    ? {
+        treasury: b.add('announced staking contract.treasury()', { address: pendingStaking, abi: CANDIDATE_ABI, functionName: 'treasury' }),
+        weth: b.add('announced staking contract.weth()', { address: pendingStaking, abi: CANDIDATE_ABI, functionName: 'weth' }),
+      }
+    : null;
+  // The wallet's vaults in the staking contracts the Treasury no longer pays (CR-50), from the
+  // network module's hand-kept list.
+  const oldIdx = account
+    ? n.stakingContracts
+        .filter((r) => !same(r.address, stakingAddress))
+        .map((r) => ({
+          record: r,
+          position: b.add(`staking ${r.address}.positionOf(wallet)`, { address: r.address, abi: STAKING_ABI, functionName: 'positionOf', args: [account] }),
+          earned: b.add(`staking ${r.address}.earned(wallet)`, { address: r.address, abi: STAKING_ABI, functionName: 'earned', args: [account] }),
+        }))
+    : [];
+  // The announced contract's code, at the same block, read beside round 2: a wallet with an
+  // EIP-7702 delegation fails the check (CR-49).
+  const [r2, candidateCode] = await Promise.all([
+    b.run(client, n, bn),
+    pendingStaking ? client.getCode({ address: pendingStaking, blockNumber: bn }) : Promise.resolve(undefined),
+  ]);
+
   const cap: Record<number, bigint> = {};
   capDays.forEach((c, j) => (cap[c] = r2.get<bigint>(capIdx[j])));
   const bought: Record<number, bigint> = { ...known };
@@ -273,9 +314,29 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     pastTally.set(`${n.chainId}:${account}`, { through: current - 1, bought: past });
   }
   boughtIdx = [];
+  const leanTotals: Record<number, bigint> = {};
+  const leanSold: Record<number, bigint> = {};
+  leanDays.forEach((c, j) => {
+    leanTotals[c] = r2.get<bigint>(leanTotalIdx[j]);
+    leanSold[c] = r2.get<bigint>(leanSoldIdx[j]);
+  });
+  const position = ws ? r2.get<readonly [number, bigint]>(ws.position) : null;
+  const candidate: CandidateCheck | null =
+    pendingStaking && candIdx
+      ? checkCandidate(pendingStaking, r2.maybe<Address>(candIdx.treasury), r2.maybe<Address>(candIdx.weth), candidateCode, k.Treasury, r1.get<Address>(i.weth))
+      : null;
+  const oldVaults: OldVault[] = [];
+  for (const o of oldIdx) {
+    const pos = r2.maybe<readonly [number, bigint]>(o.position);
+    const earned = r2.maybe<bigint>(o.earned) ?? 0n;
+    const tier = pos ? (Number(pos[0]) as 0 | Tier) : 0;
+    const amount = pos ? pos[1] : 0n;
+    if (tier !== 0 || amount > 0n || earned > 0n) oldVaults.push({ address: o.record.address, replacedOn: o.record.replacedOn, positionOf: { tier, amount }, earned });
+  }
 
-  // Round 3: for each day the wallet bought: claimed, the day's figures, and the claimable total
-  // (BuyerRewards.claimable skips days not ready or already claimed, CL-27); upgrade prices.
+  // Round 3: for each day the wallet bought: claimed, the day's figures, its rate (CR-47), and the
+  // claimable total (BuyerRewards.claimable skips days not ready or already claimed, CL-27); upgrade
+  // prices in the current staking contract.
   const c3 = new Batch();
   const days = Object.keys(bought)
     .map(Number)
@@ -288,24 +349,37 @@ export async function readAll(client: PublicClient, n: Network, account: Address
   const dayCapIdx = days
     .filter((c) => !(c in cap))
     .map((c) => ({ c, i: c3.add(`BuyerRewards.cap(${c})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'cap', args: [BigInt(c)] }) }));
+  // The rate of each of the wallet's past days: the rate its pot is (or will be) set at.
+  const dayRateIdx = days
+    .filter((c) => c !== current)
+    .map((c) => ({ c, i: c3.add(`BuyerRewards.rateBps(${c})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'rateBps', args: [BigInt(c)] }) }));
   const claimableIdx =
     account && days.length
       ? c3.add('BuyerRewards.claimable(wallet, days)', { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'claimable', args: [account, days.map(BigInt)] })
       : -1;
   const upIdx: Partial<PerTier<number>> = {};
   if (account && position && position[0] !== 0) {
-    for (const t of TIERS) if (t > position[0]) upIdx[t] = c3.add(`TownStaking.upgradePriceWei(wallet, ${t})`, { address: k.TownStaking, abi: STAKING_ABI, functionName: 'upgradePriceWei', args: [account, t] });
+    for (const t of TIERS)
+      if (t > position[0])
+        upIdx[t] = c3.add(`TownStaking.upgradePriceWei(wallet, ${t})`, { address: stakingAddress, abi: STAKING_ABI, functionName: 'upgradePriceWei', args: [account, t] });
   }
   const r3 = await c3.run(client, n, bn);
 
   for (const { c, i: idx } of dayCapIdx) cap[c] = r3.get<bigint>(idx);
+  const rateBps: Record<number, number> = { [current]: num(r2.get(rateIdx)) };
+  for (const { c, i: idx } of dayRateIdx) rateBps[c] = num(r3.get(idx));
   const cycleInfo: Record<number, CycleInfo> = {};
   days.forEach((c, j) => {
     const [total, emitted, finalized] = r3.get<readonly [bigint, bigint, boolean]>(infoIdx[j]);
     cycleInfo[c] = { total, emitted, finalized };
   });
-  const ps = r1.get<readonly [bigint, number, bigint]>(i.priceStatus);
-  const pending = r1.get<Address>(i.pendingFeed);
+  const tierMap = <V>(idx: PerTier<number>, f: (v: unknown) => V, maybe = false) => {
+    const out = {} as PerTier<V>;
+    for (const t of TIERS) out[t] = maybe ? (r2.maybe(idx[t]) === null ? (null as V) : f(r2.maybe(idx[t]))) : f(r2.get(idx[t]));
+    return out;
+  };
+  const ps = r2.get<readonly [bigint, number, bigint]>(si.priceStatus);
+  const pendingFeed = r2.get<Address>(si.pendingFeed);
   const ldc = r1.get<bigint>(i.lastDistributedCycle);
 
   const chain: ChainState = {
@@ -321,7 +395,8 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       ANTI_SNIPE_START_BPS: num(r1.get(i.ANTI_SNIPE_START_BPS)),
       ANTI_SNIPE_DURATION: num(r1.get(i.ANTI_SNIPE_DURATION)),
       BURN_FLOOR: r1.get(i.BURN_FLOOR),
-      cycleTotal: { [current]: r2.get<bigint>(todayTotalIdx) },
+      cycleTotal: { ...leanTotals, [current]: r2.get<bigint>(todayTotalIdx) },
+      sold: leanSold,
     },
     rewards: {
       RESERVE: r1.get(i.RESERVE),
@@ -333,7 +408,12 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       totalClaimedGross: r1.get(i.totalClaimedGross),
       totalPaidToBuyers: r1.get(i.totalPaidToBuyers),
       totalFeesToTreasury: r1.get(i.totalFeesToTreasury),
-      claimDelay,
+      RATE_BASE_BPS: num(r1.get(i.RATE_BASE_BPS)),
+      RATE_BUY_SPAN_BPS: num(r1.get(i.RATE_BUY_SPAN_BPS)),
+      RATE_SELL_SPAN_BPS: num(r1.get(i.RATE_SELL_SPAN_BPS)),
+      LEAN_CYCLES,
+      rateBps,
+      lean: { [current]: r2.get<bigint>(leanIdx) },
     },
     treasury: {
       balance: r1.get(i.treasuryBalance),
@@ -352,25 +432,29 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       totalOwnerEthWithdrawn: r1.get(i.totalOwnerEthWithdrawn),
       totalTownWithdrawn: r1.get(i.totalTownWithdrawn),
       OWNER_DELAY: num(r1.get(i.OWNER_DELAY)),
-      staking: r1.get(i.staking),
-      pendingStaking: isZero(r1.get<Address>(i.pendingStaking)) ? null : r1.get<Address>(i.pendingStaking),
+      staking: stakingAddress,
+      pendingStaking,
       stakingEffectiveAt: num(r1.get(i.stakingEffectiveAt)),
       pauseEffectiveAt: num(r1.get(i.pauseEffectiveAt)),
       paused: r1.get(i.paused),
+      APPLY_WINDOW: num(r1.get(i.APPLY_WINDOW)),
+      weth: r1.get(i.weth),
+      candidate,
     },
     staking: {
+      address: stakingAddress,
       tierUsd: tierMap(ti.tierUsd, num),
       tierWeight: tierMap(ti.tierWeight, num),
-      TOTAL_WEIGHT: num(r1.get(i.TOTAL_WEIGHT)),
-      STREAM_LENGTH: num(r1.get(i.STREAM_LENGTH)),
-      PRICE_MAX_AGE: num(r1.get(i.PRICE_MAX_AGE)),
-      FALLBACK_MAX_AGE: num(r1.get(i.FALLBACK_MAX_AGE)),
-      FEED_CHANGE_DELAY: num(r1.get(i.FEED_CHANGE_DELAY)),
+      TOTAL_WEIGHT: num(r2.get(si.TOTAL_WEIGHT)),
+      STREAM_LENGTH: num(r2.get(si.STREAM_LENGTH)),
+      PRICE_MAX_AGE: num(r2.get(si.PRICE_MAX_AGE)),
+      FALLBACK_MAX_AGE: num(r2.get(si.FALLBACK_MAX_AGE)),
+      FEED_CHANGE_DELAY: num(r2.get(si.FEED_CHANGE_DELAY)),
       priceStatus: { price: ps[0], source: Number(ps[1]) as PriceSource, updatedAt: Number(ps[2]) },
-      fallbackPrice: r1.get(i.fallbackPrice),
-      fallbackPriceSetAt: num(r1.get(i.fallbackPriceSetAt)),
-      pendingFeed: isZero(pending) ? null : pending,
-      pendingFeedEffectiveAt: num(r1.get(i.pendingFeedEffectiveAt)),
+      fallbackPrice: r2.get(si.fallbackPrice),
+      fallbackPriceSetAt: num(r2.get(si.fallbackPriceSetAt)),
+      pendingFeed: isZero(pendingFeed) ? null : pendingFeed,
+      pendingFeedEffectiveAt: num(r2.get(si.pendingFeedEffectiveAt)),
       vaultPriceWei: tierMap(ti.vaultPriceWei, (v) => v as bigint, true),
       tierStaked: tierMap(ti.tierStaked, (v) => v as bigint),
       tierVaults: tierMap(ti.tierVaults, num),
@@ -380,16 +464,16 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       }),
       tierNotified: tierMap(ti.tierNotified, (v) => v as bigint),
       tierPaid: tierMap(ti.tierPaid, (v) => v as bigint),
-      totalStaked: r1.get(i.totalStaked),
-      totalRewardsNotified: r1.get(i.totalRewardsNotified),
-      totalRewardsPaid: r1.get(i.totalRewardsPaid),
-      totalVaultFees: r1.get(i.totalVaultFees),
+      totalStaked: r2.get(si.totalStaked),
+      totalRewardsNotified: r2.get(si.totalRewardsNotified),
+      totalRewardsPaid: r2.get(si.totalRewardsPaid),
+      totalVaultFees: r2.get(si.totalVaultFees),
     },
     lpVault: { unlockTime: num(r1.get(i.unlockTime)), lockDuration: num(r1.get(i.lockDuration)) },
   };
 
   let wallet: WalletState | null = null;
-  if (account && w && position) {
+  if (account && w && ws && position) {
     const claimed: Record<number, boolean> = {};
     days.forEach((c, j) => (claimed[c] = r3.get<boolean>(claimedIdx[j])));
     const upgradePriceWei: Partial<PerTier<bigint | null>> = {};
@@ -398,7 +482,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       address: account,
       ethBalance: r1.get(w.eth),
       townBalance: r1.get(w.town),
-      townAllowanceToStaking: r1.get(w.allowance),
+      townAllowanceToStaking: r2.get(ws.allowance),
       townAllowanceToPermit2: r1.get(w.permit2Allowance),
       routerAllowance: (() => {
         const [amount, expiration] = r1.get<readonly [bigint, number]>(w.routerAllowance);
@@ -408,11 +492,64 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       claimed,
       claimable: claimableIdx >= 0 ? r3.get<bigint>(claimableIdx) : 0n,
       positionOf: { tier: Number(position[0]) as 0 | Tier, amount: position[1] },
-      earned: r1.get(w.earned),
+      earned: r2.get(ws.earned),
       upgradePriceWei,
+      oldVaults,
     };
   }
   return { chain, wallet };
+}
+
+/**
+ * The site's own check of an announced staking contract (CR-49): it must name this Treasury as
+ * `treasury()` and the Treasury's WETH as `weth()`, and its code must not be an EIP-7702
+ * delegation. These are the checks the Treasury makes when the contract is announced and again
+ * when it is applied, so a contract that fails here would be refused at application.
+ */
+export function checkCandidate(
+  address: Address,
+  treasuryAnswer: Address | null,
+  wethAnswer: Address | null,
+  code: Hex | undefined,
+  treasury: Address,
+  weth: Address,
+): CandidateCheck {
+  const delegated = !!code && code.toLowerCase().startsWith(DELEGATION_PREFIX);
+  return {
+    address,
+    treasury: treasuryAnswer,
+    weth: wethAnswer,
+    delegated,
+    verified: !delegated && same(treasuryAnswer, treasury) && same(wethAnswer, weth),
+  };
+}
+
+/**
+ * The same check, asked of any one address on its own (the latest block). The page's read uses
+ * `checkCandidate` inside its multicall; the site's tests use this to point the check at any
+ * address, for example WETH.
+ */
+export async function verifyCandidate(client: PublicClient, address: Address, treasury: Address, weth: Address): Promise<CandidateCheck> {
+  const ask = (functionName: 'treasury' | 'weth') =>
+    client.readContract({ address, abi: CANDIDATE_ABI, functionName }).then(
+      (v) => v as Address,
+      () => null,
+    );
+  const [t, wt, code] = await Promise.all([ask('treasury'), ask('weth'), client.getCode({ address })]);
+  return checkCandidate(address, t, wt, code, treasury, weth);
+}
+
+/** A wallet's vault in each listed staking contract, read now (CR-50); the page's read does the same inside its multicall. */
+export async function readVaults(client: PublicClient, records: StakingRecord[], wallet: Address): Promise<OldVault[]> {
+  return Promise.all(
+    records.map(async (r) => {
+      const [pos, earned] = await Promise.all([
+        client.readContract({ address: r.address, abi: STAKING_ABI, functionName: 'positionOf', args: [wallet] }) as Promise<readonly [number, bigint]>,
+        client.readContract({ address: r.address, abi: STAKING_ABI, functionName: 'earned', args: [wallet] }) as Promise<bigint>,
+      ]);
+      return { address: r.address, replacedOn: r.replacedOn, positionOf: { tier: Number(pos[0]) as 0 | Tier, amount: pos[1] }, earned };
+    }),
+  );
 }
 
 /** The TOWN pool's key (spec "Pool and launch position"): native ETH, TOWN, 0.5%, spacing 60, TownHook. */

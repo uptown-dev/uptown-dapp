@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- The same RPC hosts as the site (vite.config.ts checks them); the tests read only the local node. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; connect-src 'self' http://127.0.0.1:8545 https://ethereum-rpc.publicnode.com https://ethereum-sepolia-rpc.publicnode.com; object-src 'none'; base-uri 'self'" />
+    <title>UpTown component tests</title>
+  </head>
+  <body>
+    <pre id="log"></pre>
+    <div id="stage"></div>
+    <script type="module" src="/test/components.test.tsx"></script>
+  </body>
+</html>

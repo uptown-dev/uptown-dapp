@@ -1,9 +1,21 @@
 import { useApp, useChain, useTx, Card, Fig, Figures, Notice, PageHead, TxStatus, Verify } from '../components/ui';
 import { applyStakingTx, pokeTx } from '../lib/actions';
-import { TIERS } from '../data/types';
-import { budgetState, burned, daysUntil, forStakers, hookFeesReceived, leftToBurn, pausePending, reserveUnscheduled, stakingChangeReady, stakingReplaced } from '../lib/derive';
+import { TIERS, type CandidateCheck } from '../data/types';
+import {
+  budgetState,
+  burned,
+  daysUntil,
+  forStakers,
+  hookFeesReceived,
+  leftToBurn,
+  pausePending,
+  reserveUnscheduled,
+  stakingChange,
+  stakingPaidSince,
+  stakingReplaced,
+} from '../lib/derive';
 import { dayName, fmtBps, fmtDate, fmtDateTime, fmtDelay, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUntil, shortAddress } from '../lib/format';
-import { codeUrl, contractUrl, positionUrl, tokenUrl } from '../lib/network';
+import { codeUrl, contractUrl, positionUrl, readUrl, tokenUrl } from '../lib/network';
 
 export function Stats() {
   return (
@@ -130,11 +142,12 @@ function Treasury() {
 }
 
 /**
- * CR-46: the staking contract the treasury pays, and every owner change announced and not yet in
- * effect (a staking replacement, a pause), each with the date it can take effect. A replacement can
- * be applied by anyone once its 2-day wait has passed.
+ * CR-46, CR-48, CR-49: the staking contract the treasury pays, and every owner change announced and
+ * not yet in effect (a staking replacement, a pause), each with the date it can take effect. A
+ * replacement can be applied by anyone from the end of its 2-day wait until its 7-day window
+ * closes, and the site marks it verified once it has checked the contract's own answers.
  */
-function OwnerChanges() {
+export function OwnerChanges() {
   const chain = useChain();
   const { network } = useApp();
   const tx = useTx();
@@ -142,8 +155,11 @@ function OwnerChanges() {
   const now = chain.blockTimestamp;
   const townStaking = network.deployment?.contracts.TownStaking;
   const replaced = stakingReplaced(chain, townStaking);
+  const since = stakingPaidSince(network.stakingContracts, t.staking);
   const pauseAt = pausePending(chain);
-  const ready = stakingChangeReady(chain);
+  const change = stakingChange(chain);
+  const verified = t.candidate?.verified ?? false;
+  const canApply = change?.phase === 'open' && verified;
   const delay = fmtDuration(t.OWNER_DELAY);
   const none = t.pendingStaking === null && pauseAt === null;
   return (
@@ -165,15 +181,16 @@ function OwnerChanges() {
         </p>
         {replaced && (
           <p class="small muted">
-            The owner replaced TownStaking. Every payout from now on goes to this contract; what TownStaking already received keeps streaming there.
+            The owner replaced TownStaking{since !== null ? ` on ${fmtDate(since)}` : ''}. Every payout from now on goes to this contract, and the Stake page
+            offers vaults only in it; what TownStaking already received keeps streaming there.
           </p>
         )}
       </div>
       <div class="pending-changes">
         <p class="poke-title">Pending owner changes</p>
         <p class="small muted">
-          The owner can point the payouts at a new staking contract, or pause them, each only after a public wait of {delay}. Every announced change is
-          listed here.
+          The owner can point the payouts at a new staking contract, or pause them, each only after a public wait of {delay}. A new staking contract must
+          then be applied within {fmtDuration(t.APPLY_WINDOW)}. Every announced change is listed here.
         </p>
         {none ? (
           <p class="pending-none" data-view="Treasury.pendingStaking, Treasury.pauseEffectiveAt">
@@ -181,30 +198,56 @@ function OwnerChanges() {
           </p>
         ) : (
           <ul class="pending-list">
-            {t.pendingStaking !== null && (
-              <li class="pending-item" data-view="Treasury.pendingStaking, Treasury.stakingEffectiveAt">
+            {t.pendingStaking !== null && change && (
+              <li class={`pending-item${change.phase === 'expired' ? ' expired' : ''}`} data-view="Treasury.pendingStaking, stakingEffectiveAt, APPLY_WINDOW">
                 <p class="pending-title">
                   New staking contract <code title={t.pendingStaking}>{shortAddress(t.pendingStaking)}</code>
                   {townStaking && t.pendingStaking.toLowerCase() === townStaking.toLowerCase() ? ' (TownStaking again)' : ''}{' '}
                   <Verify inline links={[{ what: 'the announced staking contract’s code', href: codeUrl(network, t.pendingStaking) }]} />
                 </p>
-                <p class="small muted">
-                  {ready ? 'Can be applied now' : `Can be applied from ${fmtDateTime(t.stakingEffectiveAt)} (in ${fmtUntil(t.stakingEffectiveAt - now)})`}, by
-                  anyone. From then on every payout goes to it; ETH already paid keeps streaming where it is, and no stake moves.
-                </p>
-                <div class="pending-action">
-                  <button
-                    type="button"
-                    class="btn btn-secondary btn-small"
-                    disabled={tx.busy || !ready}
-                    onClick={() =>
-                      void tx.run('Apply', () => applyStakingTx(network), () => 'The new staking contract is in use: every payout from now on goes to it.')
-                    }
-                  >
-                    {tx.busy ? 'Applying…' : 'Apply'}
-                  </button>
-                  {!ready && <span class="small muted">Not yet: the {fmtDelay(t.OWNER_DELAY)} wait has not passed.</span>}
-                </div>
+                {t.candidate && <CandidateMark check={t.candidate} />}
+                {change.phase === 'expired' ? (
+                  <p class="small">
+                    <span class="expired-tag">Expired: the owner must announce again</span>{' '}
+                    <span class="muted">
+                      It was not applied by {fmtDateTime(change.until)}, the end of its {fmtDelay(t.APPLY_WINDOW)} window, so it can no longer be: the
+                      treasury keeps paying the current contract.
+                    </span>
+                  </p>
+                ) : change.phase === 'open' && verified ? (
+                  <p class="small muted">
+                    Can be applied now, by anyone, until {fmtDateTime(change.until)} (in {fmtUntil(change.until - now)}). Treat it as already in effect: from
+                    then on every payout goes to it; ETH already paid keeps streaming where it is, and no stake moves.
+                  </p>
+                ) : change.phase === 'open' ? (
+                  <p class="small muted">
+                    Its wait is over and its window runs until {fmtDateTime(change.until)} (in {fmtUntil(change.until - now)}), but the treasury will refuse it
+                    when anyone tries to apply it, so the payouts stay where they are.
+                  </p>
+                ) : (
+                  <p class="small muted">
+                    Can be applied from {fmtDateTime(change.from)} (in {fmtUntil(change.from - now)}) until {fmtDateTime(change.until)}, by anyone. From then on
+                    every payout goes to it; ETH already paid keeps streaming where it is, and no stake moves.
+                  </p>
+                )}
+                {change.phase !== 'expired' && (
+                  <div class="pending-action">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-small"
+                      disabled={tx.busy || !canApply}
+                      onClick={() =>
+                        void tx.run('Apply', () => applyStakingTx(network), () => 'The new staking contract is in use: every payout from now on goes to it.')
+                      }
+                    >
+                      {tx.busy ? 'Applying…' : 'Apply'}
+                    </button>
+                    {change.phase === 'waiting' && <span class="small muted">Not yet: the {fmtDelay(t.OWNER_DELAY)} wait has not passed.</span>}
+                    {change.phase === 'open' && !verified && (
+                      <span class="small muted">Off: the treasury would refuse it, because it does not look like a staking contract.</span>
+                    )}
+                  </div>
+                )}
               </li>
             )}
             {pauseAt !== null && (
@@ -224,6 +267,38 @@ function OwnerChanges() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * CR-49: the site's own check of an announced staking contract. "Verified" when it names this
+ * treasury as `treasury()` and WETH as `weth()` and is not a delegated wallet; otherwise it does
+ * not look like a staking contract, and the treasury will refuse it when it is applied.
+ */
+export function CandidateMark({ check }: { check: CandidateCheck }) {
+  const { network } = useApp();
+  if (check.verified)
+    return (
+      <p class="candidate-mark" data-view="candidate.treasury(), candidate.weth()">
+        <span class="verified-tag">Verified</span>{' '}
+        <span class="small muted">This site asked it: it names this treasury and WETH, and its code is fixed.</span>
+      </p>
+    );
+  const treasury = network.deployment?.contracts.Treasury;
+  const why = check.delegated
+    ? 'its address is a wallet whose code can be changed'
+    : check.treasury === null
+      ? 'it gives no answer when asked for its treasury'
+      : treasury && check.treasury.toLowerCase() !== treasury.toLowerCase()
+        ? `it names another treasury (${shortAddress(check.treasury)})`
+        : check.weth === null
+          ? 'it gives no answer when asked for its reward token'
+          : `it names another reward token than WETH (${shortAddress(check.weth)})`;
+  return (
+    <p class="candidate-mark" data-view="candidate.treasury(), candidate.weth()">
+      <span class="unverified-tag">Does not look like a staking contract</span>{' '}
+      <span class="small muted">This site asked it: {why}. The treasury will refuse it at application.</span>
+    </p>
   );
 }
 
@@ -254,7 +329,7 @@ function EthFlows() {
       <Verify
         links={[
           { label: 'Treasury', what: 'the Treasury’s running totals', href: contractUrl(network, 'Treasury', 'read') },
-          { label: 'TownStaking', what: 'TownStaking’s vault purchases', href: contractUrl(network, 'TownStaking', 'read') },
+          { label: 'staking', what: 'the staking contract’s vault purchases', href: readUrl(network, chain.staking.address) },
         ]}
       />
     </Card>
@@ -298,6 +373,13 @@ function Staking() {
   const unlock = chain.lpVault.unlockTime;
   return (
     <Card title="Staking and liquidity">
+      <p class="small muted card-lead">
+        Staking figures come from the contract the treasury pays now,{' '}
+        <code data-view="Treasury.staking" title={st.address}>
+          {stakingReplaced(chain, network.deployment?.contracts.TownStaking) ? shortAddress(st.address) : 'TownStaking'}
+        </code>
+        .
+      </p>
       <Figures cols={4}>
         <Fig label="TOWN staked" value={fmtTown(st.totalStaked)} unit="TOWN" view="TownStaking.totalStaked" />
         <Fig label="Vaults" value={fmtInt(vaults)} view="sum of TownStaking.tierVaults" />
@@ -346,7 +428,7 @@ function Staking() {
       </div>
       <Verify
         links={[
-          { label: 'staking totals', what: 'TownStaking’s totals per tier', href: contractUrl(network, 'TownStaking', 'read') },
+          { label: 'staking totals', what: 'the staking contract’s totals per tier', href: readUrl(network, st.address) },
           { label: 'unlock time', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
           { label: 'position NFT', what: 'the liquidity position NFT', href: positionUrl(network) },
         ]}

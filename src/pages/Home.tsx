@@ -1,14 +1,18 @@
 import { useApp, Card, Fig, Figures, Notice, Verify } from '../components/ui';
 import { CheckIcon, EthIcon, FlowGraphic, LockIcon, RebateIcon } from '../components/icons';
-import { burnFloor, burned } from '../lib/derive';
-import { dayName, fmtEth, fmtTown } from '../lib/format';
-import { contractUrl, tokenUrl } from '../lib/network';
+import { afterFeeBps, burnFloor, burned, dayRateBps, rateRange } from '../lib/derive';
+import { dayName, fmtBps, fmtEth, fmtTown, fmtRate } from '../lib/format';
+import { contractUrl, readUrl, tokenUrl } from '../lib/network';
 
 const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell burns 2% of the TOWN sold'];
 
 export function Home() {
   const { chain, network } = useApp();
   const c = chain?.hook.currentCycle ?? null;
+  // Today's rebate rate after the claim fee, BuyerRewards.rateBps(today) (CR-47); before the
+  // contracts are deployed here, the range after the fee.
+  const r = rateRange(chain);
+  const today = chain ? fmtRate(afterFeeBps(chain, dayRateBps(chain, chain.rewards.currentCycle))) : null;
   const town = network.deployment?.contracts.UpTownToken;
   return (
     <>
@@ -68,8 +72,13 @@ export function Home() {
               <RebateIcon size={20} />
             </span>
             <h2>Buy rebates</h2>
-            <p class="feature-number num">up to 4.75%</p>
-            <p>of the TOWN you buy comes back as a TOWN rebate, claimable the next day.</p>
+            <p class="feature-number num" data-view="BuyerRewards.rateBps(today) × (1 - CLAIM_FEE_BPS / 10000)">
+              {today !== null ? `up to ${today} today` : `${fmtRate(afterFeeBps(null, r.low))} to ${fmtRate(afterFeeBps(null, r.high))}`}
+            </p>
+            <p>
+              of the TOWN you buy comes back as a TOWN rebate, after the claim fee, claimable the next day. The rate moves between {fmtBps(r.low)} and{' '}
+              {fmtBps(r.high)} with the last three days’ trading.
+            </p>
             <Verify links={[{ what: 'BuyerRewards’ reserve and running totals', href: contractUrl(network, 'BuyerRewards', 'read') }]} />
           </article>
           <article class="feature">
@@ -129,7 +138,8 @@ export function Home() {
                 <div>
                   <h3>Buyers and stakers are rewarded</h3>
                   <p>
-                    From the day after a buy you can claim up to 5% of your TOWN back from the reserve (4.75% after the claim fee). Each day the treasury pays
+                    From the day after a buy you can claim {fmtBps(r.low)} to {fmtBps(r.high)} of your TOWN back from the reserve, set each day by the last
+                    three days’ trading ({fmtRate(afterFeeBps(chain, r.low))} to {fmtRate(afterFeeBps(chain, r.high))} after the claim fee). Each day the treasury pays
                     part of its ETH to stakers as WETH, streamed over seven days.
                   </p>
                 </div>
@@ -162,7 +172,7 @@ export function Home() {
                 { label: 'Treasury', what: 'the Treasury’s total paid to stakers', href: contractUrl(network, 'Treasury', 'read') },
                 { label: 'BuyerRewards', what: 'BuyerRewards’ total paid to buyers', href: contractUrl(network, 'BuyerRewards', 'read') },
                 { label: 'TOWN supply', what: 'TOWN’s total supply', href: tokenUrl(network, town) },
-                { label: 'TownStaking', what: 'TownStaking’s total staked', href: contractUrl(network, 'TownStaking', 'read') },
+                { label: 'staking', what: 'the staking contract’s total staked', href: chain ? readUrl(network, chain.staking.address) : contractUrl(network, 'TownStaking', 'read') },
               ]}
             />
           </Card>

@@ -51,6 +51,49 @@ export interface Network {
   local: boolean;
   /** The local chain's test wallets (no key exists for any of them), owner last; empty elsewhere. */
   testWallets: { label: string; address: Address }[];
+  /**
+   * Every staking contract the Treasury has ever paid on this chain, oldest first (CR-50), from
+   * the hand-kept list below; empty when the contracts are not deployed here.
+   */
+  stakingContracts: StakingRecord[];
+}
+
+/** One staking contract the Treasury has paid (CR-50). */
+export interface StakingRecord {
+  address: Address;
+  /** When the Treasury stopped paying it (seconds since 1970); null while it is the one paid. */
+  replacedOn: number | null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE STAKING CONTRACTS, KEPT BY HAND (CR-50). The site reads no events, so it cannot find a
+// staking contract the Treasury no longer pays. This list names every one it has ever paid on
+// each chain, oldest first. "TownStaking" stands for the address file's TownStaking. When a
+// replacement is applied (Treasury.applyStaking, event StakingReplaced), add the new contract
+// at the end and write the date of the application as `replacedOn` of the one before it, in
+// UTC, for example '2027-03-01 14:05'. The site offers vaults only in the contract
+// Treasury.staking() names; every other contract here is shown, to a wallet with a vault in it,
+// as "replaced on <date>: no new rewards; unstake and claim only".
+// ---------------------------------------------------------------------------------------------
+const STAKING_HISTORY: Record<ChainId, { address: 'TownStaking' | Address; replacedOn: string | null }[]> = {
+  1: [{ address: 'TownStaking', replacedOn: null }],
+  11155111: [{ address: 'TownStaking', replacedOn: null }],
+  31337: [{ address: 'TownStaking', replacedOn: null }],
+};
+
+/** '2027-03-01 14:05' (UTC) to seconds since 1970. */
+function utcSeconds(text: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?$/.exec(text.trim());
+  if (!m) throw new Error(`staking history: "${text}" is not a date like 2027-03-01 14:05`);
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)) / 1000;
+}
+
+function stakingContracts(chainId: ChainId, deployment: Deployment | null): StakingRecord[] {
+  if (!deployment) return [];
+  return STAKING_HISTORY[chainId].map((r) => ({
+    address: r.address === 'TownStaking' ? deployment.contracts.TownStaking : getAddress(r.address),
+    replacedOn: r.replacedOn === null ? null : utcSeconds(r.replacedOn),
+  }));
 }
 
 function readFile(chainId: ChainId, file: AddressFile): Network {
@@ -97,6 +140,7 @@ function readFile(chainId: ChainId, file: AddressFile): Network {
     deployment,
     local: info.local,
     testWallets,
+    stakingContracts: stakingContracts(chainId, deployment),
   };
 }
 

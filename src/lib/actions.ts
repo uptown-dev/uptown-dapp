@@ -116,14 +116,20 @@ export function claimRebatesTx(n: Network, days: number[]): TxRequest {
   return { address: n.deployment!.contracts.BuyerRewards, abi: REWARDS_ABI as Abi, functionName: 'claim', args: [days.map(BigInt)] };
 }
 
-/** Approve TOWN: `UpTownToken.approve(TownStaking, amount)`, the exact amount, never unlimited. */
-export function approveTx(n: Network, amount: bigint): TxRequest {
-  const k = n.deployment!.contracts;
-  return { address: k.UpTownToken, abi: TOKEN_ABI as Abi, functionName: 'approve', args: [k.TownStaking, amount] };
+/**
+ * Approve TOWN: `UpTownToken.approve(staking, amount)`, the exact amount, never unlimited. The
+ * spender is the staking contract the Treasury pays now, `Treasury.staking()` (CR-50).
+ */
+export function approveTx(n: Network, stakingAddress: Address, amount: bigint): TxRequest {
+  return { address: n.deployment!.contracts.UpTownToken, abi: TOKEN_ABI as Abi, functionName: 'approve', args: [stakingAddress, amount] };
 }
 
-function staking(n: Network, functionName: string, args: readonly unknown[] = [], value?: bigint): TxRequest {
-  return { address: n.deployment!.contracts.TownStaking, abi: STAKING_ABI as Abi, functionName, args, value, gas: STAKING_GAS_LIMIT };
+/**
+ * A staking action, sent to the given staking contract: purchases and additions only ever to the
+ * one the Treasury pays now (CR-50); unstake and claim also to a replaced one, for a vault left there.
+ */
+function staking(stakingAddress: Address, functionName: string, args: readonly unknown[] = [], value?: bigint): TxRequest {
+  return { address: stakingAddress, abi: STAKING_ABI as Abi, functionName, args, value, gas: STAKING_GAS_LIMIT };
 }
 
 /** The ETH sent with a purchase or upgrade: about 1% above the quote; the contract refunds the rest. */
@@ -131,16 +137,16 @@ export function withMargin(wei: bigint): bigint {
   return (wei * 101n) / 100n;
 }
 
-/** Open a vault: `openVault(tier, amount)` with `vaultPriceWei(tier)` plus about 1%. */
-export const openVaultTx = (n: Network, tier: Tier, amount: bigint, priceWei: bigint) => staking(n, 'openVault', [tier, amount], withMargin(priceWei));
-/** Add TOWN: `addStake(amount)`. */
-export const addStakeTx = (n: Network, amount: bigint) => staking(n, 'addStake', [amount]);
-/** Upgrade: `upgradeVault(newTier)` with `upgradePriceWei(wallet, newTier)` plus about 1%. */
-export const upgradeTx = (n: Network, tier: Tier, priceWei: bigint) => staking(n, 'upgradeVault', [tier], withMargin(priceWei));
-/** Unstake: `unstake()`, a full exit. */
-export const unstakeTx = (n: Network) => staking(n, 'unstake');
-/** Claim WETH: `TownStaking.claim()`. */
-export const claimWethTx = (n: Network) => staking(n, 'claim');
+/** Open a vault: `openVault(tier, amount)` with `vaultPriceWei(tier)` plus about 1%, in the current staking contract only. */
+export const openVaultTx = (stakingAddress: Address, tier: Tier, amount: bigint, priceWei: bigint) => staking(stakingAddress, 'openVault', [tier, amount], withMargin(priceWei));
+/** Add TOWN: `addStake(amount)`, in the current staking contract only. */
+export const addStakeTx = (stakingAddress: Address, amount: bigint) => staking(stakingAddress, 'addStake', [amount]);
+/** Upgrade: `upgradeVault(newTier)` with `upgradePriceWei(wallet, newTier)` plus about 1%, in the current staking contract only. */
+export const upgradeTx = (stakingAddress: Address, tier: Tier, priceWei: bigint) => staking(stakingAddress, 'upgradeVault', [tier], withMargin(priceWei));
+/** Unstake: `unstake()`, a full exit; also in a replaced staking contract (CR-50). */
+export const unstakeTx = (stakingAddress: Address) => staking(stakingAddress, 'unstake');
+/** Claim WETH: `claim()`; also in a replaced staking contract (CR-50). */
+export const claimWethTx = (stakingAddress: Address) => staking(stakingAddress, 'claim');
 
 /** Trigger today's payout: `Treasury.poke()`. */
 export function pokeTx(n: Network): TxRequest {

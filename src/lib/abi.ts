@@ -49,6 +49,11 @@ export const UPTOWN_ERRORS = [
   'error AlreadyPaused()',
   'error NoPendingPause()',
   'error NotPaused()',
+  // Treasury, the application window (CR-48) and the candidate checks (CR-49).
+  'error StakingChangeExpired()',
+  'error StakingWrongTreasury()',
+  'error StakingWrongWeth()',
+  'error StakingDelegated()',
 ] as const;
 
 /** Errors from libraries and Uniswap that a site action can meet. */
@@ -100,6 +105,8 @@ export const HOOK_ABI = parseAbi([
   'function currentCycle() view returns (uint256)',
   'function bought(uint256 cycle, address wallet) view returns (uint256)',
   'function cycleTotal(uint256 cycle) view returns (uint256)',
+  // The gross TOWN sold in a cycle (CR-47): with cycleTotal, the net flow behind the rebate rate.
+  'function sold(uint256 cycle) view returns (uint256)',
 ]);
 
 export const REWARDS_ABI = parseAbi([
@@ -116,9 +123,13 @@ export const REWARDS_ABI = parseAbi([
   'function claimed(address wallet, uint256 cycle) view returns (bool)',
   'function claimable(address wallet, uint256[] cycles) view returns (uint256)',
   'function claim(uint256[] cycles)',
-  // Never sent by the site: run as a read (eth_call) to ask the contract which past day it would
-  // finalise now, so the claim day comes from the contract's own check (CR-44).
-  'function finalize(uint256 c)',
+  // The rebate rate from the three-day net flow (CR-47): constants and the two views.
+  'function RATE_BASE_BPS() view returns (uint256)',
+  'function RATE_BUY_SPAN_BPS() view returns (uint256)',
+  'function RATE_SELL_SPAN_BPS() view returns (uint256)',
+  'function LEAN_CYCLES() view returns (uint256)',
+  'function lean(uint256 c) view returns (int256)',
+  'function rateBps(uint256 c) view returns (uint256)',
   ...UPTOWN_ERRORS,
   ...OTHER_ERRORS,
 ]);
@@ -142,6 +153,10 @@ export const TREASURY_ABI = parseAbi([
   // Owner changes with a delay (CR-46): constant, views, the public apply, the owner-only calls
   // (listed for completeness and for their errors; the site never sends them) and the events.
   'function OWNER_DELAY() view returns (uint256)',
+  // How long an announced replacement can be applied once due (CR-48), and WETH, which a
+  // candidate must name (CR-49).
+  'function APPLY_WINDOW() view returns (uint256)',
+  'function weth() view returns (address)',
   'function staking() view returns (address)',
   'function pendingStaking() view returns (address)',
   'function stakingEffectiveAt() view returns (uint256)',
@@ -203,6 +218,13 @@ export const LPVAULT_ABI = parseAbi([
   'function lockDuration() view returns (uint256)',
   'function tokenId() view returns (uint256)',
 ]);
+
+/**
+ * The two questions the site asks an announced staking contract before marking it verified
+ * (CR-49): which Treasury and which WETH it names. Anything may sit at that address, so each
+ * answer is read with "allow failure".
+ */
+export const CANDIDATE_ABI = parseAbi(['function treasury() view returns (address)', 'function weth() view returns (address)']);
 
 /** Uniswap V4Quoter (v4-periphery): not a view, but answers through eth_call (CL-41). */
 export const QUOTER_ABI = parseAbi([

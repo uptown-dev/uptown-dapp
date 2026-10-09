@@ -26,7 +26,8 @@ export const OWNER_POWERS: OwnerPower[] = [
   {
     power: 'Replace the staking contract the Treasury pays',
     contract: 'Treasury',
-    delay: '2 days, announced on chain; cancellable',
+    delay:
+      '2 days, announced on chain; cancellable; must then be applied within 7 days; the new contract must name this Treasury and WETH and have fixed code',
     worstCase:
       'Future payouts go to a contract the owner chose; what it does with them is up to its code, so a bad choice can send the stakers’ future ETH anywhere. ETH already paid out and every stake are untouched; stakers get 2 days’ notice.',
   },
@@ -77,7 +78,10 @@ export const THINGS_TO_KNOW: { title: string; body: string }[] = [
     title: 'Payouts depend on buying',
     body: 'Rebates depend on buying, and stakers’ ETH comes from buy fees and vault purchases, so both can be small or none.',
   },
-  { title: 'Rebates are a ceiling', body: 'At most 4.75% of what you buy; less on busy days, and less or nothing near the end of the reserve.' },
+  {
+    title: 'Rebates are a ceiling',
+    body: 'The day’s rate, 4.75% to 5.225% of what you buy after the claim fee, is the most you get; less on busy days, and less or nothing near the end of the reserve.',
+  },
   { title: 'Gas costs real money', body: 'Every buy, claim and vault action costs Ethereum gas, which can be more than a small reward.' },
   { title: 'The vault price is paid once', body: 'It goes to the treasury and is not refunded when you unstake; unstaking gives back your TOWN.' },
   { title: 'The contracts cannot be changed', body: 'No upgrades, and trading never pauses, so a flaw could never be fixed.' },
@@ -88,6 +92,10 @@ export const THINGS_TO_KNOW: { title: string; body: string }[] = [
   {
     title: 'Vault prices use Chainlink',
     body: 'If the ETH/USD feed is unhealthy, the owner’s fallback price is used for up to 7 days; with neither, opening and upgrading vaults pause.',
+  },
+  {
+    title: 'Buy vaults only on this site',
+    body: 'If the owner replaces the staking contract, the old one still sells vaults to anyone who reaches it, but they earn nothing new. This site offers vaults only in the contract the treasury pays.',
   },
   { title: 'Buy on this site', body: 'A buy here names your wallet, so the rebate is credited to you; through other apps it may be credited to someone else.' },
 ];

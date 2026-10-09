@@ -82,17 +82,65 @@ export function reserveNearlySpent(chain: ChainState): boolean {
   return reserveUnscheduled(chain) < nextTenCaps(chain);
 }
 
+/** The spec's rebate rates (CR-47), used only where the contracts are not deployed on this network yet: 5% balanced, 5.25% after only buys, 5.5% after only sells. */
+export const SPEC_RATE = { base: 500, buySpan: 25, sellSpan: 50 } as const;
+
+/** The rebate rates in basis points, from BuyerRewards' constants (CR-47): balanced (500), after only buys (525), the highest (550). */
+export function rateRange(chain: ChainState | null): { low: number; buyTop: number; high: number } {
+  const base = chain ? chain.rewards.RATE_BASE_BPS : SPEC_RATE.base;
+  const buy = chain ? chain.rewards.RATE_BUY_SPAN_BPS : SPEC_RATE.buySpan;
+  const sell = chain ? chain.rewards.RATE_SELL_SPAN_BPS : SPEC_RATE.sellSpan;
+  return { low: base, buyTop: base + buy, high: base + Math.max(buy, sell) };
+}
+
+/** A day's rebate rate in basis points, before the claim fee: BuyerRewards.rateBps(c) (CR-47), fixed when the day begins. */
+export function dayRateBps(chain: ChainState, cycle: number): number {
+  return chain.rewards.rateBps[cycle] ?? chain.rewards.RATE_BASE_BPS;
+}
+
+/** A rate after the claim fee: rate x (1 - CLAIM_FEE_BPS / 10000), in basis points with decimals. */
+export function afterFeeBps(chain: ChainState | null, rateBps: number): number {
+  const fee = chain ? chain.rewards.CLAIM_FEE_BPS : 500;
+  return (rateBps * (10_000 - fee)) / 10_000;
+}
+
 /**
- * The rebate rate a cycle is heading for, before the claim fee, in basis points (may carry
- * decimals): 5% while 5% of the cycle's total stays under its cap, else cap / total.
+ * The rate a day is paying so far, before the claim fee, in basis points (may carry decimals): the
+ * day's rate while that share of the day's buying stays under its limit, else limit / total.
  */
-export function rebateRateBps(chain: ChainState, cycle: number): number {
+export function effectiveRateBps(chain: ChainState, cycle: number): number {
+  const rate = dayRateBps(chain, cycle);
   const total = chain.hook.cycleTotal[cycle] ?? 0n;
   const cap = chain.rewards.cap[cycle] ?? 0n;
-  if (total === 0n) return 500;
+  if (total === 0n) return rate;
   const capped = (cap * BPS * 100n) / total; // hundredths of a basis point
-  const bps = capped < 50_000n ? Number(capped) / 100 : 500;
-  return bps;
+  return capped < BigInt(rate) * 100n ? Number(capped) / 100 : rate;
+}
+
+/** True when the day's buying times its rate has passed the day's limit, so the limit is shared. */
+export function limitReached(chain: ChainState, cycle: number): boolean {
+  return effectiveRateBps(chain, cycle) < dayRateBps(chain, cycle);
+}
+
+/**
+ * The days today's rate was set from (CR-47): the previous LEAN_CYCLES days that exist, with what
+ * was bought and sold in them (TownHook.cycleTotal and sold) and BuyerRewards.lean(today), a
+ * number from -1 (only sells) to +1 (only buys).
+ */
+export function leanToday(chain: ChainState): { days: number[]; bought: bigint; sold: bigint; lean: number } {
+  const c = chain.rewards.currentCycle;
+  const days = Object.keys(chain.hook.sold)
+    .map(Number)
+    .filter((d) => d < c)
+    .sort((x, y) => x - y);
+  let bought = 0n;
+  let sold = 0n;
+  for (const d of days) {
+    bought += chain.hook.cycleTotal[d] ?? 0n;
+    sold += chain.hook.sold[d] ?? 0n;
+  }
+  const raw = chain.rewards.lean[c] ?? 0n;
+  return { days, bought, sold, lean: Number(raw) / 1e18 };
 }
 
 /** The fee-adjusted share: what reaches the buyer of a gross amount (claim fee 5%). */
@@ -102,19 +150,23 @@ export function afterClaimFee(chain: ChainState, gross: bigint): bigint {
 
 export type CycleStatus = 'claimed' | 'ready' | 'waiting';
 
-/** The day from which a day's rebate can be claimed: c + the delay the contract applies (CR-44: c + 1). */
-export function claimOpensOn(chain: ChainState, cycle: number): number {
-  return cycle + chain.rewards.claimDelay.days;
+/** Day c can be claimed from the start of day c + 1 (spec "Fixed parameters", Claim opens; CR-44). */
+export const CLAIM_DELAY_DAYS = 1;
+
+/** The day from which a day's rebate can be claimed: c + 1 (CR-44). */
+export function claimOpensOn(cycle: number): number {
+  return cycle + CLAIM_DELAY_DAYS;
 }
 
 export function cycleStatus(chain: ChainState, wallet: WalletState, cycle: number): CycleStatus {
   if (wallet.claimed[cycle]) return 'claimed';
-  return claimOpensOn(chain, cycle) <= chain.rewards.currentCycle ? 'ready' : 'waiting';
+  return claimOpensOn(cycle) <= chain.rewards.currentCycle ? 'ready' : 'waiting';
 }
 
 /**
  * The wallet's estimated rebate for one cycle, gross (before the claim fee). For a finalised
- * cycle it is exact; otherwise it uses min(cap, 5% of the total so far) and is an estimate.
+ * cycle it is exact: bought x emitted / cycleTotal. Otherwise it uses the day's pot as finalising
+ * would set it, min(cap, total x rateBps(c) / 10000), and is an estimate while the day runs.
  */
 export function cycleRebateGross(chain: ChainState, wallet: WalletState, cycle: number): bigint {
   const mine = wallet.bought[cycle] ?? 0n;
@@ -123,8 +175,8 @@ export function cycleRebateGross(chain: ChainState, wallet: WalletState, cycle: 
   if (total === 0n || mine === 0n) return 0n;
   if (info?.finalized) return (mine * info.emitted) / total;
   const cap = chain.rewards.cap[cycle] ?? 0n;
-  const fivePct = (total * 5n) / 100n;
-  const pot = fivePct < cap ? fivePct : cap;
+  const atRate = (total * BigInt(dayRateBps(chain, cycle))) / BPS;
+  const pot = atRate < cap ? atRate : cap;
   return (mine * pot) / total;
 }
 
@@ -178,15 +230,31 @@ export function pausePending(chain: ChainState): number | null {
   return !chain.treasury.paused && at > chain.blockTimestamp ? at : null;
 }
 
-/** True once an announced staking replacement can be applied by anyone (CR-46). */
-export function stakingChangeReady(chain: ChainState): boolean {
+/**
+ * Where an announced staking replacement stands (CR-46, CR-48): waiting for its 2-day delay; open,
+ * when anyone can apply it, from `from` up to and including `until`; or expired, more than
+ * APPLY_WINDOW after it became due, when only a new announcement or a cancellation can follow.
+ */
+export type StakingChange = { phase: 'waiting' | 'open' | 'expired'; from: number; until: number };
+
+export function stakingChange(chain: ChainState): StakingChange | null {
   const t = chain.treasury;
-  return t.pendingStaking !== null && chain.blockTimestamp >= t.stakingEffectiveAt;
+  if (t.pendingStaking === null) return null;
+  const from = t.stakingEffectiveAt;
+  const until = from + t.APPLY_WINDOW;
+  const now = chain.blockTimestamp;
+  return { phase: now < from ? 'waiting' : now <= until ? 'open' : 'expired', from, until };
 }
 
-/** True when the Treasury no longer pays the TownStaking this site's Stake page uses (CR-46). */
+/** True when the Treasury pays a staking contract other than the address file's TownStaking (CR-46). */
 export function stakingReplaced(chain: ChainState, townStaking: string | undefined): boolean {
   return !!townStaking && chain.treasury.staking.toLowerCase() !== townStaking.toLowerCase();
+}
+
+/** When the Treasury began paying a staking contract, from the network module's hand-kept list (CR-50); null if the list does not say. */
+export function stakingPaidSince(records: { address: string; replacedOn: number | null }[], address: string): number | null {
+  const i = records.findIndex((r) => r.address.toLowerCase() === address.toLowerCase());
+  return i > 0 ? records[i - 1].replacedOn : null;
 }
 
 // --- staking -----------------------------------------------------------------------------

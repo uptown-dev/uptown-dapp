@@ -2,8 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { parseEther, parseUnits } from 'viem';
 import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus } from '../components/ui';
 import { ArrowDownIcon, ExternalIcon } from '../components/icons';
-import { afterClaimFee, antiSnipeActive, claimOpensOn, antiSnipeSecondsLeft, buyFee, minReceived, rebateRateBps } from '../lib/derive';
-import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtTown, fmtUnits, shortAddress } from '../lib/format';
+import { afterClaimFee, antiSnipeActive, claimOpensOn, antiSnipeSecondsLeft, buyFee, dayRateBps, effectiveRateBps, limitReached, minReceived } from '../lib/derive';
+import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtTown, fmtUnits, shortAddress, fmtRate } from '../lib/format';
 import { uniswapSellUrl } from '../lib/network';
 import { quoteBuy, quoteSell } from '../lib/reads';
 import { BUY_DEADLINE_SECONDS, ROUTER_ALLOWANCE_SECONDS, allowRouterTx, approvePermit2Tx, buyTx, sellTx } from '../lib/actions';
@@ -120,7 +120,8 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
           </li>
           <li>
             <strong>Fees on a sell.</strong> 2% of the TOWN sold is burned (nothing once the supply has fallen to{' '}
-            {fmtTown(chain.hook.BURN_FLOOR)} TOWN), plus the 0.5% pool fee. The estimate already includes both. Selling changes nothing about rebates.
+            {fmtTown(chain.hook.BURN_FLOOR)} TOWN), plus the 0.5% pool fee. The estimate already includes both. A sell takes away none of your rebate
+            points; the day’s sells, counted with no names, go into the three-day lean that sets the next days’ rebate rate.
           </li>
           <li>
             <strong>The first 15 minutes.</strong> The buy fee starts at {fmtBps(chain.hook.ANTI_SNIPE_START_BPS)} at launch and falls in a straight line to{' '}
@@ -213,7 +214,8 @@ function BuyForm({ active }: { active: boolean }) {
   const autoMin = estimate !== null ? minReceived(estimate, slippage) : null;
   const minValue = minText !== null ? parseAmount(minText) : autoMin;
   const c = chain.hook.currentCycle;
-  const rate = rebateRateBps(chain, c);
+  // Today's rate, BuyerRewards.rateBps(today) (CR-47), or less once the day's limit is shared.
+  const rate = effectiveRateBps(chain, c);
   const rebate = estimate !== null ? afterClaimFee(chain, (estimate * BigInt(Math.round(rate * 100))) / 1_000_000n) : null;
   const overBalance = !!wallet && amountIn !== null && amountIn > wallet.ethBalance;
   const minTooHigh = minValue !== null && estimate !== null && minValue > estimate;
@@ -224,7 +226,7 @@ function BuyForm({ active }: { active: boolean }) {
     void tx.run(
       'Buy TOWN',
       () => buyTx(network, account, amountIn, minValue, deadline),
-      () => `Your buy went through and is counted for your wallet on ${dayName(c)}. Its rebate can be claimed from ${dayName(claimOpensOn(chain, c))}.`,
+      () => `Your buy went through and is counted for your wallet on ${dayName(c)}. Its rebate can be claimed from ${dayName(claimOpensOn(c))}.`,
       'buy',
     );
   };
@@ -325,7 +327,12 @@ function BuyForm({ active }: { active: boolean }) {
       </dl>
       {minTooHigh && <FieldError>The minimum is above the estimate, so the buy would almost certainly be cancelled.</FieldError>}
       <p class="small muted swap-note">
-        Rebate after the 5% claim fee, at {dayName(c)}’s rate so far, claimable from {dayName(claimOpensOn(chain, c))} within the day’s limit. If you would receive less than
+        Rebate after the {fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee, at {dayName(c)}’s rate of{' '}
+        <span class="num" data-view={`BuyerRewards.rateBps(${c})`}>
+          {fmtBps(dayRateBps(chain, c))}
+        </span>
+        {limitReached(chain, c) ? <> ({fmtRate(rate)} so far: the day’s limit is reached)</> : null}, claimable from {dayName(claimOpensOn(c))} within the
+        day’s limit. If you would receive less than
         the minimum, the buy is cancelled and you keep your ETH.
       </p>
 

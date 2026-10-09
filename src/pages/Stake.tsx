@@ -1,8 +1,19 @@
 import { useState } from 'preact/hooks';
 import { parseUnits } from 'viem';
 import { useApp, useChain, useTx, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs, TxStatus, type Tx } from '../components/ui';
-import { PriceSource, TIERS, type Tier } from '../data/types';
-import { fallbackExpiresAt, pausePending, stakingChangeReady, stakingReplaced, streamEnd, tierEmpty, tierMultiplier, tierShareBps, unpaidStream } from '../lib/derive';
+import { PriceSource, TIERS, type OldVault, type Tier } from '../data/types';
+import {
+  fallbackExpiresAt,
+  pausePending,
+  stakingChange,
+  stakingPaidSince,
+  stakingReplaced,
+  streamEnd,
+  tierEmpty,
+  tierMultiplier,
+  tierShareBps,
+  unpaidStream,
+} from '../lib/derive';
 import { fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUsd8, shortAddress } from '../lib/format';
 import { STAKING_GAS_LIMIT, addStakeTx, approveTx, claimWethTx, openVaultTx, unstakeTx, upgradeTx, withMargin } from '../lib/actions';
 
@@ -24,6 +35,7 @@ export function Stake() {
         lead="Buy a vault in one of five tiers, put TOWN in it and earn a share of the ETH the treasury pays out every day, as WETH."
       />
       <PayoutChanges />
+      <OldVaults />
       <PriceStatus />
       <EmptyTiers />
       <TierTable />
@@ -42,6 +54,11 @@ export function Stake() {
             <strong>When payouts happen.</strong> Once a day, when someone triggers the day: any staking action, or the free button on the{' '}
             <a href="#/stats">Stats page</a>. The day’s budget is paid only if it is at least 0.001 ETH; a smaller one waits. Each payout streams to the tiers
             over seven days, and you earn only while staked.
+          </li>
+          <li>
+            <strong>Only here.</strong> This page offers vaults only in the staking contract the treasury pays now. If the owner ever replaces it, the old
+            contract still sells vaults to anyone who reaches it another way, but they earn nothing new; this page shows a vault left there with unstake and
+            claim only.
           </li>
           <li>
             <strong>Vaults.</strong> One vault per wallet; it cannot be transferred. No lock and no expiry. Adding TOWN costs no extra vault price. Upgrading
@@ -63,16 +80,18 @@ export function Stake() {
 }
 
 /**
- * CR-46: the treasury's payouts paused, a pause announced, or a different staking contract
- * announced (or already in use), each with a link to the Stats page, where every pending owner
- * change is listed.
+ * CR-46, CR-48, CR-50: the treasury's payouts paused, a pause announced, a different staking
+ * contract announced (waiting, open to anyone within its 7-day window, or expired), or already in
+ * use; each with a link to the Stats page, where every pending owner change is listed.
  */
 function PayoutChanges() {
   const chain = useChain();
   const { network } = useApp();
   const t = chain.treasury;
   const pauseAt = pausePending(chain);
+  const change = stakingChange(chain);
   const replaced = stakingReplaced(chain, network.deployment?.contracts.TownStaking);
+  const since = stakingPaidSince(network.stakingContracts, t.staking);
   const more = (
     <>
       {' '}
@@ -97,30 +116,143 @@ function PayoutChanges() {
           </p>
         </Notice>
       )}
-      {t.pendingStaking !== null && (
+      {change?.phase === 'waiting' && (
         <Notice kind="warn" title="A different staking contract is announced">
-          {stakingChangeReady(chain) ? (
-            <p>
-              Its 2-day wait ended on <span class="num">{fmtDateTime(t.stakingEffectiveAt)}</span>: once anyone applies it, the treasury will pay a different
-              staking contract; ETH already streaming here is not affected.{more}
-            </p>
-          ) : (
-            <p>
-              From <span class="num">{fmtDateTime(t.stakingEffectiveAt)}</span> the treasury will pay a different staking contract; ETH already streaming here
-              is not affected.{more}
-            </p>
-          )}
+          <p>
+            From <span class="num">{fmtDateTime(change.from)}</span> until <span class="num">{fmtDateTime(change.until)}</span> anyone can apply it, and the
+            treasury then pays it instead of this one; ETH already streaming here is not affected.{more}
+          </p>
+        </Notice>
+      )}
+      {change?.phase === 'open' && t.candidate?.verified === false && (
+        <Notice kind="info" title="An announced staking contract cannot be applied">
+          <p>
+            Its wait is over, but this site asked it and it does not look like a staking contract, so the treasury will refuse it: payouts keep coming
+            here.{more}
+          </p>
+        </Notice>
+      )}
+      {change?.phase === 'open' && t.candidate?.verified !== false && (
+        <Notice kind="warn" title="A different staking contract can be applied now">
+          <p>
+            Treat it as already in effect: anyone can apply it at any moment until <span class="num">{fmtDateTime(change.until)}</span>, and from then on new
+            payouts go to it, not here. ETH already streaming here is not affected.{more}
+          </p>
+        </Notice>
+      )}
+      {change?.phase === 'expired' && (
+        <Notice kind="info" title="An announced staking contract has expired">
+          <p>
+            It was not applied by <span class="num">{fmtDateTime(change.until)}</span>, so it can no longer be: the treasury keeps paying this contract. To
+            replace it, the owner must announce again, with a new 2-day wait.{more}
+          </p>
         </Notice>
       )}
       {replaced && (
-        <Notice kind="warn" title="The treasury pays a different staking contract">
+        <Notice kind="info" title="The treasury pays a replacement staking contract">
           <p>
-            The owner replaced this staking contract: new payouts go to <code>{shortAddress(t.staking)}</code>. ETH already streaming here keeps streaming,
-            and your TOWN can be unstaked at any time.{more}
+            The owner replaced TownStaking{since !== null ? <> on <span class="num">{fmtDate(since)}</span></> : null}: payouts now go to{' '}
+            <code>{shortAddress(t.staking)}</code>, and this page offers vaults only in it. A vault in TownStaking earns no new rewards; it can still be
+            unstaked and claimed.{more}
           </p>
         </Notice>
       )}
     </>
+  );
+}
+
+/**
+ * CR-50: the wallet's vaults in staking contracts the Treasury no longer pays (the network
+ * module's hand-kept list). No purchase, addition or upgrade is offered there; only unstake and claim.
+ */
+function OldVaults() {
+  const { wallet } = useApp();
+  if (!wallet || wallet.oldVaults.length === 0) return null;
+  return (
+    <>
+      {wallet.oldVaults.map((v) => (
+        <OldVaultCard key={v.address} vault={v} />
+      ))}
+    </>
+  );
+}
+
+export function OldVaultCard({ vault }: { vault: OldVault }) {
+  const tx = useTx();
+  const [confirming, setConfirming] = useState(false);
+  const has = vault.positionOf.tier !== 0;
+  const amount = vault.positionOf.amount;
+  return (
+    <Card title="Your vault in a replaced staking contract" class="old-vault">
+      <p class="old-vault-line">
+        <span class="replaced-tag">
+          {vault.replacedOn !== null ? `Replaced on ${fmtDate(vault.replacedOn)}` : 'Replaced'}: no new rewards; unstake and claim only
+        </span>{' '}
+        <code title={vault.address}>{shortAddress(vault.address)}</code>
+      </p>
+      <p class="small muted">
+        The treasury no longer pays this contract, so it receives no new payouts; ETH it received before keeps streaming over its seven days. Your TOWN and
+        earned WETH stay yours: unstake and claim them here. To earn from new payouts, stake in the current contract below.
+      </p>
+      <Figures cols={3}>
+        <Fig label="Tier" value={has ? `Tier ${vault.positionOf.tier}` : 'No vault'} view="positionOf(wallet).tier, replaced contract" />
+        <Fig label="TOWN staked" value={fmtTown(amount)} unit="TOWN" view="positionOf(wallet).amount, replaced contract" />
+        <Fig label="Earned" value={fmtEth(vault.earned)} unit="WETH" view="earned(wallet), replaced contract" accent />
+      </Figures>
+      <div class="btn-row">
+        <button
+          type="button"
+          class="btn btn-primary"
+          disabled={tx.busy || vault.earned === 0n}
+          onClick={() => void tx.run('Claim WETH', () => claimWethTx(vault.address), () => `About ${fmtEth(vault.earned)} WETH went to your wallet.`)}
+        >
+          {`Claim ${fmtEth(vault.earned)} WETH`}
+        </button>
+        {!confirming && (
+          <button type="button" class="btn btn-danger" disabled={tx.busy || !has} onClick={() => setConfirming(true)}>
+            Unstake everything
+          </button>
+        )}
+      </div>
+      {confirming && (
+        <div class="confirm-box" role="group" aria-label="Confirm unstaking from the replaced contract">
+          <p>
+            <strong>Unstake everything from the replaced contract?</strong> Your {fmtTown(amount)} TOWN comes back and that vault closes.
+          </p>
+          <div class="btn-row">
+            <button
+              type="button"
+              class="btn btn-danger"
+              disabled={tx.busy}
+              onClick={() => {
+                setConfirming(false);
+                void tx.run('Unstake', () => unstakeTx(vault.address), () => `${fmtTown(amount)} TOWN came back to your wallet and the old vault is closed. Earned WETH stays claimable.`);
+              }}
+            >
+              Yes, unstake everything
+            </button>
+            <button type="button" class="btn btn-secondary" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      <TxStatus tx={tx} />
+    </Card>
+  );
+}
+
+/** CR-50: shown beside every vault purchase (open, upgrade) while the treasury's payouts are paused. */
+function PausedTag() {
+  const chain = useChain();
+  if (!chain.treasury.paused) return null;
+  return (
+    <p class="paused-beside" role="note">
+      <span class="paused-tag">Payouts paused</span>
+      <span class="small muted">
+        The treasury pays nothing to stakers until the owner unpauses, so a vault bought now earns only what is left of the running streams until then.
+      </span>
+    </p>
   );
 }
 
@@ -187,10 +319,18 @@ function EmptyTiers() {
 
 function TierTable() {
   const chain = useChain();
-  const { wallet } = useApp();
+  const { wallet, network } = useApp();
   const st = chain.staking;
+  const replaced = stakingReplaced(chain, network.deployment?.contracts.TownStaking);
   return (
     <Card title="Tiers" class="flush">
+      <p class="card-pad small muted">
+        Vaults in{' '}
+        <code data-view="Treasury.staking" title={st.address}>
+          {replaced ? shortAddress(st.address) : 'TownStaking'}
+        </code>
+        , the staking contract the treasury pays now: the only one this site offers vaults in.
+      </p>
       <div class="table-scroll">
         <table class="table tiers stack">
           <caption class="visually-hidden">The five vault tiers</caption>
@@ -342,6 +482,7 @@ function YourVault() {
 
 /** Step 1 of opening or adding: approve exactly the TOWN typed; shows when the allowance already covers it. */
 function ApproveButton({ tx, amount }: { tx: Tx; amount: bigint | null }) {
+  const chain = useChain();
   const { wallet, network } = useApp();
   const enough = !!wallet && amount !== null && amount > 0n && wallet.townAllowanceToStaking >= amount;
   return (
@@ -351,7 +492,7 @@ function ApproveButton({ tx, amount }: { tx: Tx; amount: bigint | null }) {
       disabled={tx.busy || enough || amount === null || amount === 0n}
       onClick={() =>
         amount !== null &&
-        void tx.run('Approve TOWN', () => approveTx(network, amount), () => `The staking contract may now move ${fmtTown(amount)} of your TOWN. Now do step 2.`)
+        void tx.run('Approve TOWN', () => approveTx(network, chain.staking.address, amount), () => `The staking contract may now move ${fmtTown(amount)} of your TOWN. Now do step 2.`)
       }
     >
       {enough ? '1. TOWN approved' : '1. Approve TOWN'}
@@ -361,7 +502,7 @@ function ApproveButton({ tx, amount }: { tx: Tx; amount: bigint | null }) {
 
 function OpenForm({ tx }: { tx: Tx }) {
   const chain = useChain();
-  const { wallet, network } = useApp();
+  const { wallet } = useApp();
   const st = chain.staking;
   const [tier, setTier] = useState<Tier>(1);
   const [amount, setAmount] = useState('');
@@ -400,6 +541,7 @@ function OpenForm({ tx }: { tx: Tx }) {
         <Row label="You send (about 1% more)" value={price === null ? '—' : `${fmtEth(withMargin(price), 6)} ETH`} />
         <Row label="Refunded at once" value={price === null ? '—' : `≈ ${fmtEth(withMargin(price) - price, 6)} ETH`} />
       </Rows>
+      <PausedTag />
       <div class="btn-row">
         <ApproveButton tx={tx} amount={amt} />
         <button
@@ -409,7 +551,7 @@ function OpenForm({ tx }: { tx: Tx }) {
           onClick={() =>
             price !== null &&
             amt !== null &&
-            void tx.run(`Open a tier ${tier} vault`, () => openVaultTx(network, tier, amt, price), () => `Your tier ${tier} vault is open with ${fmtTown(amt)} TOWN staked. The extra ETH was refunded.`)
+            void tx.run(`Open a tier ${tier} vault`, () => openVaultTx(chain.staking.address, tier, amt, price), () => `Your tier ${tier} vault is open with ${fmtTown(amt)} TOWN staked. The extra ETH was refunded.`)
           }
         >
           {`2. Open tier ${tier} vault`}
@@ -420,7 +562,8 @@ function OpenForm({ tx }: { tx: Tx }) {
 }
 
 function ClaimForm({ tx }: { tx: Tx }) {
-  const { wallet, network } = useApp();
+  const chain = useChain();
+  const { wallet } = useApp();
   const earned = wallet?.earned ?? 0n;
   return (
     <div class="action-form">
@@ -429,7 +572,7 @@ function ClaimForm({ tx }: { tx: Tx }) {
         type="button"
         class="btn btn-primary"
         disabled={tx.busy || !wallet || earned === 0n}
-        onClick={() => void tx.run('Claim WETH', () => claimWethTx(network), () => `About ${fmtEth(earned)} WETH went to your wallet.`)}
+        onClick={() => void tx.run('Claim WETH', () => claimWethTx(chain.staking.address), () => `About ${fmtEth(earned)} WETH went to your wallet.`)}
       >
         {`Claim ${fmtEth(earned)} WETH`}
       </button>
@@ -438,7 +581,8 @@ function ClaimForm({ tx }: { tx: Tx }) {
 }
 
 function AddForm({ tx }: { tx: Tx }) {
-  const { wallet, network } = useApp();
+  const chain = useChain();
+  const { wallet } = useApp();
   const [amount, setAmount] = useState('');
   const amt = parseTown(amount);
   const tooMuch = !!wallet && amt !== null && amt > wallet.townBalance;
@@ -468,7 +612,7 @@ function AddForm({ tx }: { tx: Tx }) {
           type="button"
           class="btn btn-primary"
           disabled={tx.busy || amt === null || amt === 0n || tooMuch || !approved}
-          onClick={() => amt !== null && void tx.run('Add TOWN', () => addStakeTx(network, amt), () => `${fmtTown(amt)} TOWN was added to your vault.`)}
+          onClick={() => amt !== null && void tx.run('Add TOWN', () => addStakeTx(chain.staking.address, amt), () => `${fmtTown(amt)} TOWN was added to your vault.`)}
         >
           2. Add TOWN
         </button>
@@ -479,7 +623,7 @@ function AddForm({ tx }: { tx: Tx }) {
 
 function UpgradeForm({ tx }: { tx: Tx }) {
   const chain = useChain();
-  const { wallet, network } = useApp();
+  const { wallet } = useApp();
   const st = chain.staking;
   const current = (wallet?.positionOf.tier || 1) as Tier;
   const higher = TIERS.filter((t) => t > current);
@@ -507,6 +651,7 @@ function UpgradeForm({ tx }: { tx: Tx }) {
         </Rows>
       )}
       <p class="small muted">Your whole stake moves up. Earned WETH stays yours. There is no way back down.</p>
+      <PausedTag />
       <button
         type="button"
         class="btn btn-primary"
@@ -514,7 +659,7 @@ function UpgradeForm({ tx }: { tx: Tx }) {
         onClick={() =>
           up !== null &&
           chosen !== null &&
-          void tx.run(`Upgrade to tier ${chosen}`, () => upgradeTx(network, chosen, up), () => `Your vault is now in tier ${chosen}. The extra ETH was refunded.`)
+          void tx.run(`Upgrade to tier ${chosen}`, () => upgradeTx(chain.staking.address, chosen, up), () => `Your vault is now in tier ${chosen}. The extra ETH was refunded.`)
         }
       >
         {chosen !== null ? `Upgrade to tier ${chosen}` : 'Upgrade'}
@@ -524,7 +669,8 @@ function UpgradeForm({ tx }: { tx: Tx }) {
 }
 
 function UnstakeForm({ tx }: { tx: Tx }) {
-  const { wallet, network } = useApp();
+  const chain = useChain();
+  const { wallet } = useApp();
   const [confirming, setConfirming] = useState(false);
   const amount = wallet?.positionOf.amount ?? 0n;
   return (
@@ -545,7 +691,7 @@ function UnstakeForm({ tx }: { tx: Tx }) {
               disabled={tx.busy}
               onClick={() => {
                 setConfirming(false);
-                void tx.run('Unstake', () => unstakeTx(network), () => `${fmtTown(amount)} TOWN came back to your wallet and your vault is closed. Earned WETH stays claimable.`);
+                void tx.run('Unstake', () => unstakeTx(chain.staking.address), () => `${fmtTown(amount)} TOWN came back to your wallet and your vault is closed. Earned WETH stays claimable.`);
               }}
             >
               Yes, unstake everything

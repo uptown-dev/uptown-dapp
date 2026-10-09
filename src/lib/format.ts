@@ -30,6 +30,16 @@ export function fmtBps(bps: number, maxFrac = 2): string {
   return `${Number(v.toFixed(maxFrac))}%`;
 }
 
+/**
+ * A rebate rate in basis points as a percentage, cut (never rounded up) to `maxFrac` decimals:
+ * 497.8 -> "4.978%", 496.85 -> "4.968%" (CR-47; a rate after the claim fee can carry decimals).
+ */
+export function fmtRate(bps: number, maxFrac = 3): string {
+  const scale = 10 ** maxFrac;
+  const v = Math.floor((bps / 100) * scale + 1e-9) / scale;
+  return `${v}%`;
+}
+
 /** An 8-decimal Chainlink price as dollars: 271240000000 -> "$2,712.40". */
 export function fmtUsd8(price: bigint): string {
   return '$' + fmtUnits(price, 8, 2, 2);

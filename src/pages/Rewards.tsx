@@ -1,27 +1,34 @@
 import { useApp, useChain, useTx, Card, ConnectPrompt, Details, Fig, Figures, Notice, PageHead, TxStatus } from '../components/ui';
 import { claimRebatesTx } from '../lib/actions';
+import type { ChainState } from '../data/types';
 import {
   afterClaimFee,
+  afterFeeBps,
   claimOpensOn,
   cycleRebateGross,
   cycleStatus,
+  dayRateBps,
+  effectiveRateBps,
   epochIndex,
+  leanToday,
+  limitReached,
   nextTenCaps,
+  rateRange,
   readyCycles,
-  rebateRateBps,
   reserveNearlySpent,
   reserveUnscheduled,
   walletCycles,
 } from '../lib/derive';
-import { dayName, fmtBps, fmtInt, fmtTown, listDays } from '../lib/format';
+import { dayName, fmtBps, fmtInt, fmtTown, listDays, fmtRate } from '../lib/format';
 
 export function Rewards() {
   const chain = useChain();
+  const r = rateRange(chain);
   return (
     <div class="wrap page">
       <PageHead
         title="Rewards"
-        lead="Every buy earns a TOWN rebate: up to 5% of the TOWN you bought, less a 5% claim fee, claimable the next day within each day’s limit."
+        lead={`Every buy earns a TOWN rebate: ${fmtBps(r.low)} to ${fmtBps(r.high)} of the TOWN you bought, set each day by the last three days’ trading, less a ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee, claimable the next day within each day’s limit.`}
       />
       {reserveNearlySpent(chain) && <ReserveLow />}
       <YourRebate />
@@ -67,12 +74,13 @@ function YourRebate() {
         <p class="muted">This wallet has no buys yet, so there is nothing to claim.</p>
         <TxStatus tx={tx} />
         <p class="small muted">
-          A buy made today on the <a href="#/trade">Trade page</a> can be claimed from {dayName(claimOpensOn(chain, current))}.
+          A buy made today on the <a href="#/trade">Trade page</a> can be claimed from {dayName(claimOpensOn(current))}.
         </p>
       </Card>
     );
   }
-  const fee = (wallet.claimable * 500n) / 9500n;
+  const feeBps = BigInt(chain.rewards.CLAIM_FEE_BPS);
+  const fee = (wallet.claimable * feeBps) / (10_000n - feeBps);
   return (
     <Card title="Your rebate">
       <div class="split">
@@ -111,7 +119,7 @@ function YourRebate() {
       ) : (
         <p class="small muted">
           {days.some((d) => !wallet.claimed[d])
-            ? `Nothing is ready yet. Your next day opens on ${dayName(claimOpensOn(chain, days.find((d) => !wallet.claimed[d]) ?? current))}.`
+            ? `Nothing is ready yet. Your next day opens on ${dayName(claimOpensOn(days.find((d) => !wallet.claimed[d]) ?? current))}.`
             : 'Nothing to claim: every day you bought has been claimed.'}
         </p>
       )}
@@ -126,6 +134,9 @@ function YourRebate() {
             <th scope="col">Day</th>
             <th scope="col" class="r">
               You bought
+            </th>
+            <th scope="col" class="r">
+              Rate
             </th>
             <th scope="col" class="r">
               Rebate after fee
@@ -146,6 +157,9 @@ function YourRebate() {
                 <td class="r num" data-view="TownHook.bought(c, wallet)">
                   {fmtTown(wallet.bought[d])}
                 </td>
+                <td class="r num" data-view={`BuyerRewards.rateBps(${d})`}>
+                  {fmtBps(dayRateBps(chain, d))}
+                </td>
                 <td class="r num">
                   {info?.finalized ? '' : '≈ '}
                   {fmtTown(net)}
@@ -153,7 +167,7 @@ function YourRebate() {
                 <td class="r nowrap">
                   {status === 'claimed' && <span class="muted">Claimed</span>}
                   {status === 'ready' && <span class="status-ready">Ready</span>}
-                  {status === 'waiting' && <span class="muted">From day {fmtInt(claimOpensOn(chain, d))}</span>}
+                  {status === 'waiting' && <span class="muted">From day {fmtInt(claimOpensOn(d))}</span>}
                 </td>
               </tr>
             );
@@ -161,7 +175,10 @@ function YourRebate() {
         </tbody>
       </table>
       </div>
-      <p class="small faint table-note">≈ marks an estimate: a day’s pot is fixed when the day is first claimed or finalised.</p>
+      <p class="small faint table-note">
+        Rate: the day’s rebate rate, before the claim fee, that its pot is paid at. ≈ marks an estimate: a day’s pot is fixed when the day is first claimed
+        or finalised.
+      </p>
       </div>
       </div>
     </Card>
@@ -171,30 +188,86 @@ function YourRebate() {
 function Today() {
   const chain = useChain();
   const c = chain.rewards.currentCycle;
-  const rate = rebateRateBps(chain, c);
+  const rate = dayRateBps(chain, c);
+  const paying = effectiveRateBps(chain, c);
+  const capped = limitReached(chain, c);
+  const fee = chain.rewards.CLAIM_FEE_BPS;
   return (
     <Card title={`Today, ${dayName(c)}`}>
-      <Figures cols={4}>
+      <Figures cols={3}>
+        <Fig
+          label="Today’s rate, before fee"
+          value={fmtBps(rate)}
+          view={`BuyerRewards.rateBps(${c})`}
+          note={capped ? `The day’s limit is reached: paying ${fmtRate(paying)} so far.` : 'Set when the day began; it does not change today.'}
+        />
+        <Fig
+          label={`Today’s rate, after the ${fmtBps(fee)} fee`}
+          value={fmtRate(afterFeeBps(chain, rate))}
+          view={`rateBps(${c}) × (1 - CLAIM_FEE_BPS / 10000)`}
+          accent
+          note={capped ? `${fmtRate(afterFeeBps(chain, paying))} so far, with the limit shared.` : 'What reaches the buyer.'}
+        />
+        <YesterdaysLean />
         <Fig label="Today’s limit" value={fmtTown(chain.rewards.cap[c] ?? 0n)} unit="TOWN" view="BuyerRewards.cap(currentCycle)" />
         <Fig label="Bought by everyone today" value={fmtTown(chain.hook.cycleTotal[c] ?? 0n)} unit="TOWN" view="TownHook.cycleTotal(currentCycle)" />
-        <Fig label="Current rate, before fee" value={fmtBps(rate)} view="derived: min(5%, cap / cycleTotal)" />
-        <Fig label="Current rate, after fee" value={fmtBps(rate * 0.95)} view="derived: rate × 0.95" accent />
+        <Fig label="Today’s rebates open on" value={dayName(claimOpensOn(c))} view="currentCycle + 1 (CR-44)" note="From the start of the next day." />
       </Figures>
       <p class="small muted card-foot">
-        The rate is 5% until 5% of the day’s buying passes the day’s limit; then the limit is shared and the rate falls. Today’s rebates open on{' '}
-        {dayName(claimOpensOn(chain, c))}.
+        <RateRule chain={chain} /> If a day’s buying times its rate passes the day’s limit, the limit is shared and the rate falls.
       </p>
     </Card>
   );
 }
 
+/** The three-point rule, in one sentence, from BuyerRewards' constants (CR-47). */
+export function RateRule({ chain }: { chain: ChainState | null }) {
+  const r = rateRange(chain);
+  return (
+    <>
+      Each day’s rate is set when the day begins, from the last three days’ trading: {fmtBps(r.low)} when buying and selling balance, up to{' '}
+      {fmtBps(r.buyTop)} after days of only buying, and up to {fmtBps(r.high)} after days of only selling.
+    </>
+  );
+}
+
+/** BuyerRewards.lean(today), with the bought and sold totals of the days it is measured over (CR-47). */
+function YesterdaysLean() {
+  const chain = useChain();
+  const c = chain.rewards.currentCycle;
+  const l = leanToday(chain);
+  const first = l.days[0];
+  const last = l.days[l.days.length - 1];
+  const span = l.days.length === 0 ? '' : l.days.length === 1 ? `day ${fmtInt(first)}` : `days ${fmtInt(first)} to ${fmtInt(last)}`;
+  const word = l.days.length === 1 ? 'the last day' : `the last ${l.days.length === 2 ? 'two' : 'three'} days`;
+  const value = l.lean === 0 ? '0' : `${l.lean > 0 ? '+' : '−'}${Math.abs(l.lean).toFixed(2)}`;
+  let note: string;
+  if (l.days.length === 0) note = `${dayName(c)} has no earlier days, so its rate is the base rate.`;
+  else if (l.bought === 0n && l.sold === 0n) note = `No trading over ${word} (${span}), so the rate is the base rate.`;
+  else
+    note = `${l.lean > 0 ? 'More buying than selling' : l.lean < 0 ? 'More selling than buying' : 'Buying and selling balanced'} over ${word} (${span}): ${fmtTown(l.bought)} TOWN bought, ${fmtTown(l.sold)} sold.`;
+  return <Fig label="Yesterday’s lean" value={value} view={`BuyerRewards.lean(${c}); TownHook.cycleTotal, sold`} note={note} />;
+}
+
 function Rules() {
+  const chain = useChain();
+  const r = rateRange(chain);
   return (
     <ul class="plain-list">
       <li>Every TOWN you receive on a buy earns one point for that day. Selling takes no points away.</li>
-      <li>A day’s pot is 5% of all TOWN bought that day, never more than the day’s limit, shared by points.</li>
+      <li>
+        A day’s pot is the day’s rate ({fmtBps(r.low)} to {fmtBps(r.high)}) of all TOWN bought that day, never more than the day’s limit, shared by
+        points.
+      </li>
+      <li>
+        <RateRule chain={chain} /> The lean is (bought − sold) ÷ (bought + sold) over those days, from −1 to +1; the rate moves in a straight line between
+        the three points.
+      </li>
       <li>A day can be claimed from the start of the next day. Rebates never expire.</li>
-      <li>5% of every claim goes to the treasury for the owner, in TOWN, so 4.75% is the most a buyer gets back.</li>
+      <li>
+        {fmtBps(chain.rewards.CLAIM_FEE_BPS)} of every claim goes to the treasury for the owner, in TOWN, so a buyer gets {fmtRate(afterFeeBps(chain, r.low))}{' '}
+        to {fmtRate(afterFeeBps(chain, r.high))} back.
+      </li>
       <li>A limit is not a promise: a quiet day pays less, and what it does not use stays in the reserve.</li>
       <li>Near the end of the reserve, days are paid in the order they are first claimed or finalised.</li>
       <li>Only buys in the official TOWN pool count. Claiming costs gas; small rebates may cost more than they are worth.</li>

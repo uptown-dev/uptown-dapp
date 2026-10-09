@@ -2,9 +2,9 @@ import type { ComponentChildren } from 'preact';
 import { useApp, Details, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
 import { OWNER_CANNOT, OWNER_POWERS, THINGS_TO_KNOW } from '../content/docs';
 import { PriceSource } from '../data/types';
-import { burnFloor, fallbackExpiresAt, pausePending, stakingReplaced } from '../lib/derive';
-import { fmtBps, fmtDate, fmtDateTime, fmtEth, fmtTown, fmtUsd8, shortAddress } from '../lib/format';
-import { addressUrl, contractUrl, positionUrl, tokenUrl } from '../lib/network';
+import { afterFeeBps, burnFloor, fallbackExpiresAt, pausePending, rateRange, stakingChange, stakingReplaced } from '../lib/derive';
+import { fmtBps, fmtDate, fmtDateTime, fmtEth, fmtTown, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
+import { addressUrl, contractUrl, positionUrl, readUrl, tokenUrl } from '../lib/network';
 
 /** The table of contents, in order (CR-40). Each section is reachable as #/docs/<id>. */
 const SECTIONS: { id: string; title: string }[] = [
@@ -24,6 +24,7 @@ const titleOf = (id: string) => SECTIONS.find((s) => s.id === id)!.title;
 export function Docs() {
   const { network, chain } = useApp();
   const town = network.deployment?.contracts.UpTownToken;
+  const r = rateRange(chain);
   return (
     <div class="wrap page docs">
       <PageHead title="Docs" lead="How UpTown works, part by part, and what the owner can do. UpTown is an experiment on Ethereum." />
@@ -80,8 +81,16 @@ export function Docs() {
                   ]}
                 />
               </li>
-              <li>For each day you buy, you can claim up to 5% of the TOWN you bought, from the next day. Rebates never expire.</li>
-              <li>5% of every claim goes to the treasury for the owner, so at most 4.75% reaches you.</li>
+              <li>For each day you buy, you can claim the day’s rate of the TOWN you bought, from the next day. Rebates never expire.</li>
+              <li>
+                Each day’s rate is set when the day begins, from the last three days’ trading in the pool, and does not change during the day. It is{' '}
+                {fmtBps(r.low)} when buying and selling balance, rising in a straight line to {fmtBps(r.buyTop)} after days of only buying and to{' '}
+                {fmtBps(r.high)} after days of only selling. The <a href="#/rewards">Rewards page</a> shows today’s rate and the three-day lean behind it.
+              </li>
+              <li>
+                5% of every claim goes to the treasury for the owner, so {fmtRate(afterFeeBps(chain, r.low))} to {fmtRate(afterFeeBps(chain, r.high))}{' '}
+                reaches you.
+              </li>
               <li>
                 Each day has a limit: 2,500,000 TOWN a day for the first 100 days, halving every 100 days down to 78,125. On a busy day everyone’s rate falls
                 in proportion.
@@ -93,7 +102,10 @@ export function Docs() {
             <ul class="doc-list">
               <li>
                 Open a vault in one of five tiers ($5, $10, $20, $30 or $50, paid once in ETH to the treasury) and stake TOWN in it.{' '}
-                <Verify inline links={[{ what: 'TownStaking’s tiers and totals', href: contractUrl(network, 'TownStaking', 'read') }]} />
+                <Verify
+                  inline
+                  links={[{ what: 'the staking contract’s tiers and totals', href: chain ? readUrl(network, chain.staking.address) : contractUrl(network, 'TownStaking', 'read') }]}
+                />
               </li>
               <li>Each daily payout is split between the tiers by fixed shares (1x to 2x), then within a tier by TOWN staked.</li>
               <li>The WETH streams to stakers over seven days; claim it any time. There is no lock: unstaking gives back all your TOWN.</li>
@@ -316,6 +328,7 @@ function Settings() {
   const st = chain.staking;
   const t = chain.treasury;
   const pauseAt = pausePending(chain);
+  const change = stakingChange(chain);
   const fallbackLive = st.priceStatus.source === PriceSource.Fallback;
   return (
     <>
@@ -351,8 +364,12 @@ function Settings() {
           value={shortAddress(t.staking)}
           view="Treasury.staking, Treasury.pendingStaking"
           note={
-            t.pendingStaking
-              ? `${shortAddress(t.pendingStaking)} announced, from ${fmtDateTime(t.stakingEffectiveAt)}.`
+            t.pendingStaking && change
+              ? change.phase === 'expired'
+                ? `${shortAddress(t.pendingStaking)} announced; expired on ${fmtDateTime(change.until)}: the owner must announce again.`
+                : `${shortAddress(t.pendingStaking)} announced; can be applied from ${fmtDateTime(change.from)} until ${fmtDateTime(change.until)}${
+                    t.candidate ? (t.candidate.verified ? ' (verified)' : ' (does not look like a staking contract)') : ''
+                  }.`
               : stakingReplaced(chain, network.deployment?.contracts.TownStaking)
                 ? 'A replacement for TownStaking; no change announced.'
                 : 'TownStaking; no change announced.'
@@ -362,7 +379,7 @@ function Settings() {
       <Verify
         links={[
           { label: 'payout rate and target', what: 'the Treasury’s payout rate, pause and staking contract', href: contractUrl(network, 'Treasury', 'read') },
-          { label: 'prices and feed', what: 'TownStaking’s fallback price and feed', href: contractUrl(network, 'TownStaking', 'read') },
+          { label: 'prices and feed', what: 'the staking contract’s fallback price and feed', href: readUrl(network, st.address) },
           { label: 'unlock time', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
         ]}
       />

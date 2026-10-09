@@ -73,8 +73,10 @@ export interface ChainState {
     ANTI_SNIPE_DURATION: number;
     /** TownHook.BURN_FLOOR() */
     BURN_FLOOR: bigint;
-    /** TownHook.cycleTotal(c), for the cycles the site shows. */
+    /** TownHook.cycleTotal(c), for today and the three days before it (the lean's days). */
     cycleTotal: Record<number, bigint>;
+    /** TownHook.sold(c), for the three days before today (CR-47): the selling side of the lean. */
+    sold: Record<number, bigint>;
   };
 
   /** BuyerRewards. */
@@ -97,12 +99,18 @@ export interface ChainState {
     totalPaidToBuyers: bigint;
     /** BuyerRewards.totalFeesToTreasury() */
     totalFeesToTreasury: bigint;
-    /**
-     * Day c can be claimed from the start of day c + claimDelay.days. Found by asking BuyerRewards.finalize(current - k) as a read (eth_call, never sent) for k = 1, 2: the
-     * smallest k the contract accepts (CR-44: 1). `fromContract` is false on a day with no ended day
-     * to ask about (day 0), when the spec's value is used.
-     */
-    claimDelay: { days: number; fromContract: boolean };
+    /** BuyerRewards.RATE_BASE_BPS(): the rate at a lean of 0 and the lowest rate (CR-47: 500). */
+    RATE_BASE_BPS: number;
+    /** BuyerRewards.RATE_BUY_SPAN_BPS(): the rise above the base at a lean of +1, only buys (CR-47: 25). */
+    RATE_BUY_SPAN_BPS: number;
+    /** BuyerRewards.RATE_SELL_SPAN_BPS(): the rise above the base at a lean of -1, only sells (CR-47: 50). */
+    RATE_SELL_SPAN_BPS: number;
+    /** BuyerRewards.LEAN_CYCLES(): how many previous days the lean is measured over (CR-47: 3). */
+    LEAN_CYCLES: number;
+    /** BuyerRewards.rateBps(c), the day's rebate rate in basis points, for today and each day the wallet bought (CR-47). */
+    rateBps: Record<number, number>;
+    /** BuyerRewards.lean(c), scaled by 10^18 (-10^18 only sells to +10^18 only buys), for today (CR-47). */
+    lean: Record<number, bigint>;
   };
 
   /** Treasury. */
@@ -149,10 +157,18 @@ export interface ChainState {
     pauseEffectiveAt: number;
     /** Treasury.paused() */
     paused: boolean;
+    /** Treasury.APPLY_WINDOW(): how long an announced replacement can be applied once due (CR-48). */
+    APPLY_WINDOW: number;
+    /** Treasury.weth(): the WETH a staking contract must name (CR-49). */
+    weth: Address;
+    /** The site's own check of `pendingStaking()` (CR-49); null when nothing is pending. */
+    candidate: CandidateCheck | null;
   };
 
-  /** TownStaking. */
+  /** The staking contract the Treasury pays now, `Treasury.staking()`: every figure below is read from it (CR-50). */
   staking: {
+    /** Treasury.staking(): the contract these figures come from and the only one the site sells vaults in. */
+    address: Address;
     /** TownStaking.tierUsd(tier) */
     tierUsd: PerTier<number>;
     /** TownStaking.tierWeight(tier) */
@@ -234,6 +250,39 @@ export interface WalletState {
   earned: bigint;
   /** TownStaking.upgradePriceWei(wallet, tier) for each tier above the current one; null when it reverts (no price). */
   upgradePriceWei: Partial<PerTier<bigint | null>>;
+  /**
+   * The wallet's vaults in staking contracts the Treasury no longer pays (CR-50), from the network
+   * module's hand-kept list: only those with TOWN staked or WETH earned.
+   */
+  oldVaults: OldVault[];
+}
+
+/** A wallet's vault in a replaced staking contract (CR-50): unstake and claim only. */
+export interface OldVault {
+  /** The replaced contract. */
+  address: Address;
+  /** When the Treasury stopped paying it, from the network module's list (seconds); null if the list gives no date. */
+  replacedOn: number | null;
+  /** positionOf(wallet) there. */
+  positionOf: { tier: 0 | Tier; amount: bigint };
+  /** earned(wallet) there. */
+  earned: bigint;
+}
+
+/**
+ * What the site found when it asked an announced staking contract which Treasury and which WETH
+ * it names (CR-49). `verified` only when both answers match and its code is not an EIP-7702
+ * delegation; the Treasury refuses anything else when it is applied.
+ */
+export interface CandidateCheck {
+  address: Address;
+  /** Its `treasury()` answer; null when the call failed or gave no address. */
+  treasury: Address | null;
+  /** Its `weth()` answer; null when the call failed or gave no address. */
+  weth: Address | null;
+  /** Its code begins with 0xef0100: a wallet with an EIP-7702 delegation. */
+  delegated: boolean;
+  verified: boolean;
 }
 
 /** The seven UpTown contracts, in the order the footer lists them. */

@@ -29,6 +29,13 @@ const PLAIN: Record<string, string> = {
   AlreadyPaused: 'The payouts are already paused.',
   NoPendingPause: 'No pause of the payouts is announced, so there is nothing to cancel.',
   NotPaused: 'The payouts are not paused.',
+  // Treasury, the application window (CR-48) and the candidate checks (CR-49)
+  StakingChangeExpired:
+    'The announced staking contract can no longer be applied: its 7-day window has passed. The owner must announce it again, with a new 2-day wait.',
+  StakingWrongTreasury:
+    'That address does not look like a staking contract: it does not name this treasury as its treasury, so the treasury refuses it.',
+  StakingWrongWeth: 'That address does not look like a staking contract: it does not name WETH as its reward token, so the treasury refuses it.',
+  StakingDelegated: 'That address is a wallet whose code can be changed at any time, not a fixed staking contract, so the treasury refuses it.',
   // Launcher
   OnlyOwner: 'Only the owner can do this.',
   AlreadyLaunched: 'UpTown has already launched; the launch cannot be repeated.',
