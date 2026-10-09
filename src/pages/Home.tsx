@@ -65,6 +65,36 @@ export function Home() {
         </div>
       </section>
 
+      {/* The problem, and UpTown's answer (CR-66: the owner's concept, in the Lead's words, as written) */}
+      <section class="section" aria-labelledby="problem-title">
+        <div class="wrap">
+          <Card title={<span id="problem-title">The problem</span>} class="problem">
+            <div class="split">
+              <p class="problem-text">
+                Most projects that earn revenue have no system that keeps it coming. Attention fades after launch, trading slows, and the project fades with
+                it.
+              </p>
+              <div class="side-notes">
+                <h3 class="side-title">UpTown’s answer: a flywheel in the pool itself</h3>
+                <p class="problem-lead">Every trade in the TOWN pool passes through TownHook, a contract no one controls. It turns trading into reasons to take part:</p>
+                <ul class="plain-list">
+                  <li>
+                    <strong>Buy</strong> and claim a TOWN rebate the next day.
+                  </li>
+                  <li>
+                    <strong>Stake</strong> and receive a daily share of the ETH the treasury collects.
+                  </li>
+                  <li>
+                    <strong>Sell</strong>, and 2% is burned or added to the stakers’ ETH.
+                  </li>
+                </ul>
+                <p class="problem-close">The rules are written into the contracts and cannot be changed.</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </section>
+
       <section class="section">
         <div class="wrap feature-grid">
           <article class="feature">

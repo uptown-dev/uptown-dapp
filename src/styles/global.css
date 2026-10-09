@@ -2122,6 +2122,12 @@ main:focus {
   stroke-dasharray: 1.5 3;
   stroke-linecap: round;
 }
+/* F9c (CR-66): the thin rule above the burn floor line in the sell fee box */
+.fg-rule {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  fill: none;
+}
 
 /* ---------- docs ---------- */
 
@@ -2593,4 +2599,22 @@ code.break {
 }
 .owner-foot {
   margin: 0;
+}
+
+/* ---- F9c (CR-66): "The problem", between the hero and the feature cards ---- */
+.problem .problem-text {
+  font-size: 14px;
+  color: var(--text);
+}
+.problem h3.side-title {
+  font-size: 14px;
+}
+.problem .problem-lead {
+  color: var(--text-2);
+}
+.problem .plain-list {
+  margin-bottom: 10px;
+}
+.problem .problem-close {
+  color: var(--text-2);
 }

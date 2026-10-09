@@ -145,12 +145,17 @@ export const FlameIcon = (p: IconProps) => (
 
 // ---------------------------------------------------------------------------------------------
 // The one flow graphic, shown in the home page's hero, with the hook at its centre: every trade
-// passes through TownHook, which sends 2% of a buy's ETH to the treasury, records the buy in the
-// tally and burns 2% of a sell's TOWN (or, after a day whose burn outran its rebates, and always at
-// the burn floor, takes the 2% in ETH for the treasury; CR-55 to CR-57); the treasury keeps 10% of
-// its ETH for the owner and pays the other 90% to stakers as WETH; the tally decides the buyers'
-// rebates (spec "At a glance", "Fees", "Sell fee currency", "Owner reserve", "Budget and
+// passes through TownHook, which sends 2% of a buy's ETH to the treasury and records the buy in the
+// tally. The 2% of a sell goes to the "Dynamic" box (CR-66): charged in TOWN and burned, or, on a
+// day after one whose burn exceeded its rebates (and always at the burn floor), charged in ETH and
+// sent to the treasury like the buy fee (CR-55 to CR-57). So the treasury sits in the middle
+// column, where the buy fee and the sell fee's ETH-day path both reach it. The treasury keeps 10%
+// of its ETH for the owner and pays the other 90% to stakers as WETH; the tally decides the
+// buyers' rebates (spec "At a glance", "Fees", "Sell fee currency", "Owner reserve", "Budget and
 // distribution", "Finalising a cycle").
+//
+// Three columns, 360 units wide in all: buy tally and rebates (x 8-116), treasury and stakers
+// (x 126-220), the sell fee (x 230-352).
 // ---------------------------------------------------------------------------------------------
 
 /** A box with a title and one or more lines under it; 52 units tall for one line, 14 more per extra line. */
@@ -171,14 +176,14 @@ function Node({ x, y, w, title, sub, cls = 'fg-node' }: { x: number; y: number; 
 }
 const nodeHeight = (sub: string[]) => 52 + (sub.length - 1) * 14;
 
-/** A labelled downward arrow in one of the three columns (x is the column's left edge). */
-function Down({ x, y1, y2, kind, lines }: { x: number; y1: number; y2: number; kind: 'eth' | 'town' | 'data'; lines: string[] }) {
+/** A labelled downward arrow: the line at `ax`, its label starting 10 units to its right. */
+function Down({ ax, y1, y2, kind, lines }: { ax: number; y1: number; y2: number; kind: 'eth' | 'town' | 'data'; lines: string[] }) {
   const mid = (y1 + y2) / 2 - (lines.length - 1) * 7 + 4;
   return (
     <g>
-      <path d={`M${x + 20} ${y1}V${y2}`} class={`fg-${kind}`} marker-end={`url(#fg-arrow-${kind === 'eth' ? 'eth' : 'town'})`} />
+      <path d={`M${ax} ${y1}V${y2}`} class={`fg-${kind}`} marker-end={`url(#fg-arrow-${kind === 'eth' ? 'eth' : 'town'})`} />
       {lines.map((l, i) => (
-        <text key={l} x={x + 30} y={mid + i * 14} class="fg-label">
+        <text key={l} x={ax + 10} y={mid + i * 14} class="fg-label">
           {l}
         </text>
       ))}
@@ -186,14 +191,24 @@ function Down({ x, y1, y2, kind, lines }: { x: number; y1: number; y2: number; k
   );
 }
 
+// The sell fee's box (CR-66): the owner's text, then the burn floor under a thin rule.
+const DYN = { x: 230, y: 230, w: 122 };
+const DYN_TEXT = ['charged in TOWN', 'and burnt from', 'day 1, switches', 'to ETH when a', 'previous day’s burn', 'exceeds rebates'];
+const dynFloor = (floor: string) => ['always ETH once', 'TOWN supply is', `${floor} or less`];
+/** The thin rule sits 9 units under the last text line's baseline. */
+const DYN_RULE_Y = DYN.y + 39 + (DYN_TEXT.length - 1) * 14 + 9;
+/** The floor lines under the rule (17, 31 and 45 units down), then the usual 13 units of padding. */
+const DYN_H = DYN_RULE_Y - DYN.y + 17 + (dynFloor('').length - 1) * 14 + 13;
+
 /** `floor` is the burn floor in whole TOWN, as text: TownHook.BURN_FLOOR() (CR-55). */
 export function FlowGraphic({ floor }: { floor: string }) {
+  const dynBottom = DYN.y + DYN_H;
   return (
     <svg
-      viewBox="0 0 360 448"
+      viewBox="0 0 360 508"
       class="flow-graphic"
       role="img"
-      aria-label={`Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet; on a sell it burns 2% of the TOWN sold, until the supply is ${floor} TOWN, or, on a day after one whose burn outran its rebates (and always once the supply is ${floor} TOWN), takes the 2% in ETH for the treasury instead. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
+      aria-label={`Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in TOWN and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates; once the supply is ${floor} TOWN or less it is always ETH. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -219,34 +234,60 @@ export function FlowGraphic({ floor }: { floor: string }) {
       <text x="180" y="132" class="fg-hook-title" text-anchor="middle">TownHook</text>
       <text x="180" y="152" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the TOWN pool</text>
 
-      {/* Hook to treasury, tally and burn */}
-      <Down x={8} y1={172} y2={226} kind="eth" lines={['2% of ETH', 'on buys']} />
-      <Down x={126} y1={172} y2={226} kind="data" lines={['records', 'each buy']} />
-      <Down x={244} y1={172} y2={226} kind="town" lines={['2% of TOWN', 'on sells']} />
-      <Node x={8} y={230} w={108} title="Treasury" sub={['90% to stakers', '10% owner']} />
-      <Node x={126} y={230} w={108} title="Buy tally" sub={['TOWN per wallet,', 'per day']} />
-      <Node
-        x={244}
-        y={230}
-        w={108}
-        title="Burned"
-        sub={['or 2% in ETH to', 'the treasury after', 'a day burning', 'outran rebates;', 'until supply is', floor]}
-        cls="fg-burn"
-      />
+      {/* Hook to the tally, the treasury and the sell fee */}
+      <Down ax={28} y1={172} y2={226} kind="data" lines={['records', 'each buy']} />
+      <path d="M146 172V296" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
+      <text x="156" y="198" class="fg-label">2% of ETH</text>
+      <text x="156" y="212" class="fg-label">on buys</text>
+      {/* The sell fee leaves the hook in one of two currencies: an ETH line beside a TOWN line */}
+      <path d="M242 172V226" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
+      <path d="M258 172V226" class="fg-town" marker-end="url(#fg-arrow-town)" />
+      <text x="268" y="203" class="fg-label">2% of sells</text>
+
+      <Node x={8} y={230} w={108} title="Buy tally" sub={['TOWN per wallet,', 'per day']} />
+      <Node x={126} y={300} w={94} title="Treasury" sub={['90% to stakers', '10% owner']} />
+
+      {/* The sell fee (CR-66) */}
+      <rect x={DYN.x} y={DYN.y} width={DYN.w} height={DYN_H} class="fg-node" />
+      <text x={DYN.x + DYN.w / 2} y={DYN.y + 22} class="fg-title" text-anchor="middle">
+        Dynamic
+      </text>
+      {DYN_TEXT.map((l, i) => (
+        <text key={l} x={DYN.x + DYN.w / 2} y={DYN.y + 39 + i * 14} class="fg-sub" text-anchor="middle">
+          {l}
+        </text>
+      ))}
+      <path d={`M${DYN.x + 12} ${DYN_RULE_Y}H${DYN.x + DYN.w - 12}`} class="fg-rule" />
+      {dynFloor(floor).map((l, i) => (
+        <text key={l} x={DYN.x + DYN.w / 2} y={DYN_RULE_Y + 17 + i * 14} class="fg-sub" text-anchor="middle">
+          {l}
+        </text>
+      ))}
+      {/* ETH days: the sell fee's ETH goes to the treasury, like the buy fee */}
+      <path d={`M${DYN.x} 262H198V296`} class="fg-eth" marker-end="url(#fg-arrow-eth)" />
+      <text x={DYN.x - 4} y="255" class="fg-label" text-anchor="end">
+        on ETH days
+      </text>
+      {/* Burning days: the TOWN is destroyed */}
+      <Down ax={258} y1={dynBottom + 4} y2={dynBottom + 54} kind="town" lines={['on burning', 'days']} />
+      <rect x={DYN.x} y={dynBottom + 58} width={DYN.w} height="36" class="fg-burn" />
+      <text x={DYN.x + DYN.w / 2} y={dynBottom + 81} class="fg-title" text-anchor="middle">
+        Burned
+      </text>
 
       {/* Treasury to stakers, tally to rebates */}
-      <Down x={8} y1={300} y2={354} kind="eth" lines={['daily,', 'as WETH']} />
-      <Down x={126} y1={300} y2={354} kind="town" lines={['from the', 'next day']} />
-      <Node x={8} y={358} w={108} title="Stakers" sub={['streamed over', '7 days']} />
-      <Node x={126} y={358} w={108} title="Rebates" sub={['5% to 5.5%', 'of buys, from', 'the reserve']} />
+      <Down ax={146} y1={370} y2={424} kind="eth" lines={['daily,', 'as WETH']} />
+      <Down ax={28} y1={300} y2={354} kind="town" lines={['from the', 'next day']} />
+      <Node x={126} y={428} w={94} title="Stakers" sub={['streamed over', '7 days']} />
+      <Node x={8} y={358} w={108} title="Rebates" sub={['5% to 5.5%', 'of buys, from', 'the reserve']} />
 
       {/* Legend */}
-      <path d="M252 374h22" class="fg-eth" />
-      <text x="280" y="378" class="fg-sub">ETH, WETH</text>
-      <path d="M252 394h22" class="fg-town" />
-      <text x="280" y="398" class="fg-sub">TOWN</text>
-      <path d="M252 414h22" class="fg-data" />
-      <text x="280" y="418" class="fg-sub">record</text>
+      <path d="M16 460h22" class="fg-eth" />
+      <text x="44" y="464" class="fg-sub">ETH, WETH</text>
+      <path d="M16 480h22" class="fg-town" />
+      <text x="44" y="484" class="fg-sub">TOWN</text>
+      <path d="M16 500h22" class="fg-data" />
+      <text x="44" y="504" class="fg-sub">record</text>
     </svg>
   );
 }
