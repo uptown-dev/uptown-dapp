@@ -19,6 +19,11 @@ const GALLERY = process.argv.includes('gallery');
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// The tests read the local chain's contracts and test wallets. Once Sepolia's address file is
+// filled (CR-63), a build that names no chain would show Sepolia (the network module's order:
+// mainnet, Sepolia, local), so the tests name the local chain themselves (F9a).
+process.env.VITE_CHAIN_ID = '31337';
+
 const server = await createServer({
   root: ROOT,
   configFile: resolve(ROOT, 'vite.config.ts'),

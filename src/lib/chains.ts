@@ -75,6 +75,14 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
     explorer: 'https://sepolia.etherscan.io',
     explorerName: 'Sepolia Etherscan',
     uniswapChain: 'sepolia',
+    // Re-checked for the rehearsal (CR-63, F9a, 9 October 2026, Sepolia block 11,878,774):
+    // each address is in Uniswap's v4 deployments page ("Sepolia: 11155111") and
+    // deployments.json (Universal Router 2.1.2 = `UniversalRouter#v2.1.2`, source tag 2.1.2), WETH
+    // in the Uniswap SDK and PositionManager.WETH9(), Multicall3 in mds1/multicall3's deployment
+    // list; each has code on Sepolia (`cast code`), and the router and quoter answer
+    // poolManager() with the PoolManager below. `scripts/addresses.mjs --chain 11155111` also
+    // copies this set into src/addresses/11155111.json, after checking it against the
+    // deployment file.
     contracts: {
       poolManager: '0xE03A1074c86CFeDd5C142C4F04F1a1536e203543',
       positionManager: '0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4',
