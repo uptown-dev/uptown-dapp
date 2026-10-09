@@ -22,6 +22,8 @@
 //   action that cannot be undone (checked, never sent); the Safe path and the read-only page from
 //   fixtures (no Safe exists on the private chain, so the owner address is made to look like one);
 //   the page before launch from a fixture; the Trade page without the Uniswap button.
+// - CR-71 (F9g), the navigation bar: its items (no "Home"), and the whole site rendered to check that
+//   the "UpTown" name links to the homepage, which item is marked current, and the browser titles.
 // Nothing here sends a transaction: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 import { AppContext, type AppState } from '../src/components/ui';
@@ -37,6 +39,7 @@ import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
+import { App, navItems } from '../src/app';
 import type { Address, CandidateCheck, ChainState, OwnerState, WalletState } from '../src/data/types';
 
 const log = document.getElementById('log')!;
@@ -635,6 +638,59 @@ async function run() {
     check('F8g verified and upgradeable (fixture): both tags, and no "its code is fixed"', tb.startsWith('Verified') && tb.includes('Upgradeable: its code can change') && !tb.includes('its code is fixed'), tb);
     const plain = await mount(<CandidateMark check={verified} />, base, wallet, 'verified, not upgradeable (fixture)');
     check('F8g verified, not upgradeable (fixture): no upgradeable tag', !text(plain).includes('Upgradeable'), text(plain));
+  }
+
+  // ---- CR-71 (F9g): no "Home" item in the navigation bar; the name is the homepage's link ----------
+  {
+    const items = (ownerLink: boolean) => navItems(ownerLink).map((n) => `${n.label}=#/${n.page}`).join(', ');
+    check(
+      'CR-71 navigation items: Trade, Rewards, Stake, Stats, Docs (and Owner last, for the owner wallet only); no Home',
+      items(false) === 'Trade=#/trade, Rewards=#/rewards, Stake=#/stake, Stats=#/stats, Docs=#/docs' &&
+        items(true) === 'Trade=#/trade, Rewards=#/rewards, Stake=#/stake, Stats=#/stats, Docs=#/docs, Owner=#/owner',
+      `${items(false)} | ${items(true)}`,
+    );
+
+    // The whole site, as main.tsx renders it, on the test page's own address (no hash: the homepage).
+    const savedTitle = document.title;
+    const box = document.createElement('div');
+    stage.append(box);
+    render(<App />, box);
+    const settle = () => new Promise((r) => setTimeout(r, 60));
+    await settle();
+    const header = box.querySelector('header.site-header') as HTMLElement;
+    const navLinks = () => [...header.querySelectorAll('nav#site-nav a')] as HTMLAnchorElement[];
+    const current = () => navLinks().filter((a) => a.getAttribute('aria-current') === 'page').map((a) => a.textContent!.trim());
+    const mark = header.querySelector('a.wordmark') as HTMLAnchorElement | null;
+    const labels = navLinks().map((a) => `${a.textContent!.trim()}=${a.getAttribute('href')}`);
+    check(
+      'CR-71 header: no "Home" link; the "UpTown" name links to #/ with an accessible name; nothing marked current on the homepage; title "UpTown (TOWN)"',
+      labels.join(', ') === 'Trade=#/trade, Rewards=#/rewards, Stake=#/stake, Stats=#/stats, Docs=#/docs' &&
+        !navLinks().some((a) => /home/i.test(a.textContent!) || a.getAttribute('href') === '#/') &&
+        mark?.getAttribute('href') === '#/' &&
+        mark.textContent!.trim() === 'UpTown' &&
+        /home/i.test(mark.getAttribute('aria-label') ?? '') &&
+        current().length === 0 &&
+        document.title === 'UpTown (TOWN)',
+      `${labels.join(', ')} | name: ${mark?.getAttribute('href')} "${mark?.getAttribute('aria-label')}" | current: ${current().join(',') || 'none'} | ${document.title}`,
+    );
+
+    // Another page: its item is marked current as before; the name then opens the homepage.
+    location.hash = '#/trade';
+    await settle();
+    const onTrade = `${current().join(',')} | ${document.title}`;
+    mark!.click();
+    await settle();
+    const back = `${location.hash} | ${current().join(',') || 'none'} | ${document.title} | ${box.querySelector('main h1')?.textContent?.trim() ?? 'no h1'}`;
+    check(
+      'CR-71 on Trade, "Trade" is marked current and the title is unchanged; clicking the name opens the homepage',
+      onTrade === 'Trade | Trade TOWN · UpTown' && back.startsWith('#/ | none | UpTown (TOWN) | '),
+      `${onTrade} || after the click: ${back}`,
+    );
+
+    render(null, box);
+    box.remove();
+    history.replaceState(null, '', location.pathname + location.search);
+    document.title = savedTitle;
   }
 
   if (!GALLERY) stage.replaceChildren();

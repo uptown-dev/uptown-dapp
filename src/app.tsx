@@ -18,7 +18,10 @@ import { Docs } from './pages/Docs';
 import { Owner } from './pages/Owner';
 import { showsOwnerLink } from './lib/owner';
 
+/** Every page: its address (`#/<page>`), its label and its browser title. */
 const NAV: { page: string; label: string; title: string }[] = [
+  // The homepage keeps its entry for its address and title but has no item in the navigation bar:
+  // the "UpTown" name at the top left is its link (CR-71).
   { page: '', label: 'Home', title: 'UpTown (TOWN)' },
   { page: 'trade', label: 'Trade', title: 'Trade TOWN · UpTown' },
   { page: 'rewards', label: 'Rewards', title: 'Buyer rebates · UpTown' },
@@ -28,6 +31,11 @@ const NAV: { page: string; label: string; title: string }[] = [
   // Shown in the navigation only to the owner wallet (CR-64); anyone else who opens it sees a notice.
   { page: 'owner', label: 'Owner', title: 'Owner · UpTown' },
 ];
+
+/** The navigation bar's items, in order: every page but the homepage (CR-71); Owner only for the owner wallet (CR-64). */
+export function navItems(ownerLink: boolean) {
+  return NAV.filter((n) => n.page !== '' && (n.page !== 'owner' || ownerLink));
+}
 
 /** Pages made of live figures: shown once the figures have been read. */
 const LIVE_PAGES = new Set(['trade', 'rewards', 'stake', 'stats']);
@@ -302,13 +310,14 @@ export function App() {
 
       <header class="site-header">
         <div class="wrap header-row">
-          <a class="wordmark" href="#/" aria-label="UpTown, home">
+          {/* The homepage's link on every screen size (CR-71); it also closes the narrow-screen menu. */}
+          <a class="wordmark" href="#/" aria-label="UpTown, home" onClick={() => setNavOpen(false)}>
             <TowerGlyph />
             <span>UpTown</span>
           </a>
           <nav class={`site-nav${navOpen ? ' open' : ''}`} id="site-nav" aria-label="Main">
             <ul>
-              {NAV.filter((n) => n.page !== 'owner' || ownerLink).map((n) => (
+              {navItems(ownerLink).map((n) => (
                 <li key={n.page}>
                   <a href={`#/${n.page}`} aria-current={page === n.page ? 'page' : undefined}>
                     {n.label}
