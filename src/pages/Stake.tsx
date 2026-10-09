@@ -70,10 +70,6 @@ export function Stake() {
             and upgrading pause. Adding TOWN, unstaking and claiming never use the price.
           </li>
           <li>
-            <strong>The vault price goes to the treasury, not to the owner.</strong> Like all ETH the treasury receives, 90% is paid out to stakers over the
-            following days and 10% goes to the owner’s reserve.
-          </li>
-          <li>
             <strong>Gas.</strong> Staking transactions are sent with a gas limit of {fmtInt(Number(STAKING_GAS_LIMIT))}, so the day’s payout can run with your action;
             the first staking action of a day costs more gas for that reason. Small vaults may not cover their gas.
           </li>
@@ -415,6 +411,10 @@ function GoodToKnow() {
       <p class="side-title">Good to know</p>
       <ul class="note-list">
         <li>The vault price is paid once, in ETH, and is not refunded.</li>
+        <li>
+          The vault price goes to the treasury, not to the owner. Like all ETH the treasury receives, 90% is paid out to stakers over the following days and
+          10% goes to the owner’s reserve.
+        </li>
         <li>Unstaking is a full exit: all your TOWN comes back and the vault closes. Earned WETH stays claimable.</li>
         <li>The site sends about 1% more ETH than the vault price; the contract refunds the difference at once.</li>
         <li>Each day’s ETH is split between tiers by fixed shares, then within a tier by TOWN staked.</li>
