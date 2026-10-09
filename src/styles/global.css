@@ -591,6 +591,10 @@ main:focus {
   max-width: 720px;
   margin-bottom: 0;
 }
+/* CR-70: the "Why $TOWN?" paragraphs run the full width of the content area; only the hero description keeps the 720px line length. */
+.why p {
+  max-width: none;
+}
 .why p + p {
   margin-top: 12px;
 }

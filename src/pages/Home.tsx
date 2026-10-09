@@ -66,7 +66,7 @@ export function Home() {
         </div>
       </section>
 
-      {/* Why $TOWN? The problem, and UpTown's answer (CR-69: the heading and two plain paragraphs, in the hero description's text size) */}
+      {/* Why $TOWN? The problem, and UpTown's answer (CR-69: the heading and two plain paragraphs, in the hero description's text size; CR-70: full width) */}
       <section class="section" aria-labelledby="why-title">
         <div class="wrap">
           <h2 id="why-title" class="section-title">
@@ -78,7 +78,7 @@ export function Home() {
               it.
             </p>
             <p>
-              UpTown answers with a flywheel in the pool itself. Every trade in the TOWN pool passes through TownHook, a contract no one controls, and it
+              UpTown built a sophisticated flywheel into the pool itself. Every trade in the TOWN pool passes through TownHook, a contract no one controls, and it
               turns trading into reasons to take part: buyers claim a TOWN rebate the next day, stakers receive a daily share of the ETH the treasury
               collects, and on every sale 2% is burned or sent to the treasury in ETH. The rules are written into the contracts and cannot be changed.
             </p>
