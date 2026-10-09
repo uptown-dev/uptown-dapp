@@ -70,6 +70,10 @@ export function Stake() {
             and upgrading pause. Adding TOWN, unstaking and claiming never use the price.
           </li>
           <li>
+            <strong>The vault price goes to the treasury, not to the owner.</strong> Like all ETH the treasury receives, 90% is paid out to stakers over the
+            following days and 10% goes to the owner’s reserve.
+          </li>
+          <li>
             <strong>Gas.</strong> Staking transactions are sent with a gas limit of {fmtInt(Number(STAKING_GAS_LIMIT))}, so the day’s payout can run with your action;
             the first staking action of a day costs more gas for that reason. Small vaults may not cover their gas.
           </li>
