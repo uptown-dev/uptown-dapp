@@ -31,7 +31,7 @@ export function Home() {
             <h1>TOWN, the first token that rewards buyers and stakers.</h1>
             <p class="hero-summary">
               Every trade in the TOWN pool on Uniswap v4 passes through TownHook, a contract managed by no one: it sends 2% of each buy, charged in ETH, to
-              the treasury, records the TOWN bought, and burns 2% of every TOWN sold into the pool. Every day, buyers claim up to 5.5% of their TOWN buys back
+              the treasury, records the TOWN bought, and takes 2% of every TOWN sold into the pool: burned, or to the treasury in ETH. Every day, buyers claim up to 5.5% of their TOWN buys back
               from a 500,000,000 TOWN reserve. 90% of the treasury’s ETH funds staker rewards, which stream to stakers every day as WETH.
             </p>
             <div class="btn-row hero-cta">
