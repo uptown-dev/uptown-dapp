@@ -39,6 +39,11 @@ const MAX_UINT = 2n ** 256n - 1n;
 const EPOCH_FIRSTS = [0, 100, 200, 300, 400, 500, 600];
 /** The bytes an EIP-7702 delegated wallet's code begins with (CR-49). */
 const DELEGATION_PREFIX = '0xef0100';
+/**
+ * The EIP-1967 implementation slot, keccak256("eip1967.proxy.implementation") - 1: a proxy keeps the
+ * address of the code it runs here, so a non-zero value means the contract's code can be swapped.
+ */
+const EIP1967_IMPLEMENTATION_SLOT: Hex = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
 
 /** A viem chain for the network module's chain, with Multicall3. */
 export function viemChain(n: Network) {
@@ -141,7 +146,9 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     ANTI_SNIPE_START_BPS: H('ANTI_SNIPE_START_BPS'),
     ANTI_SNIPE_DURATION: H('ANTI_SNIPE_DURATION'),
     BURN_FLOOR: H('BURN_FLOOR'),
+    sellFeeInEth: H('sellFeeInEth'),
     RESERVE: R('RESERVE'),
+    reserveExhausted: R('reserveExhausted'),
     CLAIM_FEE_BPS: R('CLAIM_FEE_BPS'),
     RATE_BASE_BPS: R('RATE_BASE_BPS'),
     RATE_BUY_SPAN_BPS: R('RATE_BUY_SPAN_BPS'),
@@ -261,6 +268,14 @@ export async function readAll(client: PublicClient, n: Network, account: Address
   const leanIdx = b.add(`BuyerRewards.lean(${current})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'lean', args: [BigInt(current)] });
   const leanTotalIdx = leanDays.map((c) => b.add(`TownHook.cycleTotal(${c})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'cycleTotal', args: [BigInt(c)] }));
   const leanSoldIdx = leanDays.map((c) => b.add(`TownHook.sold(${c})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'sold', args: [BigInt(c)] }));
+  // The sell fee's currency (CR-57): the TOWN burned today and yesterday, and yesterday's rebate pot,
+  // the two figures the rule compared to set today's mode.
+  const burnDays = [current, current - 1].filter((c) => c >= 0);
+  const burnedIdx = burnDays.map((c) => b.add(`TownHook.burned(${c})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'burned', args: [BigInt(c)] }));
+  const potIdx =
+    current >= 1
+      ? b.add(`BuyerRewards.emissionEstimate(${current - 1})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'emissionEstimate', args: [BigInt(current - 1)] })
+      : -1;
 
   let boughtIdx: { c: number; i: number }[] = [];
   let known: Record<number, bigint> = {};
@@ -294,11 +309,13 @@ export async function readAll(client: PublicClient, n: Network, account: Address
           earned: b.add(`staking ${r.address}.earned(wallet)`, { address: r.address, abi: STAKING_ABI, functionName: 'earned', args: [account] }),
         }))
     : [];
-  // The announced contract's code, at the same block, read beside round 2: a wallet with an
-  // EIP-7702 delegation fails the check (CR-49).
-  const [r2, candidateCode] = await Promise.all([
+  // The announced contract's code and its EIP-1967 implementation slot, at the same block, read
+  // beside round 2: a wallet with an EIP-7702 delegation fails the check (CR-49); a proxy is flagged
+  // as upgradeable (F8f housekeeping).
+  const [r2, candidateCode, candidateImpl] = await Promise.all([
     b.run(client, n, bn),
     pendingStaking ? client.getCode({ address: pendingStaking, blockNumber: bn }) : Promise.resolve(undefined),
+    pendingStaking ? client.getStorageAt({ address: pendingStaking, slot: EIP1967_IMPLEMENTATION_SLOT, blockNumber: bn }) : Promise.resolve(undefined),
   ]);
 
   const cap: Record<number, bigint> = {};
@@ -320,10 +337,13 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     leanTotals[c] = r2.get<bigint>(leanTotalIdx[j]);
     leanSold[c] = r2.get<bigint>(leanSoldIdx[j]);
   });
+  const burnedByDay: Record<number, bigint> = {};
+  burnDays.forEach((c, j) => (burnedByDay[c] = r2.get<bigint>(burnedIdx[j])));
+  const emissionEstimate: Record<number, bigint> = potIdx >= 0 ? { [current - 1]: r2.get<bigint>(potIdx) } : {};
   const position = ws ? r2.get<readonly [number, bigint]>(ws.position) : null;
   const candidate: CandidateCheck | null =
     pendingStaking && candIdx
-      ? checkCandidate(pendingStaking, r2.maybe<Address>(candIdx.treasury), r2.maybe<Address>(candIdx.weth), candidateCode, k.Treasury, r1.get<Address>(i.weth))
+      ? checkCandidate(pendingStaking, r2.maybe<Address>(candIdx.treasury), r2.maybe<Address>(candIdx.weth), candidateCode, k.Treasury, r1.get<Address>(i.weth), candidateImpl)
       : null;
   const oldVaults: OldVault[] = [];
   for (const o of oldIdx) {
@@ -397,6 +417,8 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       BURN_FLOOR: r1.get(i.BURN_FLOOR),
       cycleTotal: { ...leanTotals, [current]: r2.get<bigint>(todayTotalIdx) },
       sold: leanSold,
+      sellFeeInEth: r1.get<boolean>(i.sellFeeInEth),
+      burned: burnedByDay,
     },
     rewards: {
       RESERVE: r1.get(i.RESERVE),
@@ -414,6 +436,8 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       LEAN_CYCLES,
       rateBps,
       lean: { [current]: r2.get<bigint>(leanIdx) },
+      emissionEstimate,
+      reserveExhausted: r1.get<boolean>(i.reserveExhausted),
     },
     treasury: {
       balance: r1.get(i.treasuryBalance),
@@ -504,7 +528,9 @@ export async function readAll(client: PublicClient, n: Network, account: Address
  * The site's own check of an announced staking contract (CR-49): it must name this Treasury as
  * `treasury()` and the Treasury's WETH as `weth()`, and its code must not be an EIP-7702
  * delegation. These are the checks the Treasury makes when the contract is announced and again
- * when it is applied, so a contract that fails here would be refused at application.
+ * when it is applied, so a contract that fails here would be refused at application. Beside them,
+ * a non-zero EIP-1967 implementation slot flags a proxy whose code can change (`upgradeable`); the
+ * Treasury does not check this, so it does not affect `verified`.
  */
 export function checkCandidate(
   address: Address,
@@ -513,6 +539,7 @@ export function checkCandidate(
   code: Hex | undefined,
   treasury: Address,
   weth: Address,
+  implementationSlot?: Hex,
 ): CandidateCheck {
   const delegated = !!code && code.toLowerCase().startsWith(DELEGATION_PREFIX);
   return {
@@ -521,6 +548,7 @@ export function checkCandidate(
     weth: wethAnswer,
     delegated,
     verified: !delegated && same(treasuryAnswer, treasury) && same(wethAnswer, weth),
+    upgradeable: !!implementationSlot && /[1-9a-f]/i.test(implementationSlot.slice(2)),
   };
 }
 
@@ -535,8 +563,13 @@ export async function verifyCandidate(client: PublicClient, address: Address, tr
       (v) => v as Address,
       () => null,
     );
-  const [t, wt, code] = await Promise.all([ask('treasury'), ask('weth'), client.getCode({ address })]);
-  return checkCandidate(address, t, wt, code, treasury, weth);
+  const [t, wt, code, impl] = await Promise.all([
+    ask('treasury'),
+    ask('weth'),
+    client.getCode({ address }),
+    client.getStorageAt({ address, slot: EIP1967_IMPLEMENTATION_SLOT }),
+  ]);
+  return checkCandidate(address, t, wt, code, treasury, weth, impl);
 }
 
 /** A wallet's vault in each listed staking contract, read now (CR-50); the page's read does the same inside its multicall. */
@@ -565,7 +598,10 @@ export function buyerHookData(buyer: Address): Hex {
 
 /**
  * The ETH a sell of `amountIn` TOWN would receive now, from Uniswap's V4Quoter (CL-41, CR-43): an
- * estimate after the 2% sell fee (burned) and the pool fee. A sell carries no `hookData`.
+ * estimate after the 2% sell fee and the pool fee. The quoter runs the swap through TownHook, so the
+ * fee is taken in the currency of the day (CR-56, CR-57): in TOWN mode 2% of the TOWN sold is burned
+ * before the swap; in ETH mode 2% of the ETH the swap pays out goes to the Treasury, and the estimate
+ * is the remaining 98%. A sell carries no `hookData`.
  */
 export async function quoteSell(client: PublicClient, n: Network, amountIn: bigint): Promise<bigint> {
   const { result } = await client.simulateContract({

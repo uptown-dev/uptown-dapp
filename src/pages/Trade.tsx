@@ -2,7 +2,22 @@ import { useEffect, useState } from 'preact/hooks';
 import { parseEther, parseUnits } from 'viem';
 import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus } from '../components/ui';
 import { ArrowDownIcon, ExternalIcon } from '../components/icons';
-import { afterClaimFee, antiSnipeActive, claimOpensOn, antiSnipeSecondsLeft, buyFee, dayRateBps, effectiveRateBps, limitReached, minReceived } from '../lib/derive';
+import {
+  afterClaimFee,
+  antiSnipeActive,
+  claimOpensOn,
+  antiSnipeSecondsLeft,
+  buyFee,
+  dayRateBps,
+  effectiveRateBps,
+  ethSellFee,
+  leftToBurn,
+  limitReached,
+  minReceived,
+  sellFeeMode,
+  townSellFee,
+} from '../lib/derive';
+import type { ChainState } from '../data/types';
 import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtTown, fmtUnits, shortAddress, fmtRate } from '../lib/format';
 import { uniswapSellUrl } from '../lib/network';
 import { quoteBuy, quoteSell } from '../lib/reads';
@@ -119,9 +134,11 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
             separately.
           </li>
           <li>
-            <strong>Fees on a sell.</strong> 2% of the TOWN sold is burned (nothing once the supply has fallen to{' '}
-            {fmtTown(chain.hook.BURN_FLOOR)} TOWN), plus the 0.5% pool fee. The estimate already includes both. A sell takes away none of your rebate
-            points; the day’s sells, counted with no names, go into the three-day lean that sets the next days’ rebate rate.
+            <strong>Fees on a sell.</strong> 2% of every sell, in one of two currencies fixed for the whole day: burned in TOWN (2% of the TOWN sold), or
+            sent to the treasury in ETH (2% of the ETH the sale brings in; 10% of it is kept for the owner). The fee is in ETH on a day after one that burned
+            more TOWN than it paid out in rebates, and on every day once the supply is down to {fmtTown(chain.hook.BURN_FLOOR)} TOWN; once the rebate
+            reserve is spent it is burned until then. Plus the pool’s 0.5% trading fee. The estimate already includes both. A sell takes away none of your
+            rebate points; the day’s sells, counted with no names, go into the three-day lean that sets the next days’ rebate rate.
           </li>
           <li>
             <strong>The first 15 minutes.</strong> The buy fee starts at {fmtBps(chain.hook.ANTI_SNIPE_START_BPS)} at launch and falls in a straight line to{' '}
@@ -137,6 +154,50 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
           </li>
         </ul>
       </Details>
+    </div>
+  );
+}
+
+/**
+ * Today's sell-fee currency in words (CR-56, CR-57): the headline ("2% in TOWN, burned" or "2% in
+ * ETH, to the treasury") and the one-line reason, from TownHook.sellFeeInEth(), TownHook.burned(c-1)
+ * and BuyerRewards.emissionEstimate(c-1) (and reserveExhausted(), totalSupply, BURN_FLOOR).
+ */
+export function sellFeeWords(chain: ChainState): { mode: string; reason: string } {
+  const m = sellFeeMode(chain);
+  const mode = m.inEth ? '2% in ETH, to the treasury' : '2% in TOWN, burned';
+  const floor = fmtTown(chain.hook.BURN_FLOOR);
+  let reason: string;
+  if (m.reason === 'floor') reason = `The burn floor is reached: the supply is at ${floor} TOWN, so every sell pays its fee in ETH.`;
+  else if (m.reason === 'reserve') reason = `The rebate reserve is spent, so the fee is burned until the supply reaches ${floor} TOWN.`;
+  else if (m.reason === 'first-day') reason = `${dayName(0)} has no day before it, so the fee is burned.`;
+  else {
+    const b = m.burnedYesterday ?? 0n;
+    const p = m.rebatesYesterday ?? 0n;
+    const figures = `Yesterday (${dayName(m.yesterday!)}) burned ${fmtTown(b)} TOWN and paid ${fmtTown(p)} TOWN in rebates`;
+    const more = b > p;
+    reason =
+      more === m.inEth
+        ? `${figures}: it ${more ? 'burned more than it paid, so today the fee is in ETH' : 'did not burn more than it paid, so today the fee is burned'}.`
+        : `${figures}; TownHook fixed today’s fee at the day’s first sell.`;
+  }
+  return { mode, reason };
+}
+
+/** The sell form's line on today's sell-fee currency, with its reason (CR-56, CR-57). */
+function SellFeeToday() {
+  const chain = useChain();
+  const c = chain.hook.currentCycle;
+  const w = sellFeeWords(chain);
+  return (
+    <div
+      class={`sell-mode${chain.hook.sellFeeInEth ? ' in-eth' : ''}`}
+      data-view={`TownHook.sellFeeInEth; TownHook.burned(${c - 1}); BuyerRewards.emissionEstimate(${c - 1})`}
+    >
+      <p class="sell-mode-title">
+        Today’s sell fee: <span class="sell-mode-value">{w.mode}</span>
+      </p>
+      <p class="small muted">{w.reason}</p>
     </div>
   );
 }
@@ -365,14 +426,17 @@ function SellForm({ active }: { active: boolean }) {
   const amountIn = parseAmount(amount);
   const fresh = useQuote(active, amountIn, (a) => quoteSell(client, network, a), (e) => explainError(e, 'sell').message, []);
 
-  // The sell fee: 2% of the TOWN sold, burned, never taking the supply below the burn floor; none
-  // once the supply has reached it (spec "TownHook -> Fees", "Burn floor").
-  const sellBps = chain.hook.currentSellFeeBps;
-  const aboveFloor = chain.token.totalSupply > chain.hook.BURN_FLOOR ? chain.token.totalSupply - chain.hook.BURN_FLOOR : 0n;
-  const fee2 = amountIn !== null ? (amountIn * BigInt(sellBps)) / 10_000n : null;
-  const sellFee = fee2 !== null ? (fee2 < aboveFloor ? fee2 : aboveFloor) : null;
-  const poolFee = amountIn !== null && sellFee !== null ? ((amountIn - sellFee) * POOL_FEE_PIPS) / 1_000_000n : null;
+  // The sell fee, in today's currency (CR-56, CR-57; spec "TownHook -> Fees"). TOWN mode: 2% of the
+  // TOWN sold, burned before the swap, never taking the supply below the burn floor; the pool then
+  // swaps the other 98%. ETH mode: the pool swaps all the TOWN and 2% of the ETH it pays out goes to the
+  // treasury, so the seller receives 2% less ETH. The quoter runs the swap through TownHook, so its
+  // estimate (and the minimum received taken from it, which goes to the router) already has the fee
+  // off in the right currency; the rows below only show it.
+  const inEth = chain.hook.sellFeeInEth;
   const estimate = fresh?.out ?? null;
+  const townFee = !inEth && amountIn !== null ? townSellFee(chain, amountIn) : null;
+  const ethFee = inEth && estimate !== null ? ethSellFee(chain, estimate) : null;
+  const poolFee = amountIn !== null && (inEth || townFee !== null) ? ((amountIn - (townFee ?? 0n)) * POOL_FEE_PIPS) / 1_000_000n : null;
   const autoMin = estimate !== null ? minReceived(estimate, slippage) : null;
   const minValue = minText !== null ? parseEthInput(minText) : autoMin;
   const overBalance = !!wallet && amountIn !== null && amountIn > wallet.townBalance;
@@ -411,19 +475,26 @@ function SellForm({ active }: { active: boolean }) {
     if (!account || amountIn === null || minValue === null) return;
     const deadline = BigInt(now + BUY_DEADLINE_SECONDS);
     const sold = amountIn;
-    const burned = sellFee ?? 0n;
+    const burned = townFee ?? 0n;
+    const toTreasury = ethFee;
+    const paidInEth = inEth;
     const about = estimate;
     void tx.run(
       'Sell TOWN',
       () => sellTx(network, sold, minValue, deadline),
       () =>
-        `You sold ${fmtTown(sold)} TOWN${about !== null ? ` for about ${fmtEth(about, 6)} ETH` : ''}; ${fmtTown(burned)} TOWN of it was burned. Your rebates are unchanged.`,
+        `You sold ${fmtTown(sold)} TOWN${about !== null ? ` for about ${fmtEth(about, 6)} ETH` : ''}; ${
+          paidInEth
+            ? `${toTreasury !== null ? `about ${fmtEth(toTreasury, 6)} ETH` : '2% of the ETH'} of the sale, the sell fee, went to the treasury`
+            : `${fmtTown(burned)} TOWN of it was burned`
+        }. Your rebates are unchanged.`,
       'sell',
     );
   };
 
   return (
     <div class="trade-form" aria-label="Sell TOWN for ETH">
+      <SellFeeToday />
       <div class="swap-box">
         <div class="swap-box-top">
           <label for="sell-town">You sell</label>
@@ -478,9 +549,17 @@ function SellForm({ active }: { active: boolean }) {
 
       <dl class="rows swap-rows">
         <div class="row">
-          <dt>Sell fee (2%, burned)</dt>
-          <dd class="num" data-view="TownHook.currentSellFeeBps">
-            {sellBps === 0 || aboveFloor === 0n ? `none: the supply is at ${fmtTown(chain.hook.BURN_FLOOR)} TOWN` : sellFee !== null ? `${fmtTown(sellFee)} TOWN` : '—'}
+          <dt>{inEth ? 'Sell fee (2% of the ETH, to the treasury)' : 'Sell fee (2%, burned)'}</dt>
+          <dd class="num" data-view="TownHook.sellFeeInEth, currentSellFeeBps">
+            {inEth
+              ? ethFee !== null
+                ? `≈ ${fmtEth(ethFee, 6)} ETH`
+                : '—'
+              : leftToBurn(chain) === 0n
+                ? `none: the supply is at ${fmtTown(chain.hook.BURN_FLOOR)} TOWN`
+                : townFee !== null
+                  ? `${fmtTown(townFee)} TOWN`
+                  : '—'}
           </dd>
         </div>
         <div class="row">

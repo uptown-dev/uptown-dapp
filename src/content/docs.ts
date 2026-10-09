@@ -75,8 +75,8 @@ export const OWNER_CANNOT: string[] = [
 /** Things to know: practical points only, one line each (CR-40). */
 export const THINGS_TO_KNOW: { title: string; body: string }[] = [
   {
-    title: 'Payouts depend on buying',
-    body: 'Rebates depend on buying, and stakers’ ETH comes from buy fees and vault purchases, so both can be small or none.',
+    title: 'Payouts depend on trading',
+    body: 'Rebates depend on buying, and stakers’ ETH comes from buy fees, vault purchases and, on some days, sell fees paid in ETH, so both can be small or none.',
   },
   {
     title: 'Rebates are a ceiling',

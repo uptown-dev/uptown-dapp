@@ -10,6 +10,11 @@
 // - CR-50, the old contract: TownStaking listed as if it had been replaced, read live for Test
 //   wallet 1, rendered as the replaced-contract card; "Payouts paused" beside the purchase buttons.
 // - CR-47, the rate: the Rewards "Today" card from a fixture with only sells behind it.
+// - CR-56, CR-57 (F8g), the sell fee's currency: the Trade page's mode line and the Stats figures
+//   from the live chain, then every other case (ETH mode, the floor, the reserve spent, day 0) from
+//   fixtures; the sell form's fee row in ETH mode.
+// - F8g housekeeping, the upgradeable flag: the site's check pointed at a real EIP-1967 proxy on the
+//   forked chain (Aave's v3 Pool) and at TownStaking; the mark from a fixture.
 // Nothing here sends a transaction: buttons are checked, never clicked.
 import { render, type ComponentChildren } from 'preact';
 import { AppContext, type AppState } from '../src/components/ui';
@@ -17,8 +22,9 @@ import { NETWORK } from '../src/lib/network';
 import { makeClient, readAll, readVaults, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
 import { TREASURY_ABI } from '../src/lib/abi';
-import { fmtDateTime } from '../src/lib/format';
-import { CandidateMark, OwnerChanges } from '../src/pages/Stats';
+import { dayName, fmtDateTime, fmtTown } from '../src/lib/format';
+import { CandidateMark, OwnerChanges, Stats } from '../src/pages/Stats';
+import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
 import type { Address, CandidateCheck, ChainState, WalletState } from '../src/data/types';
@@ -83,6 +89,8 @@ async function mount(node: ComponentChildren, chain: ChainState, wallet: WalletS
 
 const text = (el: HTMLElement) => el.innerText.replace(/\s+/g, ' ').trim();
 const button = (el: HTMLElement, label: string) => [...el.querySelectorAll('button')].find((b) => b.textContent!.trim().startsWith(label)) ?? null;
+/** The value shown for the figure read from `view` (its `data-view`), without its unit. */
+const figText = (el: HTMLElement, view: string) => (el.querySelector(`[data-view="${view}"] .num`) as HTMLElement | null)?.innerText.trim() ?? null;
 
 async function run() {
   const live = await readAll(client, NETWORK, W1);
@@ -93,8 +101,8 @@ async function run() {
   // ---- CR-48: the application window, from a fixture ---------------------------------------
   const NOW = 1_800_000_000; // a fixed "now" for the fixture (15 Jan 2027, 08:00 UTC)
   const CANDIDATE: Address = '0x1111111111111111111111111111111111111111';
-  const verified: CandidateCheck = { address: CANDIDATE, treasury: k.Treasury, weth: WETH, delegated: false, verified: true };
-  const refused: CandidateCheck = { address: CANDIDATE, treasury: null, weth: null, delegated: false, verified: false };
+  const verified: CandidateCheck = { address: CANDIDATE, treasury: k.Treasury, weth: WETH, delegated: false, verified: true, upgradeable: false };
+  const refused: CandidateCheck = { address: CANDIDATE, treasury: null, weth: null, delegated: false, verified: false, upgradeable: false };
   const pending = (effectiveAt: number, candidate: CandidateCheck): ChainState => ({
     ...base,
     blockTimestamp: NOW,
@@ -219,6 +227,110 @@ async function run() {
       t.includes('Today’s rate, before fee 5.5%') && t.includes('5.225%') && t.includes('−1.00') && t.includes('More selling than buying over the last three days'),
       t.match(/Today’s rate, before fee.*?Today’s limit/)?.[0] ?? '',
     );
+  }
+
+  // ---- CR-56, CR-57: the sell fee's currency -----------------------------------------------
+  {
+    const c = base.hook.currentCycle;
+    const y = c - 1;
+    const b = base.hook.burned[y];
+    const p = base.rewards.emissionEstimate[y];
+    say(
+      `live sell-fee mode: sellFeeInEth() = ${base.hook.sellFeeInEth}, burned(${y}) = ${b}, emissionEstimate(${y}) = ${p}, reserveExhausted() = ${base.rewards.reserveExhausted}`,
+    );
+    const el = await mount(<Trade sell />, base, wallet, `Trade page, Sell, live (${dayName(c)})`);
+    const line = text(el.querySelector('.sell-mode') as HTMLElement);
+    const mode = base.hook.sellFeeInEth ? '2% in ETH, to the treasury' : '2% in TOWN, burned';
+    check(
+      'CR-57 Trade (live): the mode line names today’s mode and yesterday’s two figures from the chain',
+      line.startsWith(`Today’s sell fee: ${mode}`) && line.includes(`burned ${fmtTown(b)} TOWN and paid ${fmtTown(p)} TOWN in rebates`),
+      line,
+    );
+    const st = await mount(<Stats />, base, wallet, `Stats page, live (${dayName(c)})`);
+    const t = text(st);
+    check(
+      'CR-57 Stats (live): "Sell fee today", "TOWN burned yesterday" = burned(c−1), "Rebates paid out yesterday" = emissionEstimate(c−1)',
+      t.includes(`Sell fee today ${mode}`) &&
+        figText(st, `TownHook.burned(${y})`) === fmtTown(b) &&
+        figText(st, `BuyerRewards.emissionEstimate(${y})`) === fmtTown(p),
+      t.match(/Sell fee today.*?Rebates emitted/)?.[0] ?? '',
+    );
+  }
+  {
+    // ETH mode: yesterday burned more than its pot.
+    const c = base.hook.currentCycle;
+    const y = c - 1;
+    const pot = 600_000n * 10n ** 18n;
+    const chain: ChainState = {
+      ...base,
+      hook: { ...base.hook, sellFeeInEth: true, burned: { ...base.hook.burned, [y]: 750_000n * 10n ** 18n } },
+      rewards: { ...base.rewards, emissionEstimate: { [y]: pot }, reserveExhausted: false },
+    };
+    const el = await mount(<Trade sell />, chain, wallet, 'Trade page, Sell, ETH mode (fixture: burned 750,000 > pot 600,000)');
+    const line = text(el.querySelector('.sell-mode') as HTMLElement);
+    check(
+      'CR-57 ETH mode (fixture): "2% in ETH, to the treasury", with the reason',
+      line.startsWith('Today’s sell fee: 2% in ETH, to the treasury') &&
+        line.includes('burned 750,000 TOWN and paid 600,000 TOWN in rebates: it burned more than it paid, so today the fee is in ETH.'),
+      line,
+    );
+    const rows = text(el.querySelector('#trade-panel-sell .swap-rows') as HTMLElement);
+    check('CR-56 ETH mode (fixture): the sell form charges the fee in ETH, to the treasury', rows.includes('Sell fee (2% of the ETH, to the treasury)') && !rows.includes('burned'), rows);
+    const st = await mount(<Stats />, chain, wallet, 'Stats page, ETH mode (fixture)');
+    check('CR-57 ETH mode (fixture): Stats "Sell fee today 2% in ETH, to the treasury"', text(st).includes('Sell fee today 2% in ETH, to the treasury'));
+  }
+  {
+    // At the floor: always ETH.
+    const chain: ChainState = { ...base, token: { ...base.token, totalSupply: base.hook.BURN_FLOOR }, hook: { ...base.hook, sellFeeInEth: true } };
+    const el = await mount(<Trade sell />, chain, wallet, 'Trade page, Sell, at the burn floor (fixture)');
+    const line = text(el.querySelector('.sell-mode') as HTMLElement);
+    check(
+      'CR-56 at the floor (fixture): ETH, "the burn floor is reached" with 100,000,000',
+      line.startsWith('Today’s sell fee: 2% in ETH, to the treasury') && line.includes('The burn floor is reached: the supply is at 100,000,000 TOWN'),
+      line,
+    );
+  }
+  {
+    // The reserve spent: TOWN whatever yesterday did.
+    const c = base.hook.currentCycle;
+    const chain: ChainState = {
+      ...base,
+      hook: { ...base.hook, sellFeeInEth: false, burned: { ...base.hook.burned, [c - 1]: 10n ** 30n } },
+      rewards: { ...base.rewards, reserveExhausted: true },
+    };
+    const el = await mount(<Trade sell />, chain, wallet, 'Trade page, Sell, rebate reserve spent (fixture)');
+    const line = text(el.querySelector('.sell-mode') as HTMLElement);
+    check(
+      'CR-57 reserve spent (fixture): TOWN, "the rebate reserve is spent"',
+      line.startsWith('Today’s sell fee: 2% in TOWN, burned') && line.includes('The rebate reserve is spent'),
+      line,
+    );
+  }
+  {
+    // Day 0: no day before it.
+    const chain: ChainState = {
+      ...base,
+      hook: { ...base.hook, currentCycle: 0, sellFeeInEth: false, burned: { 0: 0n } },
+      rewards: { ...base.rewards, currentCycle: 0, emissionEstimate: {} },
+    };
+    const st = await mount(<Stats />, chain, wallet, 'Stats page, day 0 (fixture)');
+    const t = text(st);
+    check('CR-57 day 0 (fixture): TOWN, "Day 0 has no day before it"; yesterday’s figures "—"', t.includes('Sell fee today 2% in TOWN, burned') && t.includes('Day 0 has no day before it') && t.includes('TOWN burned yesterday —'), t.match(/Sell fee today.*?Rebates emitted/)?.[0] ?? '');
+  }
+
+  // ---- F8g housekeeping: the upgradeable flag --------------------------------------------------
+  {
+    const AAVE_POOL: Address = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2';
+    const proxy = await verifyCandidate(client, AAVE_POOL, k.Treasury, base.treasury.weth);
+    check('F8g a real EIP-1967 proxy (Aave v3 Pool on the forked chain): flagged upgradeable', proxy.upgradeable && !proxy.verified, JSON.stringify(proxy));
+    check('F8g TownStaking: not upgradeable (its EIP-1967 slot is empty)', !atStaking.upgradeable && atStaking.verified, JSON.stringify(atStaking));
+    const el = await mount(<CandidateMark check={proxy} />, base, wallet, 'the mark for Aave’s v3 Pool (live check)');
+    check('F8g the mark for a proxy carries "Upgradeable: its code can change"', text(el).includes('Upgradeable: its code can change'), text(el));
+    const both = await mount(<CandidateMark check={{ ...verified, upgradeable: true }} />, base, wallet, 'verified and upgradeable (fixture)');
+    const tb = text(both);
+    check('F8g verified and upgradeable (fixture): both tags, and no "its code is fixed"', tb.startsWith('Verified') && tb.includes('Upgradeable: its code can change') && !tb.includes('its code is fixed'), tb);
+    const plain = await mount(<CandidateMark check={verified} />, base, wallet, 'verified, not upgradeable (fixture)');
+    check('F8g verified, not upgradeable (fixture): no upgradeable tag', !text(plain).includes('Upgradeable'), text(plain));
   }
 
   if (!GALLERY) stage.replaceChildren();

@@ -4,7 +4,7 @@ import { afterFeeBps, burnFloor, burned, dayRateBps, rateRange } from '../lib/de
 import { dayName, fmtBps, fmtEth, fmtTown, fmtRate } from '../lib/format';
 import { contractUrl, readUrl, tokenUrl } from '../lib/network';
 
-const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell burns 2% of the TOWN sold'];
+const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell pays 2%: burned, or to the treasury in ETH'];
 
 export function Home() {
   const { chain, network } = useApp();
@@ -31,7 +31,7 @@ export function Home() {
             <h1>TOWN, the first token that rewards buyers and stakers.</h1>
             <p class="hero-summary">
               Every trade in the TOWN pool on Uniswap v4 passes through TownHook, a contract managed by no one: it sends 2% of each buy, charged in ETH, to
-              the treasury, records the TOWN bought, and burns 2% of every TOWN sold into the pool. Every day, buyers claim up to 5% of their TOWN buys back
+              the treasury, records the TOWN bought, and burns 2% of every TOWN sold into the pool. Every day, buyers claim up to 5.5% of their TOWN buys back
               from a 500,000,000 TOWN reserve. 90% of the treasury’s ETH funds staker rewards, which stream to stakers every day as WETH.
             </p>
             <div class="btn-row hero-cta">
@@ -129,8 +129,11 @@ export function Home() {
               <li>
                 <span class="step-no">3</span>
                 <div>
-                  <h3>On a sell, TownHook burns TOWN</h3>
-                  <p>2% of the TOWN sold is burned, until only {fmtTown(burnFloor(chain))} TOWN remain.</p>
+                  <h3>On a sell, TownHook takes 2%</h3>
+                  <p>
+                    The 2% is burned in TOWN, until only {fmtTown(burnFloor(chain))} TOWN remain. On a day after one that burned more TOWN than it paid out in
+                    rebates, and always at that floor, it goes to the treasury in ETH instead.
+                  </p>
                 </div>
               </li>
               <li>

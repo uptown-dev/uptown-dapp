@@ -2398,3 +2398,36 @@ code.break {
 .card-lead {
   margin: -4px 0 12px;
 }
+
+/* ---- F8g: the sell fee's currency (CR-56, CR-57) and the upgradeable flag ---- */
+.sell-mode {
+  margin: 2px 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+}
+.sell-mode.in-eth {
+  border-left-color: var(--text-3);
+}
+.sell-mode-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.sell-mode-value {
+  color: var(--accent-text);
+}
+.sell-mode.in-eth .sell-mode-value {
+  color: var(--text);
+}
+.upgradeable-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 0;
+  border: 1px solid var(--warn-line);
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  vertical-align: 1px;
+}

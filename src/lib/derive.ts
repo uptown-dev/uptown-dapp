@@ -48,18 +48,83 @@ export function burned(chain: ChainState): bigint {
 
 /**
  * The burn floor in TOWN units: TownHook.BURN_FLOOR() when the figures have been read; the spec's
- * 50,000,000 TOWN (CR-45) only where the contracts are not deployed on this network yet.
+ * 100,000,000 TOWN (CR-55) only where the contracts are not deployed on this network yet.
  */
 export function burnFloor(chain: ChainState | null): bigint {
   return chain ? chain.hook.BURN_FLOOR : SPEC_BURN_FLOOR;
 }
-const SPEC_BURN_FLOOR = 50_000_000n * 10n ** 18n;
+const SPEC_BURN_FLOOR = 100_000_000n * 10n ** 18n;
 
 /** TOWN left to burn before the burn floor: totalSupply - BURN_FLOOR, never negative. */
 export function leftToBurn(chain: ChainState): bigint {
   const { totalSupply } = chain.token;
   const floor = chain.hook.BURN_FLOOR;
   return totalSupply > floor ? totalSupply - floor : 0n;
+}
+
+// --- the sell fee's currency (CR-56, CR-57) -------------------------------------------------
+
+/** Why today's sell fee is in the currency it is in. */
+export type SellFeeReason =
+  /** The supply is at or below the burn floor: every sell pays in ETH (CR-56). */
+  | 'floor'
+  /** The rebate reserve is spent: the fee is burned until the floor (CR-57). */
+  | 'reserve'
+  /** Day 0 has no day before it: the fee is burned. */
+  | 'first-day'
+  /** Yesterday's burn against yesterday's rebate pot: ETH only when the burn was larger. */
+  | 'compare';
+
+export interface SellFeeMode {
+  /** TownHook.sellFeeInEth(): true for 2% of the ETH a sale brings in, to the Treasury; false for 2% of the TOWN sold, burned. */
+  inEth: boolean;
+  reason: SellFeeReason;
+  /** Yesterday's index; null on day 0. */
+  yesterday: number | null;
+  /** TownHook.burned(yesterday). */
+  burnedYesterday: bigint | null;
+  /** BuyerRewards.emissionEstimate(yesterday): yesterday's rebate pot. */
+  rebatesYesterday: bigint | null;
+}
+
+/**
+ * Today's sell-fee currency, from TownHook.sellFeeInEth() (the mode the hook uses, stored at the
+ * day's first sell), with the reason the spec's rule gives for it: at or below the floor always ETH;
+ * once the reserve is spent always TOWN; day 0 TOWN; otherwise ETH only when yesterday's
+ * `burned` was larger than yesterday's `emissionEstimate` (spec "TownHook -> Sell fee currency").
+ */
+export function sellFeeMode(chain: ChainState): SellFeeMode {
+  const c = chain.hook.currentCycle;
+  const inEth = chain.hook.sellFeeInEth;
+  const yesterday = c >= 1 ? c - 1 : null;
+  const burnedYesterday = yesterday !== null ? (chain.hook.burned[yesterday] ?? null) : null;
+  const rebatesYesterday = yesterday !== null ? (chain.rewards.emissionEstimate[yesterday] ?? null) : null;
+  const atFloor = chain.token.totalSupply <= chain.hook.BURN_FLOOR;
+  const reason: SellFeeReason =
+    inEth && atFloor ? 'floor' : !inEth && chain.rewards.reserveExhausted ? 'reserve' : yesterday === null ? 'first-day' : 'compare';
+  return { inEth, reason, yesterday, burnedYesterday, rebatesYesterday };
+}
+
+/**
+ * The sell fee of an exact-input sell of `amountIn` TOWN, in TOWN mode: 2% of the TOWN sold, never
+ * taking the supply below the burn floor (spec "TownHook -> Fees": `townSpecified * 200 / 10000`,
+ * capped by `totalSupply - BURN_FLOOR`).
+ */
+export function townSellFee(chain: ChainState, amountIn: bigint): bigint {
+  const fee = (amountIn * BigInt(chain.hook.currentSellFeeBps)) / BPS;
+  const room = leftToBurn(chain);
+  return fee < room ? fee : room;
+}
+
+/**
+ * The sell fee of an exact-input sell in ETH mode, from the ETH the seller receives (the quoter's
+ * estimate, which TownHook has already reduced): the fee is `ethSwapped * 200 / 10000` and the
+ * seller receives `ethSwapped - fee`, so the fee is about `received * 200 / 9800` (spec "TownHook ->
+ * Fees", the ETH-mode exact-input row).
+ */
+export function ethSellFee(chain: ChainState, received: bigint): bigint {
+  const bps = BigInt(chain.hook.currentSellFeeBps);
+  return (received * bps) / (BPS - bps);
 }
 
 // --- rebates ----------------------------------------------------------------------------
@@ -201,7 +266,10 @@ export function forStakers(chain: ChainState): bigint {
   return balance > ownerEthAvailable ? balance - ownerEthAvailable : 0n;
 }
 
-/** Hook fees (buy fees) and any other arrivals: totalEthReceived - TownStaking.totalVaultFees (spec "Frontend"). */
+/**
+ * TownHook's ETH fees (the buy fees and, on ETH-mode days, the sell fees; CR-56, CR-57) and any other
+ * arrivals: totalEthReceived - TownStaking.totalVaultFees (spec "Frontend").
+ */
 export function hookFeesReceived(chain: ChainState): bigint {
   const r = chain.treasury.totalEthReceived;
   const v = chain.staking.totalVaultFees;

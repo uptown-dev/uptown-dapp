@@ -77,6 +77,13 @@ export interface ChainState {
     cycleTotal: Record<number, bigint>;
     /** TownHook.sold(c), for the three days before today (CR-47): the selling side of the lean. */
     sold: Record<number, bigint>;
+    /**
+     * TownHook.sellFeeInEth(): this cycle's sell-fee currency (CR-56, CR-57). True: 2% of the ETH a
+     * sale brings in, to the Treasury; false: 2% of the TOWN sold, burned (capped by the burn floor).
+     */
+    sellFeeInEth: boolean;
+    /** TownHook.burned(c), the TOWN the sell fees burned in cycle c (CR-57), for today and yesterday. */
+    burned: Record<number, bigint>;
   };
 
   /** BuyerRewards. */
@@ -111,6 +118,13 @@ export interface ChainState {
     rateBps: Record<number, number>;
     /** BuyerRewards.lean(c), scaled by 10^18 (-10^18 only sells to +10^18 only buys), for today (CR-47). */
     lean: Record<number, bigint>;
+    /**
+     * BuyerRewards.emissionEstimate(c), a cycle's rebate pot: min(cap(c), cycleTotal(c) x rateBps(c) / 10000)
+     * (CR-57), for yesterday: the figure TownHook.burned(yesterday) is compared with.
+     */
+    emissionEstimate: Record<number, bigint>;
+    /** BuyerRewards.reserveExhausted(): the reserve is spent, so every later day's sell fee is burned (CR-57). */
+    reserveExhausted: boolean;
   };
 
   /** Treasury. */
@@ -283,6 +297,11 @@ export interface CandidateCheck {
   /** Its code begins with 0xef0100: a wallet with an EIP-7702 delegation. */
   delegated: boolean;
   verified: boolean;
+  /**
+   * Its EIP-1967 implementation slot is not zero: a proxy whose code can be swapped. The Treasury
+   * does not refuse such a contract, so this is a flag beside the mark, not a reason to refuse it.
+   */
+  upgradeable: boolean;
 }
 
 /** The seven UpTown contracts, in the order the footer lists them. */

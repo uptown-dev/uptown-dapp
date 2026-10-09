@@ -146,9 +146,11 @@ export const FlameIcon = (p: IconProps) => (
 // ---------------------------------------------------------------------------------------------
 // The one flow graphic, shown in the home page's hero, with the hook at its centre: every trade
 // passes through TownHook, which sends 2% of a buy's ETH to the treasury, records the buy in the
-// tally and burns 2% of a sell's TOWN; the treasury keeps 10% of its ETH for the owner and pays
-// the other 90% to stakers as WETH; the tally decides the buyers' rebates (spec "At a glance",
-// "Fees", "Owner reserve", "Budget and distribution", "Finalising a cycle").
+// tally and burns 2% of a sell's TOWN (or, after a day whose burn outran its rebates, and always at
+// the burn floor, takes the 2% in ETH for the treasury; CR-55 to CR-57); the treasury keeps 10% of
+// its ETH for the owner and pays the other 90% to stakers as WETH; the tally decides the buyers'
+// rebates (spec "At a glance", "Fees", "Sell fee currency", "Owner reserve", "Budget and
+// distribution", "Finalising a cycle").
 // ---------------------------------------------------------------------------------------------
 
 /** A box with a title and one or more lines under it; 52 units tall for one line, 14 more per extra line. */
@@ -184,14 +186,14 @@ function Down({ x, y1, y2, kind, lines }: { x: number; y1: number; y2: number; k
   );
 }
 
-/** `floor` is the burn floor in whole TOWN, as text: TownHook.BURN_FLOOR() (CR-45). */
+/** `floor` is the burn floor in whole TOWN, as text: TownHook.BURN_FLOOR() (CR-55). */
 export function FlowGraphic({ floor }: { floor: string }) {
   return (
     <svg
       viewBox="0 0 360 448"
       class="flow-graphic"
       role="img"
-      aria-label={`Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet; on a sell it burns 2% of the TOWN sold, until the supply is ${floor} TOWN. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
+      aria-label={`Flow: buy or sell TOWN. Every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet; on a sell it burns 2% of the TOWN sold, until the supply is ${floor} TOWN, or, on a day after one whose burn outran its rebates (and always once the supply is ${floor} TOWN), takes the 2% in ETH for the treasury instead. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -223,7 +225,14 @@ export function FlowGraphic({ floor }: { floor: string }) {
       <Down x={244} y1={172} y2={226} kind="town" lines={['2% of TOWN', 'on sells']} />
       <Node x={8} y={230} w={108} title="Treasury" sub={['90% to stakers', '10% owner']} />
       <Node x={126} y={230} w={108} title="Buy tally" sub={['TOWN per wallet,', 'per day']} />
-      <Node x={244} y={230} w={108} title="Burned" sub={['until supply is', floor]} cls="fg-burn" />
+      <Node
+        x={244}
+        y={230}
+        w={108}
+        title="Burned"
+        sub={['or 2% in ETH to', 'the treasury after', 'a day burning', 'outran rebates;', 'until supply is', floor]}
+        cls="fg-burn"
+      />
 
       {/* Treasury to stakers, tally to rebates */}
       <Down x={8} y1={300} y2={354} kind="eth" lines={['daily,', 'as WETH']} />

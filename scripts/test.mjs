@@ -5,7 +5,7 @@
 //
 // Usage: npm test            (or: node scripts/test.mjs [port] [gallery])
 // `gallery` also photographs every rendering, styled, at 1280 and 390 px in both themes, into the
-// git-ignored review-shots/f8f-components/.
+// git-ignored review-shots/components/.
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -88,7 +88,7 @@ try {
     code = out.failed === 0 ? 0 : 1;
   }
   if (GALLERY) {
-    const dir = resolve(ROOT, 'review-shots/f8f-components');
+    const dir = resolve(ROOT, 'review-shots/components');
     mkdirSync(dir, { recursive: true });
     for (const [width, height] of [
       [1280, 800],

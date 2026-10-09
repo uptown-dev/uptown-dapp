@@ -10,12 +10,14 @@ import {
   leftToBurn,
   pausePending,
   reserveUnscheduled,
+  sellFeeMode,
   stakingChange,
   stakingPaidSince,
   stakingReplaced,
 } from '../lib/derive';
 import { dayName, fmtBps, fmtDate, fmtDateTime, fmtDelay, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUntil, shortAddress } from '../lib/format';
 import { codeUrl, contractUrl, positionUrl, readUrl, tokenUrl } from '../lib/network';
+import { sellFeeWords } from './Trade';
 
 export function Stats() {
   return (
@@ -277,11 +279,24 @@ export function OwnerChanges() {
  */
 export function CandidateMark({ check }: { check: CandidateCheck }) {
   const { network } = useApp();
+  const upgradeable = check.upgradeable ? (
+    <>
+      {' '}
+      <span class="upgradeable-tag" data-view="eth_getStorageAt(candidate, EIP-1967 implementation slot)">
+        Upgradeable: its code can change
+      </span>
+    </>
+  ) : null;
   if (check.verified)
     return (
       <p class="candidate-mark" data-view="candidate.treasury(), candidate.weth()">
-        <span class="verified-tag">Verified</span>{' '}
-        <span class="small muted">This site asked it: it names this treasury and WETH, and its code is fixed.</span>
+        <span class="verified-tag">Verified</span>
+        {upgradeable}{' '}
+        <span class="small muted">
+          {check.upgradeable
+            ? 'This site asked it: it names this treasury and WETH. It is a proxy: whoever controls it can swap the code behind this address at any time.'
+            : 'This site asked it: it names this treasury and WETH, and its code is fixed.'}
+        </span>
       </p>
     );
   const treasury = network.deployment?.contracts.Treasury;
@@ -296,7 +311,8 @@ export function CandidateMark({ check }: { check: CandidateCheck }) {
           : `it names another reward token than WETH (${shortAddress(check.weth)})`;
   return (
     <p class="candidate-mark" data-view="candidate.treasury(), candidate.weth()">
-      <span class="unverified-tag">Does not look like a staking contract</span>{' '}
+      <span class="unverified-tag">Does not look like a staking contract</span>
+      {upgradeable}{' '}
       <span class="small muted">This site asked it: {why}. The treasury will refuse it at application.</span>
     </p>
   );
@@ -312,7 +328,13 @@ function EthFlows() {
     <Card title="ETH in and out, since launch">
       <Figures cols={2}>
         <Fig label="ETH received by the treasury" value={fmtEth(t.totalEthReceived)} unit="ETH" view="Treasury.totalEthReceived" />
-        <Fig label="from buy fees" value={fmtEth(hookFeesReceived(chain))} unit="ETH" view="totalEthReceived - TownStaking.totalVaultFees" />
+        <Fig
+          label="from TownHook fees"
+          value={fmtEth(hookFeesReceived(chain))}
+          unit="ETH"
+          view="totalEthReceived - TownStaking.totalVaultFees"
+          note="buy fees, and sell fees paid in ETH"
+        />
         <Fig label="from vault purchases" value={fmtEth(chain.staking.totalVaultFees)} unit="ETH" view="TownStaking.totalVaultFees" />
         <Fig label="Paid to stakers" value={fmtEth(t.totalDistributed)} unit="WETH" view="Treasury.totalDistributed" accent />
         <Fig label="Withdrawn by the owner" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" view="Treasury.totalOwnerEthWithdrawn" />
@@ -323,8 +345,8 @@ function EthFlows() {
             Another <span class="num">{fmtEth(unbooked)}</span> ETH has arrived and is counted at the next treasury action.{' '}
           </>
         )}
-        ETH leaves the treasury only two ways: to the current staking contract and the owner’s 10% reserve. “From buy fees” also counts any other ETH sent
-        in.
+        ETH leaves the treasury only two ways: to the current staking contract and the owner’s 10% reserve. “From TownHook fees” also counts any other ETH
+        sent in.
       </p>
       <Verify
         links={[
@@ -340,23 +362,43 @@ function TownTotals() {
   const chain = useChain();
   const { network } = useApp();
   const r = chain.rewards;
+  const m = sellFeeMode(chain);
+  const words = sellFeeWords(chain);
+  const y = m.yesterday;
   return (
     <Card title="TOWN">
       <Figures cols={2}>
         <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="TOWN" view="UpTownToken.totalSupply" />
         <Fig label="Burned" value={fmtTown(burned(chain))} unit="TOWN" view="1,000,000,000 - totalSupply" />
         <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="TOWN" view="totalSupply - TownHook.BURN_FLOOR" />
+        <Fig label="Sell fee today" value={words.mode} view="TownHook.sellFeeInEth" note={words.reason} accent />
+        <Fig
+          label="TOWN burned yesterday"
+          value={m.burnedYesterday !== null ? fmtTown(m.burnedYesterday) : '—'}
+          unit={m.burnedYesterday !== null ? 'TOWN' : undefined}
+          view={y !== null ? `TownHook.burned(${y})` : 'TownHook.burned(c - 1)'}
+          note={y !== null ? `by sell fees on ${dayName(y)}` : `${dayName(0)} has no day before it`}
+        />
+        <Fig
+          label="Rebates paid out yesterday"
+          value={m.rebatesYesterday !== null ? fmtTown(m.rebatesYesterday) : '—'}
+          unit={m.rebatesYesterday !== null ? 'TOWN' : undefined}
+          view={y !== null ? `BuyerRewards.emissionEstimate(${y})` : 'BuyerRewards.emissionEstimate(c - 1)'}
+          note={y !== null ? `${dayName(y)}’s rebate pot; the fee is in ETH today only if the burn was larger` : undefined}
+        />
         <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="TOWN" view="BuyerRewards.totalEmitted" />
         <Fig label="Rebate reserve remaining" value={fmtTown(reserveUnscheduled(chain))} unit="TOWN" view="RESERVE - totalEmitted" />
         <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="TOWN" view="BuyerRewards.totalPaidToBuyers" accent />
         <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" view="BuyerRewards.totalFeesToTreasury" />
       </Figures>
       <p class="small faint card-foot">
-        Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> TOWN of supply.
+        Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> TOWN of supply;
+        from there every sell pays its 2% in ETH to the treasury.
       </p>
       <Verify
         links={[
           { label: 'total supply', what: 'TOWN’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },
+          { label: 'sell fee', what: 'TownHook’s sell-fee mode and burn per day', href: contractUrl(network, 'TownHook', 'read') },
           { label: 'reserve balance', what: 'BuyerRewards’ TOWN balance', href: contractUrl(network, 'BuyerRewards') },
           { label: 'rebate totals', what: 'BuyerRewards’ running totals', href: contractUrl(network, 'BuyerRewards', 'read') },
         ]}

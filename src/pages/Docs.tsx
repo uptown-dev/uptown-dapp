@@ -60,7 +60,7 @@ export function Docs() {
                 this record.
               </li>
               <li>
-                <strong>On a sell</strong> it burns 2% of the TOWN sold, until only {fmtTown(burnFloor(chain))} TOWN are left.
+                <strong>On a sell</strong> it takes 2%: burned in TOWN, or sent to the treasury in ETH, as <a href="#/docs/burn">The burn</a> explains.
               </li>
               <li>
                 <strong>In the first 15 minutes after launch</strong> the buy fee starts at 90% and falls in a straight line to 2%, to discourage bots.
@@ -116,7 +116,8 @@ export function Docs() {
           <Section id="treasury">
             <ul class="doc-list">
               <li>
-                The treasury receives TownHook’s 2% buy fee and the vault prices in ETH, and the claim fees in TOWN.{' '}
+                The treasury receives TownHook’s 2% buy fee, its 2% sell fee on the days it is charged in ETH, and the vault prices in ETH, and the claim
+                fees in TOWN.{' '}
                 <Verify
                   inline
                   links={[
@@ -140,8 +141,16 @@ export function Docs() {
                 1,000,000,000 TOWN were minted once; no one can mint more.{' '}
                 <Verify inline links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, town) }]} />
               </li>
-              <li>Every sell burns 2% of the TOWN sold, so the supply only falls.</li>
-              <li>The burn stops when the supply reaches {fmtTown(burnFloor(chain))} TOWN; after that, sells pay no TownHook fee.</li>
+              <li>
+                Every sell pays a 2% fee, and it is burned in TOWN, unless the day before burned more TOWN than it paid out in rebates: then that day’s fee
+                goes to the treasury in ETH instead. Once the rebate reserve is spent, the fee is burned until the supply reaches the floor of{' '}
+                {fmtTown(burnFloor(chain))} TOWN. At the floor the fee is always ETH, sent to the treasury.
+              </li>
+              <li>
+                The mode is fixed for the whole day. The <a href="#/trade/sell">Trade page</a> and the <a href="#/stats">Stats page</a> show today’s mode
+                and yesterday’s two figures behind it.{' '}
+                <Verify inline links={[{ what: 'TownHook’s sell-fee mode and burn per day', href: contractUrl(network, 'TownHook', 'read') }]} />
+              </li>
             </ul>
           </Section>
 
@@ -254,7 +263,8 @@ function Owner() {
           <strong>The pool fee:</strong> the 0.5% trading fee on every buy and sell in the TOWN pool, collected from the locked liquidity.
         </li>
         <li>
-          <strong>10% of all ETH reaching the treasury:</strong> the 2% buy fees, the higher buy fee in the first 15 minutes after launch, and vault purchases.
+          <strong>10% of all ETH reaching the treasury:</strong> the 2% buy fees, the higher buy fee in the first 15 minutes after launch, the 2% sell fees
+          on the days they are charged in ETH, and vault purchases.
         </li>
         <li>
           <strong>The 5% claim fee</strong> on every rebate claim, in TOWN.
@@ -368,7 +378,9 @@ function Settings() {
               ? change.phase === 'expired'
                 ? `${shortAddress(t.pendingStaking)} announced; expired on ${fmtDateTime(change.until)}: the owner must announce again.`
                 : `${shortAddress(t.pendingStaking)} announced; can be applied from ${fmtDateTime(change.from)} until ${fmtDateTime(change.until)}${
-                    t.candidate ? (t.candidate.verified ? ' (verified)' : ' (does not look like a staking contract)') : ''
+                    t.candidate
+                      ? `${t.candidate.verified ? ' (verified' : ' (does not look like a staking contract'}${t.candidate.upgradeable ? '; upgradeable: its code can change)' : ')'}`
+                      : ''
                   }.`
               : stakingReplaced(chain, network.deployment?.contracts.TownStaking)
                 ? 'A replacement for TownStaking; no change announced.'

@@ -6,6 +6,8 @@
 // price-expectation terms and the lore names, which the redesigned site no longer uses. F8a4 added
 // lawyer, legal, counsel and advice: the site carries no legal statements (CR-40). F8b lets the
 // "returns" rule skip Solidity's `returns (...)` keyword in contract interfaces (code, not copy).
+// F8g added words that would make the sell fee's daily currency or the burn read as a trading tip or
+// a value claim (deflationary, scarcity, "good time to sell", "should buy", ...).
 //
 // Where a forbidden word is needed to say what something is NOT, the exact sentence goes in
 // ALLOWED_SENTENCES below; it is removed before the scan, so the same word anywhere else still
@@ -71,6 +73,16 @@ const RULES = [
   { name: 'legal', re: /\blegal/gi },
   { name: 'counsel', re: /\bcounsel/gi },
   { name: 'advice', re: /\badvice/gi },
+  // Added by F8g (CR-56, CR-57): the sell fee's daily currency must never read as a tip on when to
+  // trade, and the burn must never read as a promise about value.
+  { name: 'deflationary', re: /\bdeflation/gi },
+  { name: 'scarcity', re: /\bscarc(?:e|ity)\b/gi },
+  { name: 'supply shock', re: /\bsupply\s+shock/gi },
+  { name: 'buy the dip', re: /\bbuy\s+the\s+dip/gi },
+  { name: 'sell now / buy now', re: /\b(?:sell|buy)\s+(?:now|today|tomorrow)\s+(?:to|and|before|while)\b/gi },
+  { name: 'time to trade', re: /\b(?:good|best|right|better)\s+(?:time|day)\s+to\s+(?:sell|buy|trade)/gi },
+  { name: 'should sell or buy', re: /\b(?:should|must)\s+(?:sell|buy)\b/gi },
+  { name: 'cheaper to sell', re: /\b(?:cheaper|dearer)\s+to\s+(?:sell|buy)/gi },
 ];
 
 /**

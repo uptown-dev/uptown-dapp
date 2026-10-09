@@ -107,6 +107,9 @@ export const HOOK_ABI = parseAbi([
   'function cycleTotal(uint256 cycle) view returns (uint256)',
   // The gross TOWN sold in a cycle (CR-47): with cycleTotal, the net flow behind the rebate rate.
   'function sold(uint256 cycle) view returns (uint256)',
+  // The sell fee's currency (CR-56, CR-57): this cycle's mode, and the TOWN the sell fees burned in a cycle.
+  'function sellFeeInEth() view returns (bool)',
+  'function burned(uint256 cycle) view returns (uint256)',
 ]);
 
 export const REWARDS_ABI = parseAbi([
@@ -130,6 +133,9 @@ export const REWARDS_ABI = parseAbi([
   'function LEAN_CYCLES() view returns (uint256)',
   'function lean(uint256 c) view returns (int256)',
   'function rateBps(uint256 c) view returns (uint256)',
+  // For the sell fee's currency (CR-57): a cycle's rebate pot, and whether the reserve is spent.
+  'function emissionEstimate(uint256 c) view returns (uint256)',
+  'function reserveExhausted() view returns (bool)',
   ...UPTOWN_ERRORS,
   ...OTHER_ERRORS,
 ]);
