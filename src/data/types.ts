@@ -73,9 +73,16 @@ export interface ChainState {
     ANTI_SNIPE_DURATION: number;
     /** TownHook.BURN_FLOOR() */
     BURN_FLOOR: bigint;
-    /** TownHook.cycleTotal(c), for today and the three days before it (the lean's days). */
+    /**
+     * TownHook.cycleTotal(c), the TOWN buyers received in cycle c, for today and the three days
+     * before it (the lean's days; today and yesterday are also the Stats trading volume, CR-61).
+     */
     cycleTotal: Record<number, bigint>;
-    /** TownHook.sold(c), for the three days before today (CR-47): the selling side of the lean. */
+    /**
+     * TownHook.sold(c), the TOWN sellers gave up in cycle c before any TOWN sell fee, for the three
+     * days before today (CR-47: the selling side of the lean) and for today (CR-61: the Stats
+     * trading volume, with yesterday's).
+     */
     sold: Record<number, bigint>;
     /**
      * TownHook.sellFeeInEth(): this cycle's sell-fee currency (CR-56, CR-57). True: 2% of the ETH a

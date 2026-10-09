@@ -24,6 +24,7 @@ export function Stats() {
     <div class="wrap page">
       <PageHead title="Stats" lead="The treasury and the running totals, read straight from the contracts." />
       <Treasury />
+      <TradingVolume />
       <div class="grid-2">
         <EthFlows />
         <TownTotals />
@@ -315,6 +316,48 @@ export function CandidateMark({ check }: { check: CandidateCheck }) {
       {upgradeable}{' '}
       <span class="small muted">This site asked it: {why}. The treasury will refuse it at application.</span>
     </p>
+  );
+}
+
+/**
+ * CR-61: the TOWN bought and sold yesterday and today so far, each shown on its own, from TownHook's
+ * daily totals (`cycleTotal(c)`: TOWN received by buyers; `sold(c)`: TOWN given up by sellers, before
+ * the 2% sell fee). Read with the other figures in the one Multicall3 batch; nothing comes from events,
+ * and no volume in ETH is shown, since no contract keeps one.
+ */
+export function TradingVolume() {
+  const chain = useChain();
+  const { network } = useApp();
+  const h = chain.hook;
+  const c = chain.rewards.currentCycle;
+  const y = c >= 1 ? c - 1 : null;
+  const endsAt = h.launchTime + (c + 1) * 86_400;
+  const past = (what: 'cycleTotal' | 'sold', label: string) => (
+    <Fig
+      label={label}
+      value={y !== null ? fmtTown(h[what][y] ?? 0n) : 'None yet'}
+      unit={y !== null ? 'TOWN' : undefined}
+      view={y !== null ? `TownHook.${what}(${y})` : `TownHook.${what}(c - 1)`}
+      note={y !== null ? dayName(y) : `${dayName(0)} has no day before it`}
+    />
+  );
+  const today = (what: 'cycleTotal' | 'sold', label: string) => (
+    <Fig label={label} value={fmtTown(h[what][c] ?? 0n)} unit="TOWN" view={`TownHook.${what}(${c})`} note={`${dayName(c)}, still counting`} />
+  );
+  return (
+    <Card title="Trading volume, in TOWN" class="volume">
+      <Figures cols={4}>
+        {past('cycleTotal', 'Bought yesterday')}
+        {past('sold', 'Sold yesterday')}
+        {today('cycleTotal', 'Bought today so far')}
+        {today('sold', 'Sold today so far')}
+      </Figures>
+      <p class="small faint card-foot">
+        Bought is the TOWN buyers received from the pool; sold is the TOWN sellers gave up, before the 2% sell fee. Today’s figures keep counting until{' '}
+        {dayName(c)} ends on <span class="num">{fmtDateTime(endsAt)}</span>.
+      </p>
+      <Verify links={[{ label: 'daily totals', what: 'TownHook’s TOWN bought and sold per day', href: contractUrl(network, 'TownHook', 'read') }]} />
+    </Card>
   );
 }
 

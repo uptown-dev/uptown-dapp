@@ -204,7 +204,7 @@ export function leanToday(chain: ChainState): { days: number[]; bought: bigint; 
   const c = chain.rewards.currentCycle;
   const days = Object.keys(chain.hook.sold)
     .map(Number)
-    .filter((d) => d < c)
+    .filter((d) => d < c && d >= c - chain.rewards.LEAN_CYCLES) // `sold` also holds today's figure (CR-61)
     .sort((x, y) => x - y);
   let bought = 0n;
   let sold = 0n;

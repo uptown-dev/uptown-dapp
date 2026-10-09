@@ -13,6 +13,8 @@
 // - CR-56, CR-57 (F8g), the sell fee's currency: the Trade page's mode line and the Stats figures
 //   from the live chain, then every other case (ETH mode, the floor, the reserve spent, day 0) from
 //   fixtures; the sell form's fee row in ETH mode.
+// - CR-61 (F8j), the Stats trading volume: the four figures against TownHook's views read on their own
+//   at the same block, the block's place on the page, and day 0 (no yesterday) from a fixture.
 // - F8g housekeeping, the upgradeable flag: the site's check pointed at a real EIP-1967 proxy on the
 //   forked chain (Aave's v3 Pool) and at TownStaking; the mark from a fixture.
 // Nothing here sends a transaction: buttons are checked, never clicked.
@@ -21,9 +23,9 @@ import { AppContext, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
 import { makeClient, readAll, readVaults, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
-import { TREASURY_ABI } from '../src/lib/abi';
+import { HOOK_ABI, TREASURY_ABI } from '../src/lib/abi';
 import { dayName, fmtDateTime, fmtTown } from '../src/lib/format';
-import { CandidateMark, OwnerChanges, Stats } from '../src/pages/Stats';
+import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
@@ -325,6 +327,61 @@ async function run() {
     const st = await mount(<Stats />, chain, wallet, 'Stats page, day 0 (fixture)');
     const t = text(st);
     check('CR-57 day 0 (fixture): TOWN, "Day 0 has no day before it"; yesterday’s figures "—"', t.includes('Sell fee today 2% in TOWN, burned') && t.includes('Day 0 has no day before it') && t.includes('TOWN burned yesterday —'), t.match(/Sell fee today.*?Rebates emitted/)?.[0] ?? '');
+  }
+
+  // ---- CR-61: the Stats trading volume, live and on day 0 -----------------------------------
+  {
+    // Live: the four figures against the two views read again here, on their own, at the same block.
+    const c = base.rewards.currentCycle;
+    const at = (fn: 'cycleTotal' | 'sold', d: number) =>
+      client.readContract({ address: k.TownHook, abi: HOOK_ABI, functionName: fn, args: [BigInt(d)], blockNumber: base.blockNumber }) as Promise<bigint>;
+    const [bt, st, by, sy] = await Promise.all([at('cycleTotal', c), at('sold', c), c >= 1 ? at('cycleTotal', c - 1) : 0n, c >= 1 ? at('sold', c - 1) : 0n]);
+    const el = await mount(<TradingVolume />, base, wallet, 'Stats trading volume (live)');
+    const shown = {
+      boughtYesterday: figText(el, `TownHook.cycleTotal(${c - 1})`),
+      soldYesterday: figText(el, `TownHook.sold(${c - 1})`),
+      boughtToday: figText(el, `TownHook.cycleTotal(${c})`),
+      soldToday: figText(el, `TownHook.sold(${c})`),
+    };
+    check(
+      'CR-61 Stats (live): Bought/Sold yesterday = cycleTotal(c−1)/sold(c−1), Bought/Sold today so far = cycleTotal(c)/sold(c), same block',
+      c >= 1 &&
+        shown.boughtYesterday === fmtTown(by) &&
+        shown.soldYesterday === fmtTown(sy) &&
+        shown.boughtToday === fmtTown(bt) &&
+        shown.soldToday === fmtTown(st),
+      `block ${base.blockNumber}, day ${c}: shown ${JSON.stringify(shown)}; views cycleTotal(${c - 1}) ${by}, sold(${c - 1}) ${sy}, cycleTotal(${c}) ${bt}, sold(${c}) ${st}`,
+    );
+    const t = text(el).replace(/(\d)TOWN/g, '$1 TOWN'); // unstyled, the value and its unit touch
+    check(
+      'CR-61 Stats (live): today is marked as still counting, and the line says what the figures are',
+      t.includes(`Bought today so far ${fmtTown(bt)} TOWN ${dayName(c)}, still counting`) &&
+        t.includes(`Sold today so far ${fmtTown(st)} TOWN ${dayName(c)}, still counting`) &&
+        t.includes('Bought is the TOWN buyers received from the pool; sold is the TOWN sellers gave up, before the 2% sell fee.') &&
+        !/ETH/.test(t.replace(/[Vv]erify[^]*$/, '')),
+      t,
+    );
+    const page = await mount(<Stats />, base, wallet, 'Stats page with the trading volume (live)');
+    const cards = [...page.querySelectorAll('.card-title')].map((h) => h.textContent);
+    check('CR-61 Stats page: the block sits after the Treasury card, before the ETH and TOWN cards', cards.slice(0, 4).join(' | ') === 'Treasury | Trading volume, in TOWN | ETH in and out, since launch | TOWN', cards.join(' | '));
+  }
+  {
+    // Day 0: no yesterday.
+    const chain: ChainState = {
+      ...base,
+      hook: { ...base.hook, currentCycle: 0, cycleTotal: { 0: 5n * 10n ** 24n }, sold: { 0: 10n ** 24n } },
+      rewards: { ...base.rewards, currentCycle: 0 },
+    };
+    const el = await mount(<TradingVolume />, chain, wallet, 'Stats trading volume on day 0 (fixture)');
+    const t = text(el).replace(/(\d)TOWN/g, '$1 TOWN');
+    check(
+      'CR-61 day 0 (fixture): yesterday reads "None yet"; today 5,000,000 bought and 1,000,000 sold, still counting',
+      t.includes('Bought yesterday None yet Day 0 has no day before it') &&
+        t.includes('Sold yesterday None yet Day 0 has no day before it') &&
+        t.includes('Bought today so far 5,000,000 TOWN Day 0, still counting') &&
+        t.includes('Sold today so far 1,000,000 TOWN Day 0, still counting'),
+      t,
+    );
   }
 
   // ---- F8g housekeeping: the upgradeable flag --------------------------------------------------

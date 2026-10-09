@@ -268,6 +268,17 @@ export async function readAll(client: PublicClient, n: Network, account: Address
   const leanIdx = b.add(`BuyerRewards.lean(${current})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'lean', args: [BigInt(current)] });
   const leanTotalIdx = leanDays.map((c) => b.add(`TownHook.cycleTotal(${c})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'cycleTotal', args: [BigInt(c)] }));
   const leanSoldIdx = leanDays.map((c) => b.add(`TownHook.sold(${c})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'sold', args: [BigInt(c)] }));
+  // The Stats page's trading volume (CR-61): TOWN bought and sold yesterday and today so far. Today's
+  // sold total is read here; today's bought total is read above, and yesterday's two figures are the
+  // lean's first day (read here only if the lean ever measured no day before today).
+  const todaySoldIdx = b.add(`TownHook.sold(${current})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'sold', args: [BigInt(current)] });
+  const yesterdayIdx =
+    current >= 1 && !leanDays.includes(current - 1)
+      ? {
+          total: b.add(`TownHook.cycleTotal(${current - 1})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'cycleTotal', args: [BigInt(current - 1)] }),
+          sold: b.add(`TownHook.sold(${current - 1})`, { address: k.TownHook, abi: HOOK_ABI, functionName: 'sold', args: [BigInt(current - 1)] }),
+        }
+      : null;
   // The sell fee's currency (CR-57): the TOWN burned today and yesterday, and yesterday's rebate pot,
   // the two figures the rule compared to set today's mode.
   const burnDays = [current, current - 1].filter((c) => c >= 0);
@@ -337,6 +348,10 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     leanTotals[c] = r2.get<bigint>(leanTotalIdx[j]);
     leanSold[c] = r2.get<bigint>(leanSoldIdx[j]);
   });
+  if (yesterdayIdx) {
+    leanTotals[current - 1] = r2.get<bigint>(yesterdayIdx.total);
+    leanSold[current - 1] = r2.get<bigint>(yesterdayIdx.sold);
+  }
   const burnedByDay: Record<number, bigint> = {};
   burnDays.forEach((c, j) => (burnedByDay[c] = r2.get<bigint>(burnedIdx[j])));
   const emissionEstimate: Record<number, bigint> = potIdx >= 0 ? { [current - 1]: r2.get<bigint>(potIdx) } : {};
@@ -416,7 +431,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       ANTI_SNIPE_DURATION: num(r1.get(i.ANTI_SNIPE_DURATION)),
       BURN_FLOOR: r1.get(i.BURN_FLOOR),
       cycleTotal: { ...leanTotals, [current]: r2.get<bigint>(todayTotalIdx) },
-      sold: leanSold,
+      sold: { ...leanSold, [current]: r2.get<bigint>(todaySoldIdx) },
       sellFeeInEth: r1.get<boolean>(i.sellFeeInEth),
       burned: burnedByDay,
     },
