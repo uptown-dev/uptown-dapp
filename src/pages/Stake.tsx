@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
-import { parseUnits } from 'viem';
-import { useApp, useChain, useTx, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs, TxStatus, type Tx } from '../components/ui';
+import { useApp, useChain, useTx, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs, TxStatus, Uses, type Tx } from '../components/ui';
+import { amountError, amountOrNull } from '../lib/amount';
+import { UNLISTED_STAKING, listedStaking } from '../lib/network';
 import { PriceSource, TIERS, type OldVault, type Tier } from '../data/types';
 import {
   fallbackExpiresAt,
@@ -17,15 +18,10 @@ import {
 import { fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUsd8, shortAddress } from '../lib/format';
 import { STAKING_GAS_LIMIT, addStakeTx, approveTx, claimWethTx, openVaultTx, unstakeTx, upgradeTx, withMargin } from '../lib/actions';
 
-function parseTown(s: string): bigint | null {
-  const t = s.replace(/,/g, '').trim();
-  if (!/^\d*\.?\d*$/.test(t) || t === '' || t === '.') return null;
-  try {
-    return parseUnits(t, 18);
-  } catch {
-    return null;
-  }
-}
+/** A TOWN amount typed (CR-72: a point for decimals, commas only between thousands), or null. */
+const parseTown = (s: string): bigint | null => amountOrNull(s, 18);
+/** The sentence for a TOWN amount that cannot be used, or null. */
+const townError = (s: string): string | null => amountError(s, 18, 'Enter an amount of TOWN, for example 1,000,000.');
 
 export function Stake() {
   return (
@@ -90,7 +86,8 @@ function PayoutChanges() {
   const t = chain.treasury;
   const pauseAt = pausePending(chain);
   const change = stakingChange(chain);
-  const replaced = stakingReplaced(chain, network.deployment?.contracts.TownStaking);
+  const unlisted = listedStaking(network, t.staking) === null;
+  const replaced = !unlisted && stakingReplaced(chain, network.deployment?.contracts.TownStaking);
   const since = stakingPaidSince(network.stakingContracts, t.staking);
   const more = (
     <>
@@ -100,6 +97,15 @@ function PayoutChanges() {
   );
   return (
     <>
+      {unlisted && (
+        <Notice kind="warn" title={UNLISTED_STAKING}>
+          <p class="unlisted-staking">
+            The treasury now pays the staking contract <code class="break">{t.staking}</code>, which this site does not list yet. Its figures are shown
+            below, but this site sends nothing to it: opening, adding and upgrading are off here. A vault in a staking contract this site lists can still be
+            unstaked and claimed below.
+          </p>
+        </Notice>
+      )}
       {t.paused && (
         <Notice kind="warn" title="The treasury’s payouts are paused by the owner">
           <p>
@@ -179,6 +185,7 @@ function OldVaults() {
 
 export function OldVaultCard({ vault }: { vault: OldVault }) {
   const tx = useTx();
+  const { network } = useApp();
   const [confirming, setConfirming] = useState(false);
   const has = vault.positionOf.tier !== 0;
   const amount = vault.positionOf.amount;
@@ -204,7 +211,7 @@ export function OldVaultCard({ vault }: { vault: OldVault }) {
           type="button"
           class="btn btn-primary"
           disabled={tx.busy || vault.earned === 0n}
-          onClick={() => void tx.run('Claim WETH', () => claimWethTx(vault.address), () => `About ${fmtEth(vault.earned)} WETH went to your wallet.`)}
+          onClick={() => void tx.run('Claim WETH', () => claimWethTx(network, vault.address), () => `About ${fmtEth(vault.earned)} WETH went to your wallet.`)}
         >
           {`Claim ${fmtEth(vault.earned)} WETH`}
         </button>
@@ -226,7 +233,7 @@ export function OldVaultCard({ vault }: { vault: OldVault }) {
               disabled={tx.busy}
               onClick={() => {
                 setConfirming(false);
-                void tx.run('Unstake', () => unstakeTx(vault.address), () => `${fmtTown(amount)} TOWN came back to your wallet and the old vault is closed. Earned WETH stays claimable.`);
+                void tx.run('Unstake', () => unstakeTx(network, vault.address), () => `${fmtTown(amount)} TOWN came back to your wallet and the old vault is closed. Earned WETH stays claimable.`);
               }}
             >
               Yes, unstake everything
@@ -322,15 +329,23 @@ function TierTable() {
   const { wallet, network } = useApp();
   const st = chain.staking;
   const replaced = stakingReplaced(chain, network.deployment?.contracts.TownStaking);
+  const unlisted = listedStaking(network, st.address) === null;
   return (
     <Card title="Tiers" class="flush">
-      <p class="card-pad small muted">
-        Vaults in{' '}
-        <code data-view="Treasury.staking" title={st.address}>
-          {replaced ? shortAddress(st.address) : 'TownStaking'}
-        </code>
-        , the staking contract the treasury pays now: the only one this site offers vaults in.
-      </p>
+      {unlisted ? (
+        <p class="card-pad small muted">
+          Vaults in <code data-view="Treasury.staking" class="break">{st.address}</code>, the staking contract the treasury pays now. This site does not list it
+          yet, so it offers no vault in it.
+        </p>
+      ) : (
+        <p class="card-pad small muted">
+          Vaults in{' '}
+          <code data-view="Treasury.staking" title={st.address}>
+            {replaced ? shortAddress(st.address) : 'TownStaking'}
+          </code>
+          , the staking contract the treasury pays now: the only one this site offers vaults in.
+        </p>
+      )}
       <div class="table-scroll">
         <table class="table tiers stack">
           <caption class="visually-hidden">The five vault tiers</caption>
@@ -424,10 +439,13 @@ function GoodToKnow() {
 }
 
 function YourVault() {
-  const { wallet } = useApp();
+  const { wallet, network } = useApp();
+  const chain = useChain();
   // One transaction state for every vault action, kept here so its result stays in view when the
   // tabs change (opening a vault turns "Open a vault" into Claim, Add, Upgrade and Unstake).
   const tx = useTx();
+  // CR-72: the treasury pays a staking contract the site does not list: its figures, no action.
+  const unlisted = listedStaking(network, chain.staking.address) === null;
   if (!wallet) {
     return (
       <Card title="Your vault">
@@ -458,6 +476,14 @@ function YourVault() {
         <Fig label="TOWN staked" value={fmtTown(pos.amount)} unit="TOWN" view="TownStaking.positionOf(wallet).amount" />
         <Fig label="Earned" value={fmtEth(wallet.earned)} unit="WETH" view="TownStaking.earned(wallet)" accent />
       </Figures>
+      {unlisted ? (
+        <div class="action-form unlisted-off" role="note">
+          <p class="small">
+            <strong>{UNLISTED_STAKING}.</strong> Opening, adding and upgrading are off here, and nothing is sent to{' '}
+            <code class="break">{chain.staking.address}</code> from this site.
+          </p>
+        </div>
+      ) : (
       <Tabs
         label="Staking actions"
         tabs={tabs}
@@ -476,6 +502,7 @@ function YourVault() {
           }
         }}
       />
+      )}
       <TxStatus tx={tx} />
       </div>
       <GoodToKnow />
@@ -506,7 +533,7 @@ function ApproveButton({ tx, amount }: { tx: Tx; amount: bigint | null }) {
 
 function OpenForm({ tx }: { tx: Tx }) {
   const chain = useChain();
-  const { wallet } = useApp();
+  const { wallet, network } = useApp();
   const st = chain.staking;
   const [tier, setTier] = useState<Tier>(1);
   const [amount, setAmount] = useState('');
@@ -520,9 +547,20 @@ function OpenForm({ tx }: { tx: Tx }) {
       <div class="field">
         <label for="vault-town">TOWN to stake</label>
         <div class="input-wrap">
-          <input id="vault-town" class="num" inputMode="decimal" autoComplete="off" placeholder="0" value={amount} onInput={(e) => setAmount((e.target as HTMLInputElement).value)} />
+          <input
+            id="vault-town"
+            class="num"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="0"
+            value={amount}
+            aria-invalid={townError(amount) !== null}
+            onInput={(e) => setAmount((e.target as HTMLInputElement).value)}
+          />
           <span class="suffix">TOWN</span>
         </div>
+        <Uses value={amt} unit="TOWN" />
+        {townError(amount) && <FieldError>{townError(amount)}</FieldError>}
         <span class="hint">
           Your TOWN: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span>
           {wallet?.townBalance === 0n && (
@@ -555,7 +593,7 @@ function OpenForm({ tx }: { tx: Tx }) {
           onClick={() =>
             price !== null &&
             amt !== null &&
-            void tx.run(`Open a tier ${tier} vault`, () => openVaultTx(chain.staking.address, tier, amt, price), () => `Your tier ${tier} vault is open with ${fmtTown(amt)} TOWN staked. The extra ETH was refunded.`)
+            void tx.run(`Open a tier ${tier} vault`, () => openVaultTx(network, chain.staking.address, tier, amt, price), () => `Your tier ${tier} vault is open with ${fmtTown(amt)} TOWN staked. The extra ETH was refunded.`)
           }
         >
           {`2. Open tier ${tier} vault`}
@@ -567,7 +605,7 @@ function OpenForm({ tx }: { tx: Tx }) {
 
 function ClaimForm({ tx }: { tx: Tx }) {
   const chain = useChain();
-  const { wallet } = useApp();
+  const { wallet, network } = useApp();
   const earned = wallet?.earned ?? 0n;
   return (
     <div class="action-form">
@@ -576,7 +614,7 @@ function ClaimForm({ tx }: { tx: Tx }) {
         type="button"
         class="btn btn-primary"
         disabled={tx.busy || !wallet || earned === 0n}
-        onClick={() => void tx.run('Claim WETH', () => claimWethTx(chain.staking.address), () => `About ${fmtEth(earned)} WETH went to your wallet.`)}
+        onClick={() => void tx.run('Claim WETH', () => claimWethTx(network, chain.staking.address), () => `About ${fmtEth(earned)} WETH went to your wallet.`)}
       >
         {`Claim ${fmtEth(earned)} WETH`}
       </button>
@@ -586,7 +624,7 @@ function ClaimForm({ tx }: { tx: Tx }) {
 
 function AddForm({ tx }: { tx: Tx }) {
   const chain = useChain();
-  const { wallet } = useApp();
+  const { wallet, network } = useApp();
   const [amount, setAmount] = useState('');
   const amt = parseTown(amount);
   const tooMuch = !!wallet && amt !== null && amt > wallet.townBalance;
@@ -596,9 +634,20 @@ function AddForm({ tx }: { tx: Tx }) {
       <div class="field">
         <label for="add-town">TOWN to add</label>
         <div class="input-wrap">
-          <input id="add-town" class="num" inputMode="decimal" autoComplete="off" placeholder="0" value={amount} onInput={(e) => setAmount((e.target as HTMLInputElement).value)} />
+          <input
+            id="add-town"
+            class="num"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="0"
+            value={amount}
+            aria-invalid={townError(amount) !== null}
+            onInput={(e) => setAmount((e.target as HTMLInputElement).value)}
+          />
           <span class="suffix">TOWN</span>
         </div>
+        <Uses value={amt} unit="TOWN" />
+        {townError(amount) && <FieldError>{townError(amount)}</FieldError>}
         <span class="hint">
           No extra vault price, only gas. Your TOWN: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span>
           {wallet && wallet.townAllowanceToStaking > 0n && (
@@ -616,7 +665,7 @@ function AddForm({ tx }: { tx: Tx }) {
           type="button"
           class="btn btn-primary"
           disabled={tx.busy || amt === null || amt === 0n || tooMuch || !approved}
-          onClick={() => amt !== null && void tx.run('Add TOWN', () => addStakeTx(chain.staking.address, amt), () => `${fmtTown(amt)} TOWN was added to your vault.`)}
+          onClick={() => amt !== null && void tx.run('Add TOWN', () => addStakeTx(network, chain.staking.address, amt), () => `${fmtTown(amt)} TOWN was added to your vault.`)}
         >
           2. Add TOWN
         </button>
@@ -627,7 +676,7 @@ function AddForm({ tx }: { tx: Tx }) {
 
 function UpgradeForm({ tx }: { tx: Tx }) {
   const chain = useChain();
-  const { wallet } = useApp();
+  const { wallet, network } = useApp();
   const st = chain.staking;
   const current = (wallet?.positionOf.tier || 1) as Tier;
   const higher = TIERS.filter((t) => t > current);
@@ -663,7 +712,7 @@ function UpgradeForm({ tx }: { tx: Tx }) {
         onClick={() =>
           up !== null &&
           chosen !== null &&
-          void tx.run(`Upgrade to tier ${chosen}`, () => upgradeTx(chain.staking.address, chosen, up), () => `Your vault is now in tier ${chosen}. The extra ETH was refunded.`)
+          void tx.run(`Upgrade to tier ${chosen}`, () => upgradeTx(network, chain.staking.address, chosen, up), () => `Your vault is now in tier ${chosen}. The extra ETH was refunded.`)
         }
       >
         {chosen !== null ? `Upgrade to tier ${chosen}` : 'Upgrade'}
@@ -674,7 +723,7 @@ function UpgradeForm({ tx }: { tx: Tx }) {
 
 function UnstakeForm({ tx }: { tx: Tx }) {
   const chain = useChain();
-  const { wallet } = useApp();
+  const { wallet, network } = useApp();
   const [confirming, setConfirming] = useState(false);
   const amount = wallet?.positionOf.amount ?? 0n;
   return (
@@ -695,7 +744,7 @@ function UnstakeForm({ tx }: { tx: Tx }) {
               disabled={tx.busy}
               onClick={() => {
                 setConfirming(false);
-                void tx.run('Unstake', () => unstakeTx(chain.staking.address), () => `${fmtTown(amount)} TOWN came back to your wallet and your vault is closed. Earned WETH stays claimable.`);
+                void tx.run('Unstake', () => unstakeTx(network, chain.staking.address), () => `${fmtTown(amount)} TOWN came back to your wallet and your vault is closed. Earned WETH stays claimable.`);
               }}
             >
               Yes, unstake everything

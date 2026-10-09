@@ -39,6 +39,35 @@ export function minReceived(estimate: bigint, slippageBps: number): bigint {
   return (estimate * (BPS - BigInt(slippageBps))) / BPS;
 }
 
+/** A minimum this far below the estimate, or further, is warned about (CR-72): 5%. */
+export const MIN_WARN_BPS = 500n;
+
+/**
+ * The minimum received against the estimate (CR-72, spec "Frontend -> Trade"): `zero`, refused (a
+ * trade with no minimum is unprotected); `farBelow`, more than 5% below the estimate, warned (a bot
+ * can take the difference) but allowed; `above`, above the estimate, warned (the trade would almost
+ * certainly be cancelled). Without an estimate only `zero` can be told.
+ */
+export function minCheck(min: bigint | null, estimate: bigint | null): { zero: boolean; farBelow: boolean; above: boolean } {
+  const zero = min === 0n;
+  if (min === null || estimate === null || zero) return { zero, farBelow: false, above: false };
+  return { zero, farBelow: min * BPS < estimate * (BPS - MIN_WARN_BPS), above: min > estimate };
+}
+
+// --- freshness -----------------------------------------------------------------------------
+
+/** The network service is called behind when its latest block is older than this (CR-72): 2 minutes. */
+export const STALE_AFTER_SECONDS = 120;
+
+/**
+ * True when the RPC's latest block (`blockTimestamp`, seconds) is more than 2 minutes older than the
+ * visitor's clock (`nowMs`). A block ahead of the clock (the local chain's clock can be moved forward
+ * by tests) is never stale.
+ */
+export function rpcBehind(blockTimestamp: number, nowMs: number): boolean {
+  return nowMs / 1000 - blockTimestamp > STALE_AFTER_SECONDS;
+}
+
 // --- burning ---------------------------------------------------------------------------
 
 /** All TOWN destroyed since the mint: sell fees and voluntary burns together. */

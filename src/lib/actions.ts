@@ -2,7 +2,7 @@
 // contract call. Nothing here sends: `wallet.ts` does, after its checks.
 import { encodeAbiParameters, type Abi } from 'viem';
 import { LAUNCHER_ABI, LPVAULT_ABI, PERMIT2_ABI, REWARDS_ABI, ROUTER_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
-import type { Network } from './network';
+import { UNLISTED_STAKING, listedStaking, type Network } from './network';
 import { buyerHookData, poolKey } from './reads';
 import type { TxRequest } from './wallet';
 import type { Address, Tier } from '../data/types';
@@ -116,20 +116,39 @@ export function claimRebatesTx(n: Network, days: number[]): TxRequest {
   return { address: n.deployment!.contracts.BuyerRewards, abi: REWARDS_ABI as Abi, functionName: 'claim', args: [days.map(BigInt)] };
 }
 
-/**
- * Approve TOWN: `UpTownToken.approve(staking, amount)`, the exact amount, never unlimited. The
- * spender is the staking contract the Treasury pays now, `Treasury.staking()` (CR-50).
- */
-export function approveTx(n: Network, stakingAddress: Address, amount: bigint): TxRequest {
-  return { address: n.deployment!.contracts.UpTownToken, abi: TOKEN_ABI as Abi, functionName: 'approve', args: [stakingAddress, amount] };
+/** Thrown when a staking transaction is asked for a contract the site does not list (CR-72). */
+export class UnlistedStakingError extends Error {
+  constructor(address: string) {
+    super(`${UNLISTED_STAKING}: it does not list ${address}, so nothing is sent there.`);
+  }
 }
 
 /**
- * A staking action, sent to the given staking contract: purchases and additions only ever to the
- * one the Treasury pays now (CR-50); unstake and claim also to a replaced one, for a vault left there.
+ * The listed staking contract at `address` (CR-72): the site's own copy of the address, from the
+ * network module's list. A staking transaction is never built for an address the RPC alone names.
  */
-function staking(stakingAddress: Address, functionName: string, args: readonly unknown[] = [], value?: bigint): TxRequest {
-  return { address: stakingAddress, abi: STAKING_ABI as Abi, functionName, args, value, gas: STAKING_GAS_LIMIT };
+function listed(n: Network, address: Address): Address {
+  const a = listedStaking(n, address);
+  if (!a) throw new UnlistedStakingError(address);
+  return a;
+}
+
+/**
+ * Approve TOWN: `UpTownToken.approve(staking, amount)`, the exact amount, never unlimited. The
+ * spender is the staking contract the Treasury pays now, `Treasury.staking()` (CR-50), and only
+ * when the site lists it (CR-72).
+ */
+export function approveTx(n: Network, stakingAddress: Address, amount: bigint): TxRequest {
+  return { address: n.deployment!.contracts.UpTownToken, abi: TOKEN_ABI as Abi, functionName: 'approve', args: [listed(n, stakingAddress), amount] };
+}
+
+/**
+ * A staking action, sent to the given staking contract, which must be listed in the site's own files
+ * (CR-72): purchases and additions only ever to the one the Treasury pays now (CR-50); unstake and
+ * claim also to a replaced one, for a vault left there.
+ */
+function staking(n: Network, stakingAddress: Address, functionName: string, args: readonly unknown[] = [], value?: bigint): TxRequest {
+  return { address: listed(n, stakingAddress), abi: STAKING_ABI as Abi, functionName, args, value, gas: STAKING_GAS_LIMIT };
 }
 
 /** The ETH sent with a purchase or upgrade: about 1% above the quote; the contract refunds the rest. */
@@ -138,15 +157,16 @@ export function withMargin(wei: bigint): bigint {
 }
 
 /** Open a vault: `openVault(tier, amount)` with `vaultPriceWei(tier)` plus about 1%, in the current staking contract only. */
-export const openVaultTx = (stakingAddress: Address, tier: Tier, amount: bigint, priceWei: bigint) => staking(stakingAddress, 'openVault', [tier, amount], withMargin(priceWei));
+export const openVaultTx = (n: Network, stakingAddress: Address, tier: Tier, amount: bigint, priceWei: bigint) =>
+  staking(n, stakingAddress, 'openVault', [tier, amount], withMargin(priceWei));
 /** Add TOWN: `addStake(amount)`, in the current staking contract only. */
-export const addStakeTx = (stakingAddress: Address, amount: bigint) => staking(stakingAddress, 'addStake', [amount]);
+export const addStakeTx = (n: Network, stakingAddress: Address, amount: bigint) => staking(n, stakingAddress, 'addStake', [amount]);
 /** Upgrade: `upgradeVault(newTier)` with `upgradePriceWei(wallet, newTier)` plus about 1%, in the current staking contract only. */
-export const upgradeTx = (stakingAddress: Address, tier: Tier, priceWei: bigint) => staking(stakingAddress, 'upgradeVault', [tier], withMargin(priceWei));
+export const upgradeTx = (n: Network, stakingAddress: Address, tier: Tier, priceWei: bigint) => staking(n, stakingAddress, 'upgradeVault', [tier], withMargin(priceWei));
 /** Unstake: `unstake()`, a full exit; also in a replaced staking contract (CR-50). */
-export const unstakeTx = (stakingAddress: Address) => staking(stakingAddress, 'unstake');
+export const unstakeTx = (n: Network, stakingAddress: Address) => staking(n, stakingAddress, 'unstake');
 /** Claim WETH: `claim()`; also in a replaced staking contract (CR-50). */
-export const claimWethTx = (stakingAddress: Address) => staking(stakingAddress, 'claim');
+export const claimWethTx = (n: Network, stakingAddress: Address) => staking(n, stakingAddress, 'claim');
 
 /** Trigger today's payout: `Treasury.poke()`. */
 export function pokeTx(n: Network): TxRequest {
@@ -170,9 +190,10 @@ const OWNER_ABIS = { Treasury: TREASURY_ABI, TownStaking: STAKING_ABI, LPVault: 
 
 /**
  * One owner call. `stakingAddress` is the staking contract the Treasury pays now (`Treasury.staking()`),
- * whose owner holds the two price powers; the other targets come from the address file.
+ * whose owner holds the two price powers; it must be listed in the site's own files (CR-72). The
+ * other targets come from the address file.
  */
 export function ownerTx(n: Network, target: OwnerTarget, functionName: string, args: readonly unknown[] = [], stakingAddress?: Address): TxRequest {
-  const address = target === 'TownStaking' ? (stakingAddress ?? n.deployment!.contracts.TownStaking) : n.deployment!.contracts[target];
+  const address = target === 'TownStaking' ? listed(n, stakingAddress ?? n.deployment!.contracts.TownStaking) : n.deployment!.contracts[target];
   return { address, abi: OWNER_ABIS[target] as Abi, functionName, args };
 }

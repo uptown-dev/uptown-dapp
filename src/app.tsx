@@ -5,9 +5,10 @@ import { CloseIcon, ExternalIcon, MenuIcon, DarkModeIcon, LightModeIcon, TowerGl
 import { CONTRACT_NAMES, type Address, type ChainState, type OwnerState, type WalletState } from './data/types';
 import { NETWORK, contractUrl } from './lib/network';
 import { makeClient, readAll } from './lib/reads';
-import { injectedProvider, switchWalletChain } from './lib/wallet';
+import { activeProvider, chooseWallet, chosenWallet, rememberedWallet, switchWalletChain, watchWallets, type Eip1193, type WalletInfo } from './lib/wallet';
 import { explainError } from './lib/errors';
-import { dayName, fmtInt, shortAddress } from './lib/format';
+import { dayName, fmtDuration, fmtInt, shortAddress } from './lib/format';
+import { rpcBehind } from './lib/derive';
 import { chooseTheme, currentTheme, storedTheme, type Theme } from './lib/theme';
 import { Home } from './pages/Home';
 import { Trade } from './pages/Trade';
@@ -135,18 +136,48 @@ export function App() {
     return () => window.clearInterval(t);
   }, [refresh]);
 
-  // ---- the injected wallet (public networks) -------------------------------------------------
+  // ---- the browser wallets (public networks; EIP-6963, CR-72) ---------------------------------
+  // The installed wallets announce themselves; the visitor picks one when there are several. The
+  // chosen wallet (or the only one, or `window.ethereum` when none announces itself) is the one
+  // every chain check, account read and send uses (`activeProvider` in wallet.ts).
+  const [wallets, setWallets] = useState<WalletInfo[]>([]);
+  const [picked, setPicked] = useState<WalletInfo | null>(() => chosenWallet());
   useEffect(() => {
     if (network.local) return;
-    const p = injectedProvider();
-    if (!p) return;
+    return watchWallets((list) => {
+      setWallets(list);
+      if (!chosenWallet()) {
+        const again = rememberedWallet(list); // the wallet picked earlier in this visit, after a reload
+        if (again) {
+          chooseWallet(again);
+          setPicked(again);
+        }
+      }
+    });
+  }, [network]);
+
+  // The provider in use, and the one whose granted connection was already restored (once each, so a
+  // Disconnect is not undone by the same wallet's restore).
+  const restored = useRef<Eip1193 | null>(null);
+  const provider = network.local ? null : activeProvider();
+  useEffect(() => {
+    if (network.local) return;
+    const p = provider;
+    if (!p) {
+      setAccount(null);
+      setWalletChain(null);
+      return;
+    }
     const onAccounts = (a: unknown) => {
       const list = a as string[];
       setAccount(list && list.length ? getAddress(list[0]) : null);
     };
     const onChain = (id: unknown) => setWalletChain(Number(id));
-    // Restore a connection the visitor already granted, without asking again.
-    p.request({ method: 'eth_accounts' }).then(onAccounts, () => {});
+    if (restored.current !== p) {
+      restored.current = p;
+      // Restore a connection the visitor already granted, without asking again.
+      p.request({ method: 'eth_accounts' }).then(onAccounts, () => {});
+    }
     p.request({ method: 'eth_chainId' }).then(onChain, () => {});
     p.on?.('accountsChanged', onAccounts);
     p.on?.('chainChanged', onChain);
@@ -154,27 +185,51 @@ export function App() {
       p.removeListener?.('accountsChanged', onAccounts);
       p.removeListener?.('chainChanged', onChain);
     };
-  }, [network]);
+  }, [network, provider]);
+
+  /** Asks `w` (or, without one, the wallet in use) for the visitor's account. */
+  const connectWith = useCallback(
+    (w: WalletInfo | null) => {
+      if (w) {
+        chooseWallet(w);
+        setPicked(w);
+        restored.current = w.provider;
+      }
+      setPickerOpen(false);
+      const p = w ? w.provider : activeProvider();
+      if (!p) {
+        toast('No wallet found in this browser. Install a browser wallet such as MetaMask, then reload this page.');
+        return;
+      }
+      p.request({ method: 'eth_requestAccounts' }).then(
+        (a) => {
+          const list = a as string[];
+          if (list.length) setAccount(getAddress(list[0]));
+          p.request({ method: 'eth_chainId' }).then((id) => setWalletChain(Number(id)), () => {});
+        },
+        (e) => toast(explainError(e).message),
+      );
+    },
+    [toast],
+  );
 
   const connect = useCallback(() => {
-    if (network.local) {
+    // The local chain, or several wallets and none chosen yet: open the picker.
+    if (network.local || (wallets.length > 1 && !chosenWallet())) {
       setPickerOpen(true);
       return;
     }
-    const p = injectedProvider();
-    if (!p) {
-      toast('No wallet found in this browser. Install a browser wallet such as MetaMask, then reload this page.');
-      return;
+    connectWith(null);
+  }, [network, wallets.length, connectWith]);
+
+  const disconnectWallet = () => {
+    setAccount(null);
+    if (wallets.length > 1) {
+      // Forget the choice too, so the next Connect offers every wallet again.
+      chooseWallet(null);
+      setPicked(null);
     }
-    p.request({ method: 'eth_requestAccounts' }).then(
-      (a) => {
-        const list = a as string[];
-        if (list.length) setAccount(getAddress(list[0]));
-        p.request({ method: 'eth_chainId' }).then((id) => setWalletChain(Number(id)), () => {});
-      },
-      (e) => toast(explainError(e).message),
-    );
-  }, [network, toast]);
+  };
 
   const pickLocal = (a: Address | null) => {
     setAccount(a);
@@ -255,7 +310,7 @@ export function App() {
     client,
     refresh,
     connect,
-    disconnect: () => (network.local ? pickLocal(null) : setAccount(null)),
+    disconnect: () => (network.local ? pickLocal(null) : disconnectWallet()),
     wrongNetwork,
     switchNetwork: () => {
       switchWalletChain(network).catch((e) => toast(explainError(e).message));
@@ -354,8 +409,8 @@ export function App() {
                   type="button"
                   class={`btn btn-small ${account ? 'btn-secondary' : 'btn-primary'} wallet-btn`}
                   aria-expanded={pickerOpen}
-                  aria-haspopup={account || network.local ? 'menu' : undefined}
-                  onClick={() => (account || network.local ? setPickerOpen((o) => !o) : connect())}
+                  aria-haspopup={account || network.local || wallets.length > 1 ? 'menu' : undefined}
+                  onClick={() => (account || network.local || pickerOpen ? setPickerOpen((o) => !o) : connect())}
                   aria-label={account ? `Wallet ${account}${accountLabel ? ` (${accountLabel})` : ''} connected. Select to change or disconnect.` : network.local ? 'Pick a local test wallet' : 'Connect wallet'}
                 >
                   {account ? (
@@ -371,7 +426,17 @@ export function App() {
                 </button>
               )}
               {pickerOpen && (
-                <div class="wallet-menu" role="menu" aria-label={network.local ? 'Local test wallets' : 'Wallet'}>
+                <div class="wallet-menu" role="menu" aria-label={network.local ? 'Local test wallets' : account ? 'Wallet' : 'Choose a wallet'}>
+                  {!network.local && !account && (
+                    <WalletChoices wallets={wallets} onPick={connectWith} />
+                  )}
+                  {!network.local && account && picked && (
+                    <p class="wallet-menu-note wallet-using">
+                      Using{' '}
+                      {picked.icon && <img class="wallet-icon" src={picked.icon} alt="" width={16} height={16} />}
+                      <strong>{picked.name}</strong> for this visit.
+                    </p>
+                  )}
                   {network.local && (
                     <>
                       <p class="wallet-menu-title">Local test wallets</p>
@@ -526,9 +591,46 @@ function ChainPending({ title, data, onRetry }: { title: string; data: DataStatu
   );
 }
 
+/**
+ * The installed wallets that announced themselves (EIP-6963, CR-72), each with its own name and
+ * icon, for the visitor to pick one. The icon is the wallet's `data:` image, used only as an
+ * `<img>` source.
+ */
+export function WalletChoices({ wallets, onPick }: { wallets: WalletInfo[]; onPick: (w: WalletInfo) => void }) {
+  if (wallets.length < 2) return null;
+  return (
+    <>
+      <p class="wallet-menu-title">Choose a wallet</p>
+      <p class="wallet-menu-note">These wallets are installed in this browser. The site uses the one you pick for this visit.</p>
+      {wallets.map((w) => (
+        <button type="button" role="menuitem" class="wallet-option wallet-choice" key={w.uuid} onClick={() => onPick(w)} data-rdns={w.rdns}>
+          <span class="wallet-choice-name">
+            {w.icon ? <img class="wallet-icon" src={w.icon} alt="" width={24} height={24} /> : <span class="wallet-icon blank" aria-hidden="true" />}
+            <span>{w.name}</span>
+          </span>
+        </button>
+      ))}
+    </>
+  );
+}
+
+/**
+ * The notice when the network service lags (CR-72): its latest block more than 2 minutes older than
+ * this computer's clock. Nothing when the block is ahead of the clock (the local chain's clock can
+ * be moved forward by tests). Trading stays available.
+ */
+export function StaleNotice({ blockTimestamp, nowMs }: { blockTimestamp: number | null; nowMs: number }) {
+  if (blockTimestamp === null || !rpcBehind(blockTimestamp, nowMs)) return null;
+  return (
+    <p class="small stale-note" role="status">
+      The network service is behind: figures and estimates may be out of date. Its latest block is {fmtDuration(nowMs / 1000 - blockTimestamp)} old.
+    </p>
+  );
+}
+
 /** When the figures were last read, and from which block; a refresh button; the last error. */
 function ReadLine() {
-  const { chain, data, network, refresh } = useApp();
+  const { chain, owner, data, network, refresh } = useApp();
   if (!network.deployment) return null;
   const at = data.readAt ? new Date(data.readAt) : null;
   const time = at ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}:${String(at.getSeconds()).padStart(2, '0')}` : null;
@@ -547,6 +649,7 @@ function ReadLine() {
           Read now
         </button>
       </p>
+      <StaleNotice blockTimestamp={chain?.blockTimestamp ?? owner?.blockTimestamp ?? null} nowMs={Date.now()} />
       {data.error && chain && <p class="small read-error">The last read failed: {data.error} The figures above are from the read before.</p>}
     </div>
   );

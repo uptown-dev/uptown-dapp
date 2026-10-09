@@ -75,6 +75,13 @@ export interface StakingRecord {
 // UTC, for example '2027-03-01 14:05'. The site offers vaults only in the contract
 // Treasury.staking() names; every other contract here is shown, to a wallet with a vault in it,
 // as "replaced on <date>: no new rewards; unstake and claim only".
+//
+// CR-72: this list is also the only place a staking transaction's address comes from. Add a new
+// staking contract here (with `replacedOn: null`) as soon as the owner announces it, and publish the
+// site before the replacement can be applied (the 2-day wait). Until the site lists the contract
+// Treasury.staking() names, the Stake page shows its figures but turns off opening, adding and
+// upgrading with "This site has not been updated for the new staking contract yet"; unstaking and
+// claiming stay available in the contracts listed here.
 // ---------------------------------------------------------------------------------------------
 const STAKING_HISTORY: Record<ChainId, { address: 'TownStaking' | Address; replacedOn: string | null }[]> = {
   1: [{ address: 'TownStaking', replacedOn: null }],
@@ -95,6 +102,35 @@ function stakingContracts(chainId: ChainId, deployment: Deployment | null): Stak
     address: r.address === 'TownStaking' ? deployment.contracts.TownStaking : getAddress(r.address),
     replacedOn: r.replacedOn === null ? null : utcSeconds(r.replacedOn),
   }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Staking transactions go only to listed contracts (CR-72, spec "Frontend -> Stake"). The site
+// reads Treasury.staking() and shows what it says, but an address from the RPC alone is never a
+// transaction's target: every staking transaction (the TOWN approval, opening, adding, upgrading,
+// unstaking, claiming) and every TownStaking owner power goes to an address from the list above,
+// the site's own files. A contract the RPC names that the list does not hold gets no transaction.
+// ---------------------------------------------------------------------------------------------
+
+/** The sentence shown wherever a staking action is off because the Treasury pays a contract the site does not list. */
+export const UNLISTED_STAKING = 'This site has not been updated for the new staking contract yet';
+
+/** The listed staking contract at `address` (the site's own copy of the address), or null when the site does not list it. */
+export function listedStaking(n: Network, address: string | null | undefined): Address | null {
+  if (!address) return null;
+  return n.stakingContracts.find((r) => r.address.toLowerCase() === address.toLowerCase())?.address ?? null;
+}
+
+/**
+ * Every address the site ever sends a transaction to, all from its own files: the seven contracts,
+ * the listed staking contracts, the Universal Router and Permit2. `wallet.ts` refuses any other target.
+ */
+export function transactionTargets(n: Network): Address[] {
+  const out: Address[] = [];
+  if (n.deployment) out.push(...Object.values(n.deployment.contracts));
+  out.push(...n.stakingContracts.map((r) => r.address));
+  if (n.uniswap) out.push(n.uniswap.universalRouter, n.uniswap.permit2);
+  return out;
 }
 
 function readFile(chainId: ChainId, info: ChainInfo, file: AddressFile): Network {

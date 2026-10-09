@@ -2604,3 +2604,81 @@ code.break {
 .owner-foot {
   margin: 0;
 }
+
+/* ---------- F9i (CR-72): the amount a field uses, the stale-data notice, the wallet picker ---------- */
+
+/* Beside an amount field: the amount the form will use, once the text is valid. */
+.uses {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.uses .num {
+  font-weight: 600;
+  color: var(--text);
+}
+.swap-box .uses {
+  margin-top: 4px;
+}
+.row-control .uses {
+  margin-top: 6px;
+  text-align: right;
+}
+
+/* The network service lags: near the read line, in the warning colour. */
+.stale-note {
+  color: var(--warn-text);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* The installed wallets (EIP-6963): each one's announced icon and name. */
+.wallet-choice {
+  justify-content: flex-start;
+}
+.wallet-choice-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.wallet-icon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  object-fit: contain;
+}
+.wallet-icon.blank {
+  display: inline-block;
+  border: 1px solid var(--border);
+}
+.wallet-using {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+}
+.wallet-using .wallet-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* A staking contract the site does not list: its figures, no action. */
+.unlisted-off {
+  padding: 10px 12px;
+  border: 1px solid var(--warn-line);
+  border-left: 3px solid var(--warn-text);
+  background: var(--warn-bg);
+  margin-top: 12px;
+}
+.unlisted-off p {
+  margin: 0;
+}
+
+/* The Safe panel names the network the prepared call is for (CR-72). */
+.safe-network-value {
+  font-size: 13px;
+}

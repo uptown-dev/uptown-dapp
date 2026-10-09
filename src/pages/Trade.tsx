@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { parseEther, parseUnits } from 'viem';
-import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus } from '../components/ui';
+import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus, Uses } from '../components/ui';
+import { amountError, amountOrNull } from '../lib/amount';
 import { ArrowDownIcon } from '../components/icons';
 import {
   afterClaimFee,
@@ -13,6 +13,7 @@ import {
   ethSellFee,
   leftToBurn,
   limitReached,
+  minCheck,
   minReceived,
   sellFeeMode,
   townSellFee,
@@ -34,25 +35,31 @@ const POOL_FEE_PIPS = 5000n;
 
 type Mode = 'buy' | 'sell';
 
-/** A TOWN amount typed by the visitor (commas allowed), or null when it is not a number. */
-function parseAmount(s: string): bigint | null {
-  const t = s.replace(/,/g, '').trim();
-  if (!/^\d*\.?\d*$/.test(t) || t === '' || t === '.') return null;
-  try {
-    return parseUnits(t, 18);
-  } catch {
-    return null;
-  }
-}
+/**
+ * A TOWN or ETH amount typed by the visitor, or null when it cannot be used (CR-72: a point for
+ * decimals; a comma only between thousands, "1,000.5"; "2,5" is refused, never read as 25).
+ */
+const parseAmount = (s: string): bigint | null => amountOrNull(s, 18);
+const parseEthInput = parseAmount;
 
-function parseEthInput(s: string): bigint | null {
-  const t = s.trim();
-  if (!/^\d*\.?\d*$/.test(t) || t === '' || t === '.') return null;
-  try {
-    return parseEther(t);
-  } catch {
-    return null;
-  }
+/** One whole TOWN, and a millionth of an ETH: the precision the minimum-received fields are filled in at. */
+const WHOLE_TOWN = 10n ** 18n;
+const MICRO_ETH = 10n ** 12n;
+const floorTo = (v: bigint, step: bigint) => (v / step) * step;
+
+/** The minimum-received messages under a trade's rows (CR-72): 0 refused; more than 5% below the estimate, or above it, warned. */
+function MinMessages({ min, estimate, text, unit, example, trade }: { min: bigint | null; estimate: bigint | null; text: string | null; unit: string; example: string; trade: 'buy' | 'sale' }) {
+  const m = minCheck(min, estimate);
+  const typedError = text !== null ? amountError(text, 18, `Enter the minimum in ${unit}, for example ${example}.`) : null;
+  return (
+    <>
+      {typedError && <FieldError>{typedError}</FieldError>}
+      {text !== null && text.trim() === '' && <FieldError>Enter the minimum in {unit}, for example {example}.</FieldError>}
+      {m.zero && <FieldError>The minimum received cannot be 0: with no minimum, the {trade} is unprotected. Enter a minimum above 0.</FieldError>}
+      {m.farBelow && <FieldError>More than 5% below the estimate: a bot can take the difference</FieldError>}
+      {m.above && <FieldError>The minimum is above the estimate, so the {trade} would almost certainly be cancelled.</FieldError>}
+    </>
+  );
 }
 
 /** The latest of the chain's time and the clock, for deadlines and the Permit2 expiry. */
@@ -255,17 +262,18 @@ function BuyForm({ active }: { active: boolean }) {
   const feeBps = chain.hook.currentBuyFeeBps;
   const fee = amountIn !== null ? buyFee(amountIn, feeBps) : null;
   const estimate = fresh?.out ?? null;
-  const autoMin = estimate !== null ? minReceived(estimate, slippage) : null;
+  // Cut to whole TOWN, as the field shows it, so the field and the amount used are the same.
+  const autoMin = estimate !== null ? floorTo(minReceived(estimate, slippage), WHOLE_TOWN) : null;
   const minValue = minText !== null ? parseAmount(minText) : autoMin;
   const c = chain.hook.currentCycle;
   // Today's rate, BuyerRewards.rateBps(today) (CR-47), or less once the day's limit is shared.
   const rate = effectiveRateBps(chain, c);
   const rebate = estimate !== null ? afterClaimFee(chain, (estimate * BigInt(Math.round(rate * 100))) / 1_000_000n) : null;
   const overBalance = !!wallet && amountIn !== null && amountIn > wallet.ethBalance;
-  const minTooHigh = minValue !== null && estimate !== null && minValue > estimate;
+  const mins = minCheck(minValue, estimate);
 
   const buy = () => {
-    if (!account || amountIn === null || minValue === null) return;
+    if (!account || amountIn === null || minValue === null || mins.zero) return;
     const deadline = BigInt(nowSeconds(chain.blockTimestamp) + BUY_DEADLINE_SECONDS);
     void tx.run(
       'Buy TOWN',
@@ -301,6 +309,7 @@ function BuyForm({ active }: { active: boolean }) {
           />
           <span class="token-pill">ETH</span>
         </div>
+        <Uses value={amountIn} unit="ETH" />
       </div>
 
       <div class="swap-arrow" aria-hidden="true">
@@ -324,7 +333,7 @@ function BuyForm({ active }: { active: boolean }) {
         </div>
       </div>
 
-      {amountIn === null && <FieldError>Enter an amount of ETH, for example 0.1.</FieldError>}
+      {amountIn === null && <FieldError>{amountError(amount, 18, 'Enter an amount of ETH, for example 0.1.') ?? 'Enter an amount of ETH, for example 0.1.'}</FieldError>}
       {overBalance && <FieldError>That is more ETH than this wallet holds.</FieldError>}
       {fresh?.error && <FieldError>No estimate: {fresh.error}</FieldError>}
 
@@ -359,9 +368,11 @@ function BuyForm({ active }: { active: boolean }) {
               inputMode="decimal"
               autoComplete="off"
               aria-label="Minimum TOWN received, editable"
+              aria-invalid={minText !== null && minValue === null}
               value={minText ?? (autoMin !== null ? fmtUnits(autoMin, 18, 0) : '')}
               onInput={(e) => setMinText((e.target as HTMLInputElement).value)}
             />
+            <Uses value={minValue} unit="TOWN" />
           </dd>
         </div>
         <div class="row strong">
@@ -369,7 +380,7 @@ function BuyForm({ active }: { active: boolean }) {
           <dd class="num accent-text">{rebate !== null ? `up to ${fmtTown(rebate)} TOWN` : '—'}</dd>
         </div>
       </dl>
-      {minTooHigh && <FieldError>The minimum is above the estimate, so the buy would almost certainly be cancelled.</FieldError>}
+      <MinMessages min={minValue} estimate={estimate} text={minText} unit="TOWN" example="150,000" trade="buy" />
       <p class="small muted swap-note">
         Rebate after the {fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee, at {dayName(c)}’s rate of{' '}
         <span class="num" data-view={`BuyerRewards.rateBps(${c})`}>
@@ -384,7 +395,7 @@ function BuyForm({ active }: { active: boolean }) {
         <button
           type="button"
           class="btn btn-primary btn-block"
-          disabled={tx.busy || amountIn === null || amountIn === 0n || overBalance || minValue === null}
+          disabled={tx.busy || amountIn === null || amountIn === 0n || overBalance || minValue === null || mins.zero}
           onClick={buy}
         >
           {tx.busy ? 'Buying…' : 'Buy TOWN'}
@@ -420,10 +431,11 @@ function SellForm({ active }: { active: boolean }) {
   const townFee = !inEth && amountIn !== null ? townSellFee(chain, amountIn) : null;
   const ethFee = inEth && estimate !== null ? ethSellFee(chain, estimate) : null;
   const poolFee = amountIn !== null && (inEth || townFee !== null) ? ((amountIn - (townFee ?? 0n)) * POOL_FEE_PIPS) / 1_000_000n : null;
-  const autoMin = estimate !== null ? minReceived(estimate, slippage) : null;
+  // Cut to six decimals, as the field shows it, so the field and the amount used are the same.
+  const autoMin = estimate !== null ? floorTo(minReceived(estimate, slippage), MICRO_ETH) : null;
   const minValue = minText !== null ? parseEthInput(minText) : autoMin;
   const overBalance = !!wallet && amountIn !== null && amountIn > wallet.townBalance;
-  const minTooHigh = minValue !== null && estimate !== null && minValue > estimate;
+  const mins = minCheck(minValue, estimate);
   const ok = amountIn !== null && amountIn > 0n && !overBalance;
 
   // The two approvals (Permit2, on-chain transactions, no signed message). Each covers the larger
@@ -455,7 +467,7 @@ function SellForm({ active }: { active: boolean }) {
     );
   };
   const sell = () => {
-    if (!account || amountIn === null || minValue === null) return;
+    if (!account || amountIn === null || minValue === null || mins.zero) return;
     const deadline = BigInt(now + BUY_DEADLINE_SECONDS);
     const sold = amountIn;
     const burned = townFee ?? 0n;
@@ -503,6 +515,7 @@ function SellForm({ active }: { active: boolean }) {
           />
           <span class="token-pill gold">TOWN</span>
         </div>
+        <Uses value={amountIn} unit="TOWN" />
       </div>
 
       <div class="swap-arrow" aria-hidden="true">
@@ -526,7 +539,7 @@ function SellForm({ active }: { active: boolean }) {
         </div>
       </div>
 
-      {amount !== '' && amountIn === null && <FieldError>Enter an amount of TOWN, for example 1,000,000.</FieldError>}
+      {amount.trim() !== '' && amountIn === null && <FieldError>{amountError(amount, 18, 'Enter an amount of TOWN, for example 1,000,000.')}</FieldError>}
       {overBalance && <FieldError>That is more TOWN than this wallet holds.</FieldError>}
       {fresh?.error && <FieldError>No estimate: {fresh.error}</FieldError>}
 
@@ -573,14 +586,15 @@ function SellForm({ active }: { active: boolean }) {
               inputMode="decimal"
               autoComplete="off"
               aria-label="Minimum ETH received, editable"
+              aria-invalid={minText !== null && minValue === null}
               value={minText ?? (autoMin !== null ? fmtUnits(autoMin, 18, 6) : '')}
               onInput={(e) => setMinText((e.target as HTMLInputElement).value)}
             />
+            <Uses value={minValue} unit="ETH" />
           </dd>
         </div>
       </dl>
-      {minText !== null && minValue === null && <FieldError>Enter the minimum in ETH, for example 0.05.</FieldError>}
-      {minTooHigh && <FieldError>The minimum is above the estimate, so the sale would almost certainly be cancelled.</FieldError>}
+      <MinMessages min={minValue} estimate={estimate} text={minText} unit="ETH" example="0.05" trade="sale" />
       <p class="small muted swap-note">
         The estimate already takes off both fees. If you would receive less than the minimum, the sale is cancelled and you keep your TOWN.
       </p>
@@ -600,7 +614,7 @@ function SellForm({ active }: { active: boolean }) {
             <button type="button" class="btn btn-secondary" disabled={tx.busy || !ok || !step1Done || step2Done} onClick={allow}>
               {step2Done ? '2. Router allowed' : '2. Allow the router'}
             </button>
-            <button type="button" class="btn btn-primary" disabled={tx.busy || !ok || !step1Done || !step2Done || minValue === null} onClick={sell}>
+            <button type="button" class="btn btn-primary" disabled={tx.busy || !ok || !step1Done || !step2Done || minValue === null || mins.zero} onClick={sell}>
               3. Sell
             </button>
           </div>

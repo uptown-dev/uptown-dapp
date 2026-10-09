@@ -4,7 +4,8 @@
 //
 // The page is hidden, not locked. Every owner function refuses any caller but the owner in the
 // contract itself; these rules only spare everyone else a page of buttons that would fail.
-import { encodeFunctionData, getAddress, isAddress, parseEther, parseUnits } from 'viem';
+import { encodeFunctionData, getAddress, isAddress } from 'viem';
+import { COMMA_MESSAGE, parseAmount } from './amount';
 import type { Address, Multisig, OwnerState } from '../data/types';
 import type { TxRequest } from './wallet';
 import type { Network } from './network';
@@ -87,43 +88,45 @@ export function checkAddress(text: string, opts: { notZero?: boolean; special?: 
   return { ok: true, value: a };
 }
 
-/** An amount with `decimals` decimals (commas allowed), above zero and not above `max`. */
+/**
+ * An amount with `decimals` decimals, above zero and not above `max`. A point is the decimal mark; a
+ * comma only between thousands ("1,000.5"), any other comma is refused (CR-72).
+ */
 export function checkAmount(text: string, decimals: number, max: bigint, unit: string, fmtMax: string): Checked<bigint> {
-  const t = text.replace(/,/g, '').trim();
-  if (t === '') return { ok: false, error: `Enter an amount in ${unit}.` };
-  if (!/^\d*\.?\d*$/.test(t) || t === '.') return { ok: false, error: `Enter a number of ${unit}, for example 0.5.` };
-  const [, frac = ''] = t.split('.');
-  if (frac.length > decimals) return { ok: false, error: `${unit} has at most ${decimals} decimals.` };
-  let v: bigint;
-  try {
-    v = decimals === 18 ? parseEther(t) : parseUnits(t, decimals);
-  } catch {
-    return { ok: false, error: `Enter a number of ${unit}.` };
-  }
+  const p = parseAmount(text, decimals);
+  if (p.kind === 'empty') return { ok: false, error: `Enter an amount in ${unit}.` };
+  if (p.kind === 'comma') return { ok: false, error: p.error };
+  if (p.kind === 'decimals') return { ok: false, error: `${unit} has at most ${decimals} decimals.` };
+  if (p.kind === 'invalid') return { ok: false, error: `Enter a number of ${unit}, for example 0.5.` };
+  const v = p.value;
   if (v <= 0n) return { ok: false, error: 'Enter an amount above zero.' };
   if (v > max) return { ok: false, error: `That is more than is available: at most ${fmtMax} ${unit}.` };
   return { ok: true, value: v };
 }
 
-/** The daily payout rate typed as a percentage (up to two decimals), as basis points from 100 to `maxBps`. */
+/** The daily payout rate typed as a percentage (up to two decimals), as basis points from 100 to `maxBps`; a comma is refused (CR-72). */
 export function checkRate(text: string, maxBps: number): Checked<number> {
   const t = text.replace('%', '').trim();
   if (t === '') return { ok: false, error: 'Enter a rate in %, for example 10.' };
+  if (t.includes(',')) return { ok: false, error: COMMA_MESSAGE };
   if (!/^\d+(\.\d{1,2})?$/.test(t) && !/^\.\d{1,2}$/.test(t)) return { ok: false, error: 'Enter a percentage with at most two decimals, for example 12.5.' };
   const bps = Math.round(Number(t) * 100);
   if (bps < 100 || bps > maxBps) return { ok: false, error: `The rate must be between 1% and ${maxBps / 100}%.` };
   return { ok: true, value: bps };
 }
 
-/** The fallback ETH/USD price typed in dollars (up to 8 decimals), as the contract's 8-decimal number, above zero. */
+/**
+ * The fallback ETH/USD price typed in dollars (up to 8 decimals), as the contract's 8-decimal
+ * number, above zero. A leading $ is allowed; commas only between thousands ("2,500.50", CR-72).
+ */
 export function checkPrice(text: string): Checked<bigint> {
-  const t = text.replace(/[$,]/g, '').trim();
-  if (t === '') return { ok: false, error: 'Enter a price in dollars, for example 2,500.' };
-  if (!/^\d*\.?\d*$/.test(t) || t === '.') return { ok: false, error: 'Enter a price in dollars, for example 2500.50.' };
-  if ((t.split('.')[1] ?? '').length > 8) return { ok: false, error: 'The price has at most 8 decimals.' };
-  const v = parseUnits(t, 8);
-  if (v <= 0n) return { ok: false, error: 'Enter a price above zero.' };
-  return { ok: true, value: v };
+  const p = parseAmount(text.trim().replace(/^\$\s*/, ''), 8);
+  if (p.kind === 'empty') return { ok: false, error: 'Enter a price in dollars, for example 2,500.' };
+  if (p.kind === 'comma') return { ok: false, error: p.error };
+  if (p.kind === 'decimals') return { ok: false, error: 'The price has at most 8 decimals.' };
+  if (p.kind === 'invalid') return { ok: false, error: 'Enter a price in dollars, for example 2500.50.' };
+  if (p.value <= 0n) return { ok: false, error: 'Enter a price above zero.' };
+  return { ok: true, value: p.value };
 }
 
 /**
@@ -164,6 +167,11 @@ export function prepare(req: TxRequest): Prepared {
     value: req.value ?? 0n,
     data: encodeFunctionData({ abi: req.abi, functionName: req.functionName, args: req.args } as never),
   };
+}
+
+/** The network as the multisig panel names it (CR-72): "Ethereum (chain 1)", "Sepolia (chain 11155111)", "Local test chain (chain 31337)". */
+export function networkLabel(n: Network): string {
+  return `${n.name} (chain ${n.chainId})`;
 }
 
 /** The Safe app's page for a Safe on this chain (its own chain prefixes: eth, sep); the app's home elsewhere. */

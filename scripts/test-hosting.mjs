@@ -122,8 +122,8 @@ for (const [label, edit, want] of cases) {
 // 3. The built page's policy is the host policy without frame-ancestors, for each chain's origin.
 for (const id of CHAIN_ORDER) {
   const d = directives(sitePolicy(rpcOrigin(id)));
-  check(`the page policy for chain ${id}: connect-src is only ${rpcOrigin(id)}, no 'self', no inline style, no data: image`,
-    (d.get('connect-src') ?? []).join(' ') === rpcOrigin(id) && (d.get('style-src') ?? []).join(' ') === "'self'" && (d.get('img-src') ?? []).join(' ') === "'self'" && (d.get('default-src') ?? []).join(' ') === "'none'" && !d.has('frame-ancestors'));
+  check(`the page policy for chain ${id}: connect-src is only ${rpcOrigin(id)}, no 'self', no inline style, images only from the site and data: (wallet icons, CR-72)`,
+    (d.get('connect-src') ?? []).join(' ') === rpcOrigin(id) && (d.get('style-src') ?? []).join(' ') === "'self'" && (d.get('img-src') ?? []).join(' ') === "'self' data:" && (d.get('default-src') ?? []).join(' ') === "'none'" && !d.has('frame-ancestors'));
 }
 
 // 4. The build's first step refuses a build that names no network.

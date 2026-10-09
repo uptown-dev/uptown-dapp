@@ -28,12 +28,29 @@
 import { render, type ComponentChildren } from 'preact';
 import { AppContext, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
-import { makeClient, readAll, readVaults, verifyCandidate } from '../src/lib/reads';
+import { makeClient, quoteBuy, readAll, readVaults, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
 import { ERRORS_ABI, HOOK_ABI, TREASURY_ABI } from '../src/lib/abi';
-import { ContractFunctionRevertedError, encodeErrorResult, encodeFunctionData } from 'viem';
+import { ContractFunctionRevertedError, encodeErrorResult, encodeFunctionData, getAddress } from 'viem';
 import { Owner, OwnerPage } from '../src/pages/Owner';
-import { pageAccess, showsOwnerLink } from '../src/lib/owner';
+import { networkLabel, pageAccess, showsOwnerLink } from '../src/lib/owner';
+import { UNLISTED_STAKING, listedStaking } from '../src/lib/network';
+import { UnlistedStakingError, addStakeTx, approvePermit2Tx, approveTx, claimWethTx, openVaultTx, ownerTx, unstakeTx, upgradeTx } from '../src/lib/actions';
+import {
+  UnknownTargetError,
+  activeProvider,
+  chooseWallet,
+  rememberedWallet,
+  sendTx,
+  targetProblem,
+  walletChainId,
+  walletFromAnnouncement,
+  watchWallets,
+  type WalletInfo,
+} from '../src/lib/wallet';
+import { COMMA_MESSAGE, amountError, parseAmount } from '../src/lib/amount';
+import { minCheck, rpcBehind } from '../src/lib/derive';
+import { StaleNotice, WalletChoices } from '../src/app';
 import { dayName, fmtDateTime, fmtTown } from '../src/lib/format';
 import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
 import { Trade } from '../src/pages/Trade';
@@ -693,7 +710,387 @@ async function run() {
     document.title = savedTitle;
   }
 
+  await cr72(base, wallet, live.owner);
+
   if (!GALLERY) stage.replaceChildren();
+}
+
+// ---- F9i (CR-72): the six website fixes from the security review --------------------------------
+async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
+  const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+  const typeIn = (el: HTMLElement, sel: string, v: string) => {
+    const input = el.querySelector(sel) as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, v);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const usesIn = (el: Element | null) => (el?.querySelector('.uses') as HTMLElement | null)?.innerText.replace(/\s+/g, ' ').trim() ?? null;
+  const inAction = (el: HTMLElement, id: string) => el.querySelector(`[data-action="${id}"]`) as HTMLElement;
+  const runCheck = async (el: HTMLElement, id: string) => {
+    button(inAction(el, id), 'Check:')!.click();
+    for (let i = 0; i < 100; i++) {
+      await settle(100);
+      const r = inAction(el, id).querySelector('.check-result') as HTMLElement | null;
+      if (r) return r;
+    }
+    return null;
+  };
+  const W2 = NETWORK.testWallets[1].address;
+
+  // ---- 1. Staking transactions only to listed contracts -------------------------------------------
+  // A stand-in for a staking contract the RPC names and the site does not list.
+  const FAKE: Address = getAddress('0x5e1f0000000000000000000000000000000c0ffe');
+  {
+    check('CR-72 item 1: the local list holds TownStaking (the address file’s), and not the stand-in', listedStaking(NETWORK, k.TownStaking) === k.TownStaking && listedStaking(NETWORK, FAKE) === null);
+    const tries: [string, () => unknown][] = [
+      ['approve TOWN for staking', () => approveTx(NETWORK, FAKE, 1n)],
+      ['open', () => openVaultTx(NETWORK, FAKE, 1, 1n, 1n)],
+      ['add', () => addStakeTx(NETWORK, FAKE, 1n)],
+      ['upgrade', () => upgradeTx(NETWORK, FAKE, 2, 1n)],
+      ['unstake', () => unstakeTx(NETWORK, FAKE)],
+      ['claim', () => claimWethTx(NETWORK, FAKE)],
+      ['owner: set the fallback price', () => ownerTx(NETWORK, 'TownStaking', 'setFallbackPrice', [1n], FAKE)],
+      ['owner: offer ownership', () => ownerTx(NETWORK, 'TownStaking', 'transferOwnership', [W2], FAKE)],
+    ];
+    const refused = tries.map(([name, f]) => {
+      try {
+        f();
+        return `${name}: built`;
+      } catch (e) {
+        return e instanceof UnlistedStakingError && String((e as Error).message).startsWith(UNLISTED_STAKING) ? null : `${name}: ${String(e)}`;
+      }
+    });
+    check('CR-72 item 1: every staking transaction builder refuses an unlisted address (approve, open, add, upgrade, unstake, claim, the owner powers)', refused.every((r) => r === null), refused.filter(Boolean).join('; '));
+    // The same builders, given the RPC's spelling of a listed address, use the site's own copy.
+    const lower = k.TownStaking.toLowerCase() as Address;
+    check(
+      'CR-72 item 1: a listed address read in another spelling is replaced by the site’s own copy',
+      claimWethTx(NETWORK, lower).address === k.TownStaking && (approveTx(NETWORK, lower, 1n).args![0] as string) === k.TownStaking && ownerTx(NETWORK, 'TownStaking', 'claim', [], lower).address === k.TownStaking,
+    );
+    // The last check before sending, checking or preparing.
+    const toFake = { ...claimWethTx(NETWORK, k.TownStaking), address: FAKE };
+    const approveFake = { ...approveTx(NETWORK, k.TownStaking, 1n), args: [FAKE, 1n] };
+    check(
+      'CR-72 item 1: the send check refuses a call to an unlisted address, and a TOWN approval naming one; allows the site’s own',
+      !!targetProblem(NETWORK, toFake) && !!targetProblem(NETWORK, approveFake)?.startsWith(UNLISTED_STAKING) && targetProblem(NETWORK, claimWethTx(NETWORK, k.TownStaking)) === null && targetProblem(NETWORK, approvePermit2Tx(NETWORK, 1n)) === null,
+      `${targetProblem(NETWORK, toFake)} | ${targetProblem(NETWORK, approveFake)}`,
+    );
+    let sent = 'resolved';
+    try {
+      await sendTx(NETWORK, client, W1, toFake);
+    } catch (e) {
+      sent = e instanceof UnknownTargetError ? 'refused' : String(e);
+    }
+    check('CR-72 item 1: sendTx refuses a request to the unlisted address before anything reaches the wallet or the chain', sent === 'refused', sent);
+
+    // The Stake page while the treasury pays the stand-in: figures shown, opening, adding and upgrading off.
+    const [inListed] = await readVaults(client, [{ address: k.TownStaking, replacedOn: null }], W1);
+    const chain: ChainState = { ...base, treasury: { ...base.treasury, staking: FAKE }, staking: { ...base.staking, address: FAKE } };
+    const el = await mount(<Stake />, chain, { ...wallet, oldVaults: [inListed] }, 'Stake page, the treasury pays an unlisted contract (fixture)');
+    const t = text(el);
+    const vault = [...el.querySelectorAll('.card')].find((c) => c.querySelector('.card-title')?.textContent === 'Your vault') as HTMLElement;
+    const old = el.querySelector('.old-vault') as HTMLElement;
+    check(
+      'CR-72 item 1: Stake shows "This site has not been updated for the new staking contract yet", the address in full, and the tier figures',
+      t.includes(UNLISTED_STAKING) && t.includes(FAKE) && !!el.querySelector('table.tiers') && !!vault?.querySelector('[data-view="TownStaking.positionOf(wallet).amount"]'),
+      t.slice(0, 300),
+    );
+    check(
+      'CR-72 item 1: no open, add, upgrade, unstake or claim offered for the unlisted contract',
+      !!vault && !/Open tier|Add TOWN|Upgrade to|Unstake everything|Claim /.test(text(vault)) && vault.querySelectorAll('button').length === 0,
+      vault ? text(vault).slice(0, 200) : 'no vault card',
+    );
+    check(
+      'CR-72 item 1: the vault in the listed TownStaking keeps Claim and Unstake, on',
+      !!old && button(old, 'Claim')?.disabled === false && button(old, 'Unstake everything')?.disabled === false,
+      old ? text(old).slice(0, 160) : 'no card for the listed contract',
+    );
+    check('CR-72 item 1: no "replaced, offers vaults only in it" notice for an unlisted contract', !t.includes('this page offers vaults only in it'));
+
+    // The Owner page: the staking contract's powers off, with the reason; the treasury's on.
+    const ownerFake: OwnerState = { ...o, staking: { ...o.staking, address: FAKE } };
+    const ow = await mount(<OwnerPage o={ownerFake} chain={chain} access={pageAccess(ownerFake, OWNER)} />, chain, { ...wallet, address: OWNER }, 'Owner page, the treasury pays an unlisted contract (fixture)');
+    const off = ['setFallbackPrice', 'announceFeed', 'transferOwnership-TownStaking'].map((id) => button(inAction(ow, id), 'Check:')?.disabled === true && text(inAction(ow, id)).includes(UNLISTED_STAKING));
+    check(
+      'CR-72 item 1: Owner page, every staking power off with "not been updated" (fallback price, feed, ownership); the treasury’s stay on',
+      off.every(Boolean) && button(inAction(ow, 'setSpendRate'), 'Check:')?.disabled === false && text(ow).includes(FAKE),
+      off.join(', '),
+    );
+    // The live state: nothing changes for the listed contract.
+    const normal = await mount(<Stake />, base, wallet, 'Stake page, live: TownStaking is listed');
+    check('CR-72 item 1 (live): with TownStaking listed, no notice, and the vault actions are offered', !text(normal).includes(UNLISTED_STAKING) && !!button(normal, 'Claim'));
+  }
+
+  // ---- 2. A point as the decimal mark -------------------------------------------------------------
+  {
+    const E = 10n ** 18n;
+    const cases: [string, string][] = [
+      ['1,000.5', `ok ${1000n * E + E / 2n}`],
+      ['1000.5', `ok ${1000n * E + E / 2n}`],
+      ['12,345,678', `ok ${12_345_678n * E}`],
+      ['.5', `ok ${E / 2n}`],
+      ['2,5', 'comma'],
+      ['0,001', 'comma'],
+      ['1,00', 'comma'],
+      ['1,0000', 'comma'],
+      [',5', 'comma'],
+      ['1,000,00', 'comma'],
+      ['2.5.1', 'invalid'],
+      ['abc', 'invalid'],
+      ['', 'empty'],
+    ];
+    const got = cases.map(([s, want]) => {
+      const p = parseAmount(s, 18);
+      const g = p.kind === 'ok' ? `ok ${p.value}` : p.kind;
+      return g === want ? null : `"${s}" gave ${g}, wanted ${want}`;
+    });
+    check('CR-72 item 2: commas only between thousands ("1,000.5" ok; "2,5", "0,001", "1,00" refused)', got.every((g) => g === null), got.filter(Boolean).join('; '));
+    check('CR-72 item 2: the refusal reads "Use a point for decimals, for example 2.5"', COMMA_MESSAGE === 'Use a point for decimals, for example 2.5' && amountError('2,5', 18, 'x') === COMMA_MESSAGE);
+
+    // Trade: sell amount and both minimum fields.
+    const sell = await mount(<Trade sell />, base, wallet, 'Trade, Sell, "2,5" typed (fixture)');
+    typeIn(sell, '#sell-town', '2,5');
+    await settle();
+    const sellBox = sell.querySelector('#trade-panel-sell') as HTMLElement;
+    const refusedSell = text(sellBox).includes(COMMA_MESSAGE) && (sell.querySelector('#sell-town') as HTMLInputElement).getAttribute('aria-invalid') === 'true' && usesIn(sellBox.querySelector('.swap-box')) === null;
+    typeIn(sell, '#sell-town', '1,000.5');
+    await settle();
+    const usedSell = usesIn(sellBox.querySelector('.swap-box'));
+    check('CR-72 item 2: Trade sell amount: "2,5" refused with the sentence; "1,000.5" shows "Uses 1,000.5 TOWN"', refusedSell && usedSell === 'Uses 1,000.5 TOWN', `${refusedSell} | ${usedSell}`);
+    typeIn(sell, '#sell-min', '0,001');
+    await settle();
+    const refusedMin = text(sellBox).includes(COMMA_MESSAGE);
+    typeIn(sell, '#sell-min', '0.001');
+    await settle();
+    check('CR-72 item 2: Trade sell minimum: "0,001" refused; "0.001" shows "Uses 0.001 ETH"', refusedMin && usesIn(sellBox.querySelector('.row-control')) === 'Uses 0.001 ETH', usesIn(sellBox.querySelector('.row-control')) ?? 'none');
+    const buy = await mount(<Trade />, base, wallet, 'Trade, Buy, "2,5" typed (fixture)');
+    const buyBox = buy.querySelector('#trade-panel-buy') as HTMLElement;
+    typeIn(buy, '#buy-eth', '2,5');
+    await settle();
+    const refusedBuy = text(buyBox).includes(COMMA_MESSAGE);
+    typeIn(buy, '#buy-min', '1,00');
+    await settle();
+    const refusedBuyMin = text(buyBox).includes(COMMA_MESSAGE) && usesIn(buyBox.querySelector('.row-control')) === null;
+    typeIn(buy, '#buy-min', '150,000');
+    await settle();
+    check(
+      'CR-72 item 2: Trade buy amount "2,5" and minimum "1,00" refused; minimum "150,000" shows "Uses 150,000 TOWN"',
+      refusedBuy && refusedBuyMin && usesIn(buyBox.querySelector('.row-control')) === 'Uses 150,000 TOWN',
+      `${refusedBuy} ${refusedBuyMin} ${usesIn(buyBox.querySelector('.row-control'))}`,
+    );
+
+    // Stake: open and add.
+    const noVault: WalletState = { ...wallet, positionOf: { tier: 0, amount: 0n }, earned: 0n, oldVaults: [] };
+    const st = await mount(<Stake />, base, noVault, 'Stake, open a vault, "2,5" typed (fixture)');
+    typeIn(st, '#vault-town', '2,5');
+    await settle();
+    const stOpen = text(st).includes(COMMA_MESSAGE) && button(st, '2. Open tier')?.disabled === true && button(st, '1. Approve TOWN')?.disabled === true;
+    typeIn(st, '#vault-town', '1,000.5');
+    await settle();
+    const stOpenUses = usesIn(st.querySelector('.field'));
+    const st2 = await mount(<Stake />, base, wallet, 'Stake, add TOWN (live vault)');
+    (st2.querySelector('#tab-add') as HTMLButtonElement)?.click();
+    await settle();
+    typeIn(st2, '#add-town', '0,5');
+    await settle();
+    const stAdd = text(st2).includes(COMMA_MESSAGE) && button(st2, '2. Add TOWN')?.disabled === true;
+    typeIn(st2, '#add-town', '2.5');
+    await settle();
+    check(
+      'CR-72 item 2: Stake open "2,5" and add "0,5" refused (buttons off); "1,000.5" and "2.5" show the amount used',
+      stOpen && stOpenUses === 'Uses 1,000.5 TOWN' && stAdd && usesIn(st2.querySelector('#panel-add .field')) === 'Uses 2.5 TOWN',
+      `${stOpen} ${stOpenUses} ${stAdd} ${usesIn(st2.querySelector('#panel-add .field'))}`,
+    );
+
+    // The Owner page: ETH, TOWN, the fallback price and the rate.
+    const ow = await mount(<Owner />, base, { ...wallet, address: OWNER }, 'Owner page, amounts with commas (live)');
+    typeIn(ow, '#owner-eth-to', OWNER);
+    typeIn(ow, '#owner-eth-amount', '0,001');
+    typeIn(ow, '#owner-town-to', OWNER);
+    typeIn(ow, '#owner-town-amount', '1,00');
+    typeIn(ow, '#owner-price', '2,5');
+    typeIn(ow, '#owner-rate', '2,5');
+    await settle();
+    const all4 = ['withdrawOwnerEth', 'withdrawTown', 'setFallbackPrice', 'setSpendRate'].map((id) => text(inAction(ow, id)).includes(COMMA_MESSAGE));
+    typeIn(ow, '#owner-eth-amount', '0.001');
+    typeIn(ow, '#owner-price', '2,500.5');
+    typeIn(ow, '#owner-rate', '12.5');
+    await settle();
+    const usedOwner = [usesIn(inAction(ow, 'withdrawOwnerEth')), usesIn(inAction(ow, 'setFallbackPrice')), usesIn(inAction(ow, 'setSpendRate'))];
+    check(
+      'CR-72 item 2: Owner ETH "0,001", TOWN "1,00", price "2,5" and rate "2,5" refused; "0.001", "2,500.5" and "12.5" show the amount used',
+      all4.every(Boolean) && usedOwner.join(' | ') === 'Uses 0.001 ETH | Uses 2,500.5 USD | Uses 12.5 %',
+      `${all4.join(',')} | ${usedOwner.join(' | ')}`,
+    );
+  }
+
+  // ---- 3. The minimum received ----------------------------------------------------------------------
+  {
+    const est = 1_000_000n;
+    const t = [minCheck(0n, est), minCheck(949_999n, est), minCheck(950_000n, est), minCheck(1_000_001n, est), minCheck(0n, null)];
+    check(
+      'CR-72 item 3: minCheck: 0 refused (with or without an estimate); 94.99% warned; 95% not; above the estimate warned',
+      t[0].zero && t[1].farBelow && !t[1].zero && !t[2].farBelow && t[3].above && !t[3].farBelow && t[4].zero,
+      JSON.stringify(t),
+    );
+    // The buy form, with the live estimate for 0.1 ETH from Test wallet 1.
+    const live = await quoteBuy(client, NETWORK, 10n ** 17n, W1);
+    const el = await mount(<Trade />, base, wallet, 'Trade, Buy, minimum 0 then 6% below the estimate (live estimate)');
+    const box = el.querySelector('#trade-panel-buy') as HTMLElement;
+    for (let i = 0; i < 100 && !/\d/.test((box.querySelector('.swap-output') as HTMLElement).innerText); i++) await settle(100);
+    const buyBtn = () => button(box, 'Buy TOWN');
+    const onAuto = buyBtn()?.disabled === false && !text(box).includes('More than 5% below');
+    typeIn(el, '#buy-min', '0');
+    await settle();
+    const zero = buyBtn()?.disabled === true && text(box).includes('The minimum received cannot be 0');
+    const at94 = (live * 94n) / 100n / 10n ** 18n;
+    typeIn(el, '#buy-min', at94.toString());
+    await settle();
+    const warned = text(box).includes('More than 5% below the estimate: a bot can take the difference') && buyBtn()?.disabled === false;
+    const at96 = (live * 96n) / 100n / 10n ** 18n;
+    typeIn(el, '#buy-min', at96.toString());
+    await settle();
+    const quiet = !text(box).includes('More than 5% below') && buyBtn()?.disabled === false;
+    typeIn(el, '#buy-min', ((live * 110n) / 100n / 10n ** 18n).toString());
+    await settle();
+    const above = text(box).includes('The minimum is above the estimate');
+    check(
+      'CR-72 item 3 (live estimate): the 1% default passes; 0 refused (Buy off); 94% warned "a bot can take the difference" (Buy on); 96% quiet; above warned',
+      onAuto && zero && warned && quiet && above,
+      `estimate ${fmtTown(live)} TOWN; default ${onAuto}, zero ${zero}, 94% ${warned}, 96% ${quiet}, above ${above}`,
+    );
+    // The sell form: 0 refused too.
+    const s = await mount(<Trade sell />, base, wallet, 'Trade, Sell, minimum 0 (fixture)');
+    typeIn(s, '#sell-town', '1000');
+    typeIn(s, '#sell-min', '0');
+    await settle();
+    const sb = s.querySelector('#trade-panel-sell') as HTMLElement;
+    check('CR-72 item 3: sell minimum 0: refused, "3. Sell" off', text(sb).includes('The minimum received cannot be 0') && button(sb, '3. Sell')?.disabled === true);
+  }
+
+  // ---- 4. Full addresses on the Owner page; the network in the Safe panel ----------------------------
+  {
+    const el = await mount(<Owner />, base, { ...wallet, address: OWNER }, 'Owner page, a check naming an address (live)');
+    const lower = W2.toLowerCase();
+    typeIn(el, '#owner-offer-LPVault', lower);
+    await settle();
+    const r = await runCheck(el, 'transferOwnership-LPVault');
+    const panel = inAction(el, 'transferOwnership-LPVault').querySelector('.confirm-panel') as HTMLElement | null;
+    check(
+      'CR-72 item 4: the check result and the confirmation name the address in full, checksummed (typed in lower case)',
+      !!r && r.innerText.includes(W2) && !r.innerText.includes('…') && !!panel && text(panel).includes(W2),
+      `${r?.innerText ?? 'no result'} || ${panel ? text(panel).slice(0, 120) : 'no panel'}`,
+    );
+    const owner = [...el.querySelectorAll('.check-result, .confirm-panel, .notice')].map((n) => (n as HTMLElement).innerText).join(' ');
+    check('CR-72 item 4: no shortened address (0x…) anywhere in the Owner page’s checks, confirmations or notices', !/0x[0-9a-fA-F]{4}…/.test(owner));
+    check(
+      'CR-72 item 4: the network label: "Ethereum (chain 1)", "Sepolia (chain 11155111)", "Local test chain (chain 31337)"',
+      networkLabel({ ...NETWORK, name: 'Ethereum', chainId: 1 }) === 'Ethereum (chain 1)' &&
+        networkLabel({ ...NETWORK, name: 'Sepolia', chainId: 11155111 }) === 'Sepolia (chain 11155111)' &&
+        networkLabel(NETWORK) === 'Local test chain (chain 31337)',
+    );
+    const safeO: OwnerState = { ...o, multisigs: { [OWNER.toLowerCase()]: { address: OWNER, signers: [W1, W2], threshold: 2 } } };
+    const sf = await mount(<OwnerPage o={safeO} chain={base} access={pageAccess(safeO, W1)} />, base, wallet, 'Owner page, Safe signer, the prepared call names the network (fixture)');
+    typeIn(sf, '#owner-rate', '12');
+    await settle();
+    await runCheck(sf, 'setSpendRate');
+    button(inAction(sf, 'setSpendRate'), 'Prepare in Safe')?.click();
+    await settle();
+    const sp = inAction(sf, 'setSpendRate').querySelector('.safe-panel') as HTMLElement | null;
+    check(
+      'CR-72 item 4: the Safe panel names the network, "Local test chain (chain 31337)", and the Safe in full; the notice too',
+      !!sp && sp.querySelector('.safe-network-value')?.textContent === 'Local test chain (chain 31337)' && text(sp).includes(OWNER) && text(sf).includes('is a Safe multisig on Local test chain (chain 31337)'),
+      sp ? text(sp).slice(0, 260) : 'no panel',
+    );
+  }
+
+  // ---- 5. The stale-data notice ------------------------------------------------------------------------
+  {
+    const now = Math.floor(Date.now() / 1000) * 1000; // a whole second, so "exactly 2 minutes" is exact
+    const s = async (age: number, label: string) => text(await mount(<StaleNotice blockTimestamp={Math.floor(now / 1000) - age} nowMs={now} />, base, wallet, label));
+    const behind = await s(300, 'stale notice: block 5 minutes old');
+    const edge = await s(120, 'stale notice: block exactly 2 minutes old');
+    const ahead = await s(-36 * 3600, 'stale notice: block 36 hours ahead of the clock (the local chain)');
+    check(
+      'CR-72 item 5: a block 5 min old shows "The network service is behind: figures and estimates may be out of date"; 2 min old and a block ahead show nothing',
+      behind.startsWith('The network service is behind: figures and estimates may be out of date') && edge === '' && ahead === '',
+      `${behind} | "${edge}" | "${ahead}"`,
+    );
+    check('CR-72 item 5: rpcBehind: 121 s behind is stale, 120 s is not, ahead is not', rpcBehind(1000, 1121_000) && !rpcBehind(1000, 1120_000) && !rpcBehind(5000, 1000_000));
+    const liveNow = rpcBehind(base.blockTimestamp, Date.now());
+    check('CR-72 item 5 (live): the local chain’s block is ahead of this computer’s clock, so no notice', !liveNow, `block ${base.blockTimestamp}, clock ${Math.floor(Date.now() / 1000)}`);
+  }
+
+  // ---- 6. Choosing among installed wallets (EIP-6963) -----------------------------------------------
+  {
+    const calls: string[] = [];
+    const stub = (name: string) => ({
+      request: async ({ method }: { method: string }) => {
+        calls.push(`${name}:${method}`);
+        if (method === 'eth_chainId') return '0x1';
+        if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [W1];
+        return null;
+      },
+    });
+    // With no announcement: window.ethereum, as before.
+    const fallback = stub('window.ethereum');
+    (window as unknown as { ethereum?: unknown }).ethereum = fallback;
+    const fb = activeProvider() === fallback;
+    const ICON_A = 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#e2761b"/></svg>');
+    const ICON_B = 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#3375bb"/></svg>');
+    const a = stub('Stand-in A');
+    const b = stub('Stand-in B');
+    const seen: number[] = [];
+    const stop = watchWallets((list) => seen.push(list.length));
+    const announce = (uuid: string, name: string, icon: string, rdns: string, provider: unknown) =>
+      window.dispatchEvent(new CustomEvent('eip6963:announceProvider', { detail: Object.freeze({ info: { uuid, name, icon, rdns }, provider }) }));
+    announce('11111111-1111-4111-8111-111111111111', 'Stand-in Wallet A', ICON_A, 'test.standin.a', a);
+    const one = activeProvider() === a;
+    announce('22222222-2222-4222-8222-222222222222', 'Stand-in Wallet B', ICON_B, 'test.standin.b', b);
+    announce('22222222-2222-4222-8222-222222222222', 'Stand-in Wallet B', ICON_B, 'test.standin.b', b); // announced again: one entry
+    announce('33333333-3333-4333-8333-333333333333', 'Bad icon', 'https://example.com/icon.png', 'test.bad', stub('Bad'));
+    stop();
+    check(
+      'CR-72 item 6: no wallet announced: window.ethereum; one: that wallet; several and none chosen: none (the visitor picks)',
+      fb && one && activeProvider() === null && seen[seen.length - 1] === 3,
+      `fallback ${fb}, one ${one}, now ${activeProvider() === null ? 'none' : 'a provider'}, list sizes ${seen.join(',')}`,
+    );
+    check(
+      'CR-72 item 6: an announced icon that is not a data: image is dropped (never loaded); a data: icon is kept',
+      walletFromAnnouncement({ info: { uuid: 'x', name: 'X', icon: 'https://example.com/i.png', rdns: 'x' }, provider: a })?.icon === null &&
+        walletFromAnnouncement({ info: { uuid: 'x', name: 'X', icon: ICON_A, rdns: 'x' }, provider: a })?.icon === ICON_A &&
+        walletFromAnnouncement({ info: { uuid: 'x', name: 'X', icon: ICON_A, rdns: 'x' } }) === null,
+    );
+    let list: WalletInfo[] = [];
+    watchWallets((l) => (list = l))();
+    let picked: WalletInfo | null = null;
+    const el = await mount(<div class="wallet-menu" role="menu"><WalletChoices wallets={list.slice(0, 2)} onPick={(w) => (picked = w)} /></div>, base, wallet, 'the wallet picker with two stand-in wallets');
+    const imgs = [...el.querySelectorAll('img')] as HTMLImageElement[];
+    check(
+      'CR-72 item 6: the picker lists both wallets by their announced names, each icon an <img> with its data: source',
+      text(el).includes('Choose a wallet') && text(el).includes('Stand-in Wallet A') && text(el).includes('Stand-in Wallet B') && imgs.length === 2 && imgs[0].getAttribute('src') === ICON_A && imgs[1].getAttribute('src') === ICON_B,
+      text(el),
+    );
+    button(el, 'Stand-in Wallet B')!.click();
+    chooseWallet(picked);
+    calls.length = 0;
+    const nonLocal = { ...NETWORK, local: false };
+    const id = await walletChainId(nonLocal, client);
+    let stored: string | null = null;
+    let kept: string | null = null;
+    try {
+      stored = sessionStorage.getItem('uptown-wallet-choice');
+      kept = localStorage.getItem('uptown-wallet-choice');
+    } catch {
+      /* no storage */
+    }
+    check(
+      'CR-72 item 6: after picking B, the chain check goes to B only (not A, not window.ethereum); the choice is kept for this visit only (session storage)',
+      (picked as WalletInfo | null)?.name === 'Stand-in Wallet B' && activeProvider() === b && id === 1 && calls.join(',') === 'Stand-in B:eth_chainId' && stored === 'test.standin.b' && kept === null && rememberedWallet(list)?.provider === b,
+      `${calls.join(',')} | session ${stored} | local ${kept}`,
+    );
+    chooseWallet(null);
+    delete (window as unknown as { ethereum?: unknown }).ethereum;
+  }
 }
 
 run()

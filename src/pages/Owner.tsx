@@ -10,15 +10,18 @@
 import { useContext, useState } from 'preact/hooks';
 import { createContext, type ComponentChildren } from 'preact';
 import type { TransactionReceipt } from 'viem';
-import { formatEther, formatUnits } from 'viem';
-import { useApp, useTx, Card, FieldError, Notice, PageHead, TxStatus, type Tx } from '../components/ui';
+import { formatEther, formatUnits, getAddress } from 'viem';
+import { useApp, useTx, Card, FieldError, Notice, PageHead, TxStatus, Uses, type Tx } from '../components/ui';
+import { amountOrNull } from '../lib/amount';
+import { UNLISTED_STAKING, listedStaking } from '../lib/network';
+import { targetProblem } from '../lib/wallet';
 import { CheckIcon, ExternalIcon, WarnIcon } from '../components/icons';
 import type { Address, ChainState, Multisig, OwnerState } from '../data/types';
 import { PriceSource } from '../data/types';
 import { ownerTx, type OwnerTarget } from '../lib/actions';
 import { budgetState, pausePending, stakingChange } from '../lib/derive';
 import { explainError } from '../lib/errors';
-import { dayName, fmtBps, fmtDuration, fmtEth, fmtInt, fmtLocalUtc, fmtTown, fmtUsd8, shortAddress } from '../lib/format';
+import { dayName, fmtBps, fmtDuration, fmtEth, fmtInt, fmtLocalUtc, fmtTown, fmtUsd8 } from '../lib/format';
 import {
   checkAddress,
   checkAmount,
@@ -26,6 +29,7 @@ import {
   checkRate,
   checkUnlock,
   localInputValue,
+  networkLabel,
   ownershipOf,
   pageAccess,
   prepare,
@@ -41,6 +45,9 @@ import type { TxRequest } from '../lib/wallet';
 import { CandidateMark } from './Stats';
 
 const ZERO: Address = '0x0000000000000000000000000000000000000000';
+
+/** Every address a check result or confirmation names is shown in full, checksummed (CR-72): never shortened, which a look-alike could imitate. */
+const fullAddress = (a: string): string => getAddress(a);
 
 /** What the connected wallet can do with one action: send it, prepare it for a multisig, or nothing (and why). */
 type Actor = Role | { kind: 'off'; reason: string };
@@ -142,13 +149,19 @@ function ModeNotice({ o, access }: { o: OwnerState; access: Access }) {
     return (
       <Notice kind="warn" title="Read-only">
         <p>
-          The owner {access.unreadable.length > 1 ? 'addresses' : 'address'} {access.unreadable.map((a) => shortAddress(a)).join(', ')}{' '}
+          The owner {access.unreadable.length > 1 ? 'addresses' : 'address'} {access.unreadable.map((a, i) => (
+            <span key={a}>
+              {i > 0 && ', '}
+              <code class="break">{fullAddress(a)}</code>
+            </span>
+          ))}{' '}
           {access.unreadable.length > 1 ? 'are contracts' : 'is a contract'}, but {access.unreadable.length > 1 ? 'they' : 'it'} did not answer when asked
           for {access.unreadable.length > 1 ? 'their' : 'its'} signers (a Safe’s getOwners()), so this page cannot tell who may act for{' '}
           {access.unreadable.length > 1 ? 'them' : 'it'}. The settings are shown; actions are off. Prepare them in the multisig’s own app.
         </p>
       </Notice>
     );
+  const { network } = useApp();
   const safes = Object.values(o.multisigs).filter((m) => m.signers?.some((s) => s.toLowerCase() === account?.toLowerCase()));
   const owners = [...(['Treasury', 'TownStaking', 'LPVault'] as const).map((c) => ownershipOf(o, c).owner), ...(o.launcher.launched ? [] : [o.launcher.owner])];
   const direct = owners.some((a) => a.toLowerCase() === account?.toLowerCase());
@@ -156,8 +169,8 @@ function ModeNotice({ o, access }: { o: OwnerState; access: Access }) {
     <Notice kind="info" title={safes.length ? 'Prepared for the Safe, not sent' : direct ? 'Sent from this wallet' : 'Offered ownership'}>
       {safes.map((m) => (
         <p key={m.address}>
-          The owner <code class="break">{m.address}</code> is a Safe multisig; this wallet is one of its {signersText(m)}. Each action here is checked, then
-          prepared for the Safe app, where the signers approve it. Nothing is sent from this page.
+          The owner <code class="break">{m.address}</code> is a Safe multisig on {networkLabel(network)}; this wallet is one of its {signersText(m)}. Each
+          action here is checked, then prepared for the Safe app, where the signers approve it. Nothing is sent from this page.
         </p>
       ))}
       {direct && <p>This wallet is the owner. Each action is checked first, then sent from this wallet once you confirm.</p>}
@@ -222,6 +235,7 @@ function Field({
   placeholder,
   suffix,
   hint,
+  uses,
   type = 'text',
 }: {
   id: string;
@@ -231,6 +245,8 @@ function Field({
   placeholder?: string;
   suffix?: string;
   hint?: ComponentChildren;
+  /** For an amount: the amount the form will use, shown beside the field once valid (CR-72). */
+  uses?: ComponentChildren;
   type?: 'text' | 'datetime-local';
 }) {
   return (
@@ -253,6 +269,7 @@ function Field({
         )}
         {suffix && suffix !== 'address' && <span class="suffix">{suffix}</span>}
       </div>
+      {uses}
       {hint && <span class="hint">{hint}</span>}
     </div>
   );
@@ -304,7 +321,18 @@ export function OwnerAction(p: ActionProps) {
   const [check, setCheck] = useState<{ key: string; state: 'checking' | 'ok' | 'refused'; message: string; error?: string | null } | null>(null);
   const [typed, setTyped] = useState('');
   const [prepared, setPrepared] = useState<{ key: string; p: Prepared } | null>(null);
-  const built = p.build();
+  // A call to an address the site does not list (CR-72) is not built: its builder throws, and the
+  // reason is shown instead of a Check button that would work.
+  const built: Checked<Built> = (() => {
+    try {
+      const b = p.build();
+      if (!b.ok) return b;
+      const problem = targetProblem(network, b.value.req);
+      return problem ? { ok: false, error: problem } : b;
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  })();
   const key = built.ok ? keyOf(built.value.req) : null;
   const current = check && check.key === key ? check : null;
   const off = p.actor.kind === 'off' ? p.actor.reason : (p.offReason ?? null);
@@ -408,6 +436,16 @@ export function SafePanel({ prepared, safe, network }: { prepared: Prepared; saf
         In the Safe app, start a new transaction with the Transaction Builder, turn on custom data, and paste these three values. The Safe’s signers then
         approve it there{safe.threshold !== null ? ` (${safe.threshold} of ${safe.signers?.length ?? 0})` : ''}.
       </p>
+      <div class="copy-row safe-network">
+        <span class="copy-label">Network</span>
+        <strong class="safe-network-value" data-chain={network.chainId}>
+          {networkLabel(network)}
+        </strong>
+        <span class="copy-end small muted">The Safe app must be on this network.</span>
+      </div>
+      <p class="small muted">
+        The Safe: <code class="break">{fullAddress(safe.address)}</code>
+      </p>
       <CopyRow label="To (the contract)" value={prepared.to} />
       <CopyRow label="Value (ETH)" value={formatEther(prepared.value)} />
       <CopyRow label="Data" value={prepared.data} />
@@ -467,6 +505,14 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 // ---------------------------------------------------------------------------------------------
 
 const nowOf = (o: OwnerState) => Math.max(o.blockTimestamp, Math.floor(Date.now() / 1000));
+
+/**
+ * CR-72: the staking contract the treasury pays (`o.staking.address`, read from the RPC) gets the
+ * owner's staking powers only when the site lists it; otherwise every such action is off, with why.
+ */
+function stakingOff(n: ReturnType<typeof useApp>['network'], o: OwnerState): Actor | null {
+  return listedStaking(n, o.staking.address) ? null : { kind: 'off', reason: `${UNLISTED_STAKING}: it does not list ${fullAddress(o.staking.address)}, so nothing is sent there.` };
+}
 
 function LauncherCard({ ctx }: { ctx: Ctx }) {
   const { network } = useApp();
@@ -548,7 +594,21 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
           label="Set the rate"
           actor={ownerActor}
           dirty={rate !== ''}
-          fields={<Field id="owner-rate" label="New daily payout rate" value={rate} onInput={setRate} placeholder="10" suffix="%" hint={`1% to ${fmtBps(t.MAX_SPEND_BPS)}, up to two decimals.`} />}
+          fields={
+            <Field
+              id="owner-rate"
+              label="New daily payout rate"
+              value={rate}
+              onInput={setRate}
+              placeholder="10"
+              suffix="%"
+              hint={`1% to ${fmtBps(t.MAX_SPEND_BPS)}, up to two decimals.`}
+              uses={(() => {
+                const r = checkRate(rate, t.MAX_SPEND_BPS);
+                return <Uses value={r.ok ? BigInt(r.value) : null} decimals={2} unit="%" />;
+              })()}
+            />
+          }
           build={() => {
             const r = checkRate(rate, t.MAX_SPEND_BPS);
             return r.ok ? { ok: true, value: { req: tx('setSpendRate', [BigInt(r.value)]), preview: `The treasury accepts ${fmtBps(r.value)}. It is used from ${dayName(c + 1)}’s budget on.` } } : r;
@@ -578,6 +638,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
                 onInput={setEthAmount}
                 placeholder="0.0"
                 suffix="ETH"
+                uses={<Uses value={amountOrNull(ethAmount, 18)} unit="ETH" />}
                 hint={
                   <>
                     Up to {fmtEth(t.ownerEthAvailable, 6)} ETH.{' '}
@@ -594,7 +655,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
             if (!to.ok) return to;
             const amt = checkAmount(ethAmount, 18, t.ownerEthAvailable, 'ETH', formatEther(t.ownerEthAvailable));
             if (!amt.ok) return amt;
-            return { ok: true, value: { req: tx('withdrawOwnerEth', [to.value, amt.value]), preview: `${fmtEth(amt.value, 6)} ETH would go from the owner reserve to ${shortAddress(to.value)}.` } };
+            return { ok: true, value: { req: tx('withdrawOwnerEth', [to.value, amt.value]), preview: `${fmtEth(amt.value, 6)} ETH would go from the owner reserve to ${fullAddress(to.value)}.` } };
           }}
           consequence="Sends ETH from the owner reserve. This is the owner’s income: nothing beyond the 10% reserve can be withdrawn, and the stakers’ ETH is untouched."
           done={() => 'The ETH was sent from the owner reserve.'}
@@ -622,6 +683,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
                 onInput={setTownAmount}
                 placeholder="0"
                 suffix="TOWN"
+                uses={<Uses value={amountOrNull(townAmount, 18)} unit="TOWN" />}
                 hint={
                   <>
                     Up to {fmtTown(t.ownerTownAvailable)} TOWN.{' '}
@@ -638,7 +700,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
             if (!to.ok) return to;
             const amt = checkAmount(townAmount, 18, t.ownerTownAvailable, 'TOWN', fmtTown(t.ownerTownAvailable));
             if (!amt.ok) return amt;
-            return { ok: true, value: { req: tx('withdrawTown', [to.value, amt.value]), preview: `${fmtTown(amt.value)} TOWN would go from the treasury to ${shortAddress(to.value)}.` } };
+            return { ok: true, value: { req: tx('withdrawTown', [to.value, amt.value]), preview: `${fmtTown(amt.value)} TOWN would go from the treasury to ${fullAddress(to.value)}.` } };
           }}
           consequence="Sends TOWN claim fees held by the treasury. This is the owner’s income; no other token can be withdrawn."
           done={() => 'The TOWN was sent from the treasury.'}
@@ -696,7 +758,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
               ok: true,
               value: {
                 req: tx('announceStaking', [a.value]),
-                preview: `The treasury accepts ${shortAddress(a.value)}: it names this treasury and WETH. It could be applied from about ${fmtLocalUtc(now + t.OWNER_DELAY)} until ${fmtLocalUtc(now + t.OWNER_DELAY + t.APPLY_WINDOW)}.`,
+                preview: `The treasury accepts ${fullAddress(a.value)}: it names this treasury and WETH. It could be applied from about ${fmtLocalUtc(now + t.OWNER_DELAY)} until ${fmtLocalUtc(now + t.OWNER_DELAY + t.APPLY_WINDOW)}.`,
               },
             };
           }}
@@ -725,7 +787,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
                   ? 'Expired: it can only be replaced or cancelled.'
                   : null
             }
-            build={() => ({ ok: true, value: { req: tx('applyStaking'), preview: `From now on every payout would go to ${shortAddress(t.pendingStaking!)}.` } })}
+            build={() => ({ ok: true, value: { req: tx('applyStaking'), preview: `From now on every payout would go to ${fullAddress(t.pendingStaking!)}.` } })}
             consequence="Every payout from now on goes to the announced contract. ETH already paid keeps streaming where it is, and no stake moves. Anyone may apply it."
             done={() => 'The new staking contract is in use.'}
           />
@@ -790,7 +852,10 @@ function StakingCard({ ctx, chain, name }: { ctx: Ctx; chain: ChainState; name: 
   const { network } = useApp();
   const { o } = ctx;
   const s = chain.staking;
-  const ownerActor = ctx.actor(o.staking.owner, `${name}’s owner`);
+  // CR-72: the staking contract's powers go only to a contract the site lists.
+  const unlisted = stakingOff(network, o);
+  const ownerActor: Actor = unlisted ?? ctx.actor(o.staking.owner, `${name}’s owner`);
+  const anyone: Actor = unlisted ?? ctx.anyone;
   const now = nowOf(o);
   const [price, setPrice] = useState('');
   const [feed, setFeed] = useState('');
@@ -800,6 +865,16 @@ function StakingCard({ ctx, chain, name }: { ctx: Ctx; chain: ChainState; name: 
   const feedReady = s.pendingFeed !== null && now >= s.pendingFeedEffectiveAt;
   return (
     <Card title={name} class="owner-card" id="owner-staking-card">
+      {unlisted && (
+        <div class="card-lead">
+          <Notice kind="warn" title={UNLISTED_STAKING}>
+            <p>
+              The treasury pays <code class="break">{fullAddress(o.staking.address)}</code>, which this site does not list. Its settings are shown; its
+              powers are off here. Add it to the site’s list of staking contracts, publish the site, then use them.
+            </p>
+          </Notice>
+        </div>
+      )}
       <Power
         id="fallback"
         title="Fallback ETH/USD price"
@@ -831,7 +906,21 @@ function StakingCard({ ctx, chain, name }: { ctx: Ctx; chain: ChainState; name: 
           label="Set the fallback"
           actor={ownerActor}
           dirty={price !== ''}
-          fields={<Field id="owner-price" label="ETH price in dollars" value={price} onInput={setPrice} placeholder="2500" suffix="USD" hint="Up to 8 decimals; above zero." />}
+          fields={
+            <Field
+              id="owner-price"
+              label="ETH price in dollars"
+              value={price}
+              onInput={setPrice}
+              placeholder="2500"
+              suffix="USD"
+              hint="Up to 8 decimals; above zero."
+              uses={(() => {
+                const p = checkPrice(price);
+                return <Uses value={p.ok ? p.value : null} decimals={8} unit="USD" />;
+              })()}
+            />
+          }
           build={() => {
             const p = checkPrice(price);
             return p.ok
@@ -870,7 +959,7 @@ function StakingCard({ ctx, chain, name }: { ctx: Ctx; chain: ChainState; name: 
           build={() => {
             const a = checkAddress(feed, { notZero: true });
             if (!a.ok) return a;
-            return { ok: true, value: { req: tx('announceFeed', [a.value]), preview: `The feed ${shortAddress(a.value)} reports 8 decimals. It could be applied from about ${fmtLocalUtc(now + s.FEED_CHANGE_DELAY)}.` } };
+            return { ok: true, value: { req: tx('announceFeed', [a.value]), preview: `The feed ${fullAddress(a.value)} reports 8 decimals. It could be applied from about ${fmtLocalUtc(now + s.FEED_CHANGE_DELAY)}.` } };
           }}
           consequence={`After ${fmtDuration(s.FEED_CHANGE_DELAY)}, anyone can apply it. A wrong feed misprices vaults after the wait, with the same effect as a wrong fallback price; existing stakes and earned rewards are untouched. A new announcement replaces any pending one.`}
           done={() => 'The feed is announced; the wait has begun.'}
@@ -888,9 +977,9 @@ function StakingCard({ ctx, chain, name }: { ctx: Ctx; chain: ChainState; name: 
             <OwnerAction
               id="applyFeed"
               label="Apply the feed"
-              actor={ctx.anyone}
+              actor={anyone}
               offReason={feedReady ? null : `Not yet: it can be applied from ${fmtLocalUtc(s.pendingFeedEffectiveAt)}.`}
-              build={() => ({ ok: true, value: { req: tx('applyFeed'), preview: `The feed ${shortAddress(s.pendingFeed!)} would be in use from now on.` } })}
+              build={() => ({ ok: true, value: { req: tx('applyFeed'), preview: `The feed ${fullAddress(s.pendingFeed!)} would be in use from now on.` } })}
               consequence="Vault prices are read from the new feed from now on. Anyone may apply it."
               done={() => 'The new feed is in use.'}
             />
@@ -933,7 +1022,7 @@ function VaultCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
           build={() => {
             const a = checkAddress(feesTo, { special: true });
             if (!a.ok) return a;
-            return { ok: true, value: { req: tx('collectFees', [a.value]), preview: `The position’s trading fees would go to ${shortAddress(a.value)}.` } };
+            return { ok: true, value: { req: tx('collectFees', [a.value]), preview: `The position’s trading fees would go to ${fullAddress(a.value)}.` } };
           }}
           consequence="Sends the position’s accrued trading fees (ETH and TOWN) to this address. This is the owner’s income; the liquidity itself stays locked."
           done={() => 'The fees were collected.'}
@@ -995,9 +1084,12 @@ function VaultCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
           build={() => {
             const a = checkAddress(posTo, { notZero: true });
             if (!a.ok) return a;
-            return { ok: true, value: { req: tx('withdrawPosition', [a.value]), preview: `The position #${v.tokenId.toString()} would go to ${shortAddress(a.value)}.` } };
+            return { ok: true, value: { req: tx('withdrawPosition', [a.value]), preview: `The position #${v.tokenId.toString()} would go to ${fullAddress(a.value)}.` } };
           }}
-          consequence="Takes the liquidity position out of the vault and sends it to this address; the pool’s liquidity can then be removed. This cannot be undone."
+          consequence={`Takes the liquidity position out of the vault and sends it to ${(() => {
+            const a = checkAddress(posTo, { notZero: true });
+            return a.ok ? fullAddress(a.value) : 'this address';
+          })()}; the pool’s liquidity can then be removed. This cannot be undone.`}
           confirmWord="withdraw the position"
           done={() => 'The position was withdrawn.'}
         />
@@ -1017,6 +1109,9 @@ export function OwnershipPower({ ctx, contract, name }: { ctx: Ctx; contract: Ow
   const [to, setTo] = useState('');
   const target: OwnerTarget = contract;
   const tx = (fn: string, args: readonly unknown[] = []) => ownerTx(network, target, fn, args, o.staking.address);
+  // CR-72: the staking contract's ownership is handled here only when the site lists it.
+  const off = contract === 'TownStaking' ? stakingOff(network, o) : null;
+  const offered = checkAddress(to, { notZero: true });
   const kind = (a: Address) => {
     const ms = o.multisigs[a.toLowerCase()];
     return ms ? (ms.signers ? `A Safe multisig: ${signersText(ms)}.` : 'A contract that did not answer as a Safe.') : 'A wallet.';
@@ -1040,16 +1135,16 @@ export function OwnershipPower({ ctx, contract, name }: { ctx: Ctx; contract: Ow
       <OwnerAction
         id={`transferOwnership-${contract}`}
         label="Offer ownership"
-        actor={ctx.actor(own.owner, `${label}’s owner`)}
+        actor={off ?? ctx.actor(own.owner, `${label}’s owner`)}
         dirty={to !== ''}
         fields={<Field id={`owner-offer-${contract}`} label="New owner" value={to} onInput={setTo} placeholder="0x…" suffix="address" hint="Two steps: this offer, then the new owner accepts." />}
         build={() => {
           const a = checkAddress(to, { notZero: true });
           if (!a.ok) return a;
           if (a.value.toLowerCase() === own.owner.toLowerCase()) return { ok: false, error: `That address already owns ${label}.` };
-          return { ok: true, value: { req: tx('transferOwnership', [a.value]), preview: `${shortAddress(a.value)} would be offered ownership of ${label}; it becomes the owner when it accepts.` } };
+          return { ok: true, value: { req: tx('transferOwnership', [a.value]), preview: `${fullAddress(a.value)} would be offered ownership of ${label}; it becomes the owner when it accepts.` } };
         }}
-        consequence={`Once the new owner accepts, every owner power of ${label} passes to it, and only it can hand them back. Until then the offer can be replaced by a new one.`}
+        consequence={`Once ${offered.ok ? fullAddress(offered.value) : 'the new owner'} accepts, every owner power of ${label} passes to it, and only it can hand them back. Until then the offer can be replaced by a new one.`}
         confirmWord="offer ownership"
         done={() => `Ownership of ${label} is offered. The new owner must accept it.`}
         onSent={() => setTo('')}
@@ -1058,11 +1153,11 @@ export function OwnershipPower({ ctx, contract, name }: { ctx: Ctx; contract: Ow
         <OwnerAction
           id={`acceptOwnership-${contract}`}
           label="Accept ownership"
-          actor={ctx.actor(own.pendingOwner, `the address offered ownership of ${label}`)}
-          build={() => ({ ok: true, value: { req: tx('acceptOwnership'), preview: `This would make ${shortAddress(own.pendingOwner!)} the owner of ${label}.` } })}
-          consequence={`${shortAddress(own.pendingOwner)} becomes the owner of ${label}, with every owner power listed for it here; the previous owner loses them.`}
+          actor={off ?? ctx.actor(own.pendingOwner, `the address offered ownership of ${label}`)}
+          build={() => ({ ok: true, value: { req: tx('acceptOwnership'), preview: `This would make ${fullAddress(own.pendingOwner!)} the owner of ${label}.` } })}
+          consequence={`${fullAddress(own.pendingOwner)} becomes the owner of ${label}, with every owner power listed for it here; the previous owner loses them.`}
           errorWords={{ OwnableUnauthorizedAccount: 'Only the address offered ownership can accept it.' }}
-          done={() => `${shortAddress(own.pendingOwner!)} is now the owner of ${label}.`}
+          done={() => `${fullAddress(own.pendingOwner!)} is now the owner of ${label}.`}
         />
       )}
     </Power>

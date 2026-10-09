@@ -9,6 +9,7 @@ import { txUrl, type Network } from '../lib/network';
 import { explainError, type TradeKind } from '../lib/errors';
 import { sendTx, waitForTx, type TxRequest } from '../lib/wallet';
 import { fmtInt, shortAddress } from '../lib/format';
+import { fmtExact } from '../lib/amount';
 
 /**
  * Where the figures stand: being read, read, failed to read, nothing deployed on this chain, or
@@ -397,6 +398,19 @@ export function FieldError({ children }: { children: ComponentChildren }) {
     <span class="field-error">
       <WarnIcon size={14} />
       {children}
+    </span>
+  );
+}
+
+/**
+ * Beside an amount field (CR-72): the amount the form will use, formatted with every decimal typed,
+ * as soon as the text is a valid amount; nothing otherwise.
+ */
+export function Uses({ value, decimals = 18, unit, id }: { value: bigint | null; decimals?: number; unit: string; id?: string }) {
+  if (value === null) return null;
+  return (
+    <span class="uses" id={id} data-uses={value.toString()} aria-live="polite">
+      Uses <span class="num">{fmtExact(value, decimals)}</span> {unit}
     </span>
   );
 }

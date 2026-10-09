@@ -3,8 +3,12 @@
 //
 // What it allows: the site's own files (scripts, the stylesheet, the two fonts, the icon) and, for
 // reading and sending, the one RPC host of the chain the build is for. Nothing else: no inline
-// script or style, no `data:` image, no frame, no form submission, no other host. Trusted types
-// with no policy: the site never writes HTML from a string.
+// script or style, no frame, no form submission, no other host. Trusted types with no policy: the
+// site never writes HTML from a string.
+//
+// One addition (F9i, CR-72): `img-src 'self' data:`. The wallet picker shows each installed
+// wallet's icon, which the wallet announces as a `data:` image (EIP-6963); the site renders it only
+// as an `<img>` source, and `data:` images contact no host. No other image source is allowed.
 //
 // The development server (`npm run dev`) keeps the looser policy in index.html: Vite injects its
 // styles inline and talks to the page over a WebSocket. Only the built page carries this one.
@@ -15,7 +19,7 @@ export function sitePolicy(rpcOrigin: string): string {
     "default-src 'none'",
     "script-src 'self'",
     "style-src 'self'",
-    "img-src 'self'",
+    "img-src 'self' data:",
     "font-src 'self'",
     `connect-src ${rpcOrigin}`,
     "base-uri 'none'",
