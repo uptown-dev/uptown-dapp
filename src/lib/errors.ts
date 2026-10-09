@@ -68,6 +68,7 @@ const PLAIN: Record<string, string> = {
   ERC20InvalidReceiver: 'That address cannot receive TOWN.',
   ReentrancyGuardReentrantCall: 'The contract refused a call made from inside another call.',
   OwnableUnauthorizedAccount: 'Only the owner can do this.',
+  OwnableInvalidOwner: 'That address cannot become the owner.',
   SafeERC20FailedOperation: 'A token transfer failed, so nothing happened.',
   // Uniswap
   V4TooMuchRequested: 'The buy would cost more ETH than allowed, so it was cancelled and you keep your ETH.',

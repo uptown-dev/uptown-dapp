@@ -110,3 +110,16 @@ export function listDays(cycles: number[]): string {
   if (names.length <= 1) return names.join('');
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
+
+/**
+ * A moment in the visitor's own time, with UTC beside it (the owner page, CR-64):
+ * "16 Nov 2026, 17:00 your time (15:00 UTC)"; the UTC date is added when it differs.
+ */
+export function fmtLocalUtc(ts: number): string {
+  const d = new Date(ts * 1000);
+  const p = (x: number) => String(x).padStart(2, '0');
+  const local = `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}`;
+  const sameDay = d.getDate() === d.getUTCDate() && d.getMonth() === d.getUTCMonth() && d.getFullYear() === d.getUTCFullYear();
+  const utc = sameDay ? `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC` : fmtDateTime(ts);
+  return `${local} your time (${utc})`;
+}

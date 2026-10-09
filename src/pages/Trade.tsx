@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { parseEther, parseUnits } from 'viem';
 import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus } from '../components/ui';
-import { ArrowDownIcon, ExternalIcon } from '../components/icons';
+import { ArrowDownIcon } from '../components/icons';
 import {
   afterClaimFee,
   antiSnipeActive,
@@ -19,7 +19,6 @@ import {
 } from '../lib/derive';
 import type { ChainState } from '../data/types';
 import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtTown, fmtUnits, shortAddress, fmtRate } from '../lib/format';
-import { uniswapSellUrl } from '../lib/network';
 import { quoteBuy, quoteSell } from '../lib/reads';
 import { BUY_DEADLINE_SECONDS, ROUTER_ALLOWANCE_SECONDS, allowRouterTx, approvePermit2Tx, buyTx, sellTx } from '../lib/actions';
 import { explainError } from '../lib/errors';
@@ -61,13 +60,12 @@ function nowSeconds(blockTimestamp: number): number {
   return Math.max(blockTimestamp, Math.floor(Date.now() / 1000));
 }
 
-/** The Trade page (CR-43): the site's own buy and sell forms, and the Uniswap link as a second way to trade. */
+/** The Trade page (CR-43): the site's own buy and sell forms; no link to trade elsewhere (CR-64). */
 export function Trade({ sell: openSell }: { sell?: boolean }) {
   const chain = useChain();
   const { network } = useApp();
   const [mode, setMode] = useState<Mode>(openSell ? 'sell' : 'buy');
   useEffect(() => setMode(openSell ? 'sell' : 'buy'), [openSell]);
-  const sellUrl = uniswapSellUrl(network);
   const town = network.deployment?.contracts.UpTownToken;
   return (
     <div class="wrap page narrow">
@@ -98,21 +96,6 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
         </div>
       </section>
       <div class="after-card">
-        {sellUrl ? (
-          <a class="btn btn-secondary btn-block" href={sellUrl} target="_blank" rel="noopener noreferrer">
-            Sell on Uniswap
-            <ExternalIcon size={16} />
-          </a>
-        ) : (
-          <span class="btn btn-secondary btn-block is-off" aria-disabled="true">
-            Sell on Uniswap
-          </span>
-        )}
-        <p class="small muted">
-          {sellUrl
-            ? 'A second way to trade: the same pool, in the Uniswap app.'
-            : `The Uniswap app does not run on the ${network.name.toLowerCase()}, so this link is off here.`}
-        </p>
         <p class="small muted">Other TOWN pools, outside the official one, pay no fees and earn no rebates.</p>
       </div>
       <Details>

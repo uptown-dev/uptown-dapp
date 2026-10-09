@@ -1,7 +1,7 @@
 // The actions the site sends (docs/tasks/F8b-frontend.md, "Transactions"), each built as one
 // contract call. Nothing here sends: `wallet.ts` does, after its checks.
 import { encodeAbiParameters, type Abi } from 'viem';
-import { PERMIT2_ABI, REWARDS_ABI, ROUTER_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
+import { LAUNCHER_ABI, LPVAULT_ABI, PERMIT2_ABI, REWARDS_ABI, ROUTER_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
 import type { Network } from './network';
 import { buyerHookData, poolKey } from './reads';
 import type { TxRequest } from './wallet';
@@ -156,4 +156,23 @@ export function pokeTx(n: Network): TxRequest {
 /** Put an announced staking contract in use once its 2-day wait has passed: `Treasury.applyStaking()`, open to anyone (CR-46). */
 export function applyStakingTx(n: Network): TxRequest {
   return { address: n.deployment!.contracts.Treasury, abi: TREASURY_ABI as Abi, functionName: 'applyStaking' };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The owner page (CR-64): every power in the spec's "Owner powers" table, one call each. The
+// contracts refuse each owner-only call from anyone but the owner; the page only arranges them.
+// ---------------------------------------------------------------------------------------------
+
+/** The contract each owner action goes to. */
+export type OwnerTarget = 'Treasury' | 'TownStaking' | 'LPVault' | 'Launcher';
+
+const OWNER_ABIS = { Treasury: TREASURY_ABI, TownStaking: STAKING_ABI, LPVault: LPVAULT_ABI, Launcher: LAUNCHER_ABI } as const;
+
+/**
+ * One owner call. `stakingAddress` is the staking contract the Treasury pays now (`Treasury.staking()`),
+ * whose owner holds the two price powers; the other targets come from the address file.
+ */
+export function ownerTx(n: Network, target: OwnerTarget, functionName: string, args: readonly unknown[] = [], stakingAddress?: Address): TxRequest {
+  const address = target === 'TownStaking' ? (stakingAddress ?? n.deployment!.contracts.TownStaking) : n.deployment!.contracts[target];
+  return { address, abi: OWNER_ABIS[target] as Abi, functionName, args };
 }

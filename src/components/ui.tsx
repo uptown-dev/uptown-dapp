@@ -3,16 +3,19 @@
 import { createContext, type ComponentChildren } from 'preact';
 import { useContext, useState } from 'preact/hooks';
 import type { PublicClient, TransactionReceipt } from 'viem';
-import type { Address, ChainState, WalletState } from '../data/types';
+import type { Address, ChainState, OwnerState, WalletState } from '../data/types';
 import { ChevronIcon, ExternalIcon, InfoIcon, NoteIcon, WarnIcon } from './icons';
 import { txUrl, type Network } from '../lib/network';
 import { explainError, type TradeKind } from '../lib/errors';
 import { sendTx, waitForTx, type TxRequest } from '../lib/wallet';
 import { fmtInt, shortAddress } from '../lib/format';
 
-/** Where the figures stand: being read, read, failed to read, or nothing deployed on this chain. */
+/**
+ * Where the figures stand: being read, read, failed to read, nothing deployed on this chain, or
+ * deployed but not launched yet (only the owner page's views are read then; CR-64).
+ */
 export interface DataStatus {
-  state: 'loading' | 'ready' | 'error' | 'not-deployed';
+  state: 'loading' | 'ready' | 'error' | 'not-deployed' | 'not-launched';
   /** The last read's failure, in plain words (the figures shown are then the previous read's). */
   error: string | null;
   /** When the figures were last read, on this computer's clock (ms). */
@@ -26,6 +29,8 @@ export interface AppState {
   chain: ChainState | null;
   /** The connected wallet's figures, or null when no wallet is connected. */
   wallet: WalletState | null;
+  /** The owner page's views (CR-64), read with the figures; also before launch. Null until the first read. */
+  owner: OwnerState | null;
   /** The connected address (an injected wallet's account, or the local test wallet picked). */
   account: Address | null;
   /** The label of the local test wallet in use. */

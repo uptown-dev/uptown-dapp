@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { getAddress } from 'viem';
 import { AppContext, Notice, PageHead, useApp, type AppState, type DataStatus } from './components/ui';
 import { CloseIcon, ExternalIcon, MenuIcon, DarkModeIcon, LightModeIcon, TowerGlyph } from './components/icons';
-import { CONTRACT_NAMES, type Address, type ChainState, type WalletState } from './data/types';
+import { CONTRACT_NAMES, type Address, type ChainState, type OwnerState, type WalletState } from './data/types';
 import { NETWORK, contractUrl } from './lib/network';
 import { makeClient, readAll } from './lib/reads';
 import { injectedProvider, switchWalletChain } from './lib/wallet';
@@ -15,6 +15,8 @@ import { Rewards } from './pages/Rewards';
 import { Stake } from './pages/Stake';
 import { Stats } from './pages/Stats';
 import { Docs } from './pages/Docs';
+import { Owner } from './pages/Owner';
+import { showsOwnerLink } from './lib/owner';
 
 const NAV: { page: string; label: string; title: string }[] = [
   { page: '', label: 'Home', title: 'UpTown (TOWN)' },
@@ -23,6 +25,8 @@ const NAV: { page: string; label: string; title: string }[] = [
   { page: 'stake', label: 'Stake', title: 'Stake TOWN · UpTown' },
   { page: 'stats', label: 'Stats', title: 'Treasury and stats · UpTown' },
   { page: 'docs', label: 'Docs', title: 'Docs · UpTown' },
+  // Shown in the navigation only to the owner wallet (CR-64); anyone else who opens it sees a notice.
+  { page: 'owner', label: 'Owner', title: 'Owner · UpTown' },
 ];
 
 /** Pages made of live figures: shown once the figures have been read. */
@@ -75,6 +79,7 @@ export function App() {
   const [walletChain, setWalletChain] = useState<number | null>(null);
   const [chain, setChain] = useState<ChainState | null>(null);
   const [wallet, setWallet] = useState<WalletState | null>(null);
+  const [owner, setOwner] = useState<OwnerState | null>(null);
   const [data, setData] = useState<DataStatus>({ state: network.deployment ? 'loading' : 'not-deployed', error: null, readAt: null });
   const mainRef = useRef<HTMLElement>(null);
   const firstRender = useRef(true);
@@ -99,7 +104,8 @@ export function App() {
         if (accountRef.current !== who) return; // the wallet changed meanwhile: a new read follows
         setChain(r.chain);
         setWallet(r.wallet);
-        setData({ state: 'ready', error: null, readAt: Date.now() });
+        setOwner(r.owner);
+        setData({ state: r.chain ? 'ready' : 'not-launched', error: null, readAt: Date.now() });
       } catch (e) {
         setData((d) => ({ ...d, state: d.readAt ? 'ready' : 'error', error: explainError(e).message }));
       }
@@ -175,6 +181,7 @@ export function App() {
 
   const wrongNetwork = !network.local && account !== null && walletChain !== null && walletChain !== network.chainId;
   const accountLabel = network.local ? (network.testWallets.find((w) => w.address === account)?.label ?? null) : null;
+  const ownerLink = showsOwnerLink(owner, account);
 
   // ---- page and theme --------------------------------------------------------------------------
   useEffect(() => {
@@ -233,6 +240,7 @@ export function App() {
     network,
     chain,
     wallet: account && wallet && wallet.address === account ? wallet : null,
+    owner,
     account,
     accountLabel,
     data,
@@ -260,6 +268,8 @@ export function App() {
         return <Stats />;
       case 'docs':
         return <Docs />;
+      case 'owner':
+        return <Owner />;
       default:
         return <Home />;
     }
@@ -298,7 +308,7 @@ export function App() {
           </a>
           <nav class={`site-nav${navOpen ? ' open' : ''}`} id="site-nav" aria-label="Main">
             <ul>
-              {NAV.map((n) => (
+              {NAV.filter((n) => n.page !== 'owner' || ownerLink).map((n) => (
                 <li key={n.page}>
                   <a href={`#/${n.page}`} aria-current={page === n.page ? 'page' : undefined}>
                     {n.label}
@@ -478,7 +488,15 @@ function ChainPending({ title, data, onRetry }: { title: string; data: DataStatu
   const n = NETWORK;
   return (
     <div class="wrap page narrow">
-      <PageHead title={title} lead={data.state === 'not-deployed' ? `UpTown on ${n.name}.` : 'Reading the figures from the contracts.'} />
+      <PageHead
+        title={title}
+        lead={data.state === 'not-deployed' || data.state === 'not-launched' ? `UpTown on ${n.name}.` : 'Reading the figures from the contracts.'}
+      />
+      {data.state === 'not-launched' && (
+        <Notice kind="info" title="Not launched yet">
+          <p>UpTown’s contracts are deployed on this network but not launched yet. This page’s figures appear here once they are.</p>
+        </Notice>
+      )}
       {data.state === 'not-deployed' && (
         <Notice kind="info" title={`Not deployed on ${n.name} yet`}>
           <p>UpTown’s contracts are not deployed on this network yet. Their addresses, and this page’s figures, appear here once they are.</p>

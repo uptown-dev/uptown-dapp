@@ -3,9 +3,12 @@
 // each a single eth_call: the global views, the current day and the staking contract the Treasury
 // pays; then the views that depend on those (that contract's figures, the limits, today's rate and
 // the days behind it, the wallet's tally per day, the announced staking contract's answers, the
-// wallet's vaults in replaced staking contracts); then the views for the wallet's days.
+// wallet's vaults in replaced staking contracts); then the views for the wallet's days. The owner
+// page's views (CR-64) ride in the same rounds: each contract's owner and offered owner in rounds 1
+// and 2, and in round 3 the signers of any owner that is a multisig. Before launch only the owner
+// page's views are read, since most of the others revert until then.
 import { createPublicClient, defineChain, encodeAbiParameters, http, type Hex, type PublicClient } from 'viem';
-import { CANDIDATE_ABI, HOOK_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
+import { CANDIDATE_ABI, HOOK_ABI, LAUNCHER_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, SAFE_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
 import type { Network, StakingRecord } from './network';
 import {
   PriceSource,
@@ -14,7 +17,9 @@ import {
   type CandidateCheck,
   type ChainState,
   type CycleInfo,
+  type Multisig,
   type OldVault,
+  type OwnerState,
   type PerTier,
   type StreamInfo,
   type Tier,
@@ -117,9 +122,46 @@ const same = (a: string | null | undefined, b: string | null | undefined) => !!a
 const pastTally = new Map<string, { through: number; bought: Record<number, bigint> }>();
 
 export interface ReadResult {
-  chain: ChainState;
+  /** Every figure; `null` before launch (Launcher.launched() is false), when most views revert. */
+  chain: ChainState | null;
   wallet: WalletState | null;
+  /** The owner page's views (CR-64), before and after launch. */
+  owner: OwnerState;
 }
+
+/** The distinct owners and offered owners, for the multisig check (CR-64). */
+function holdersOf(...list: (Address | null)[]): Address[] {
+  const out: Address[] = [];
+  for (const a of list) if (a && !isZero(a) && !out.some((x) => same(x, a))) out.push(a);
+  return out;
+}
+
+/** Asks each owner or offered address for a Safe's signers and threshold (CR-64); an ordinary wallet fails both. */
+function multisigCalls(batch: Batch, holders: Address[]) {
+  return holders.map((h) => ({
+    address: h,
+    signers: batch.add(`${h}.getOwners()`, { address: h, abi: SAFE_ABI, functionName: 'getOwners' }),
+    threshold: batch.add(`${h}.getThreshold()`, { address: h, abi: SAFE_ABI, functionName: 'getThreshold' }),
+  }));
+}
+
+/**
+ * The multisigs among the owners (CR-64): every address with code that is not an EIP-7702 delegated
+ * wallet (such a wallet signs for itself). Its signers are `getOwners()`, or `null` when that failed.
+ */
+function multisigsFrom(r: Reader, calls: ReturnType<typeof multisigCalls>, codes: (Hex | undefined)[]): Record<string, Multisig> {
+  const out: Record<string, Multisig> = {};
+  calls.forEach((c, j) => {
+    const code = codes[j];
+    if (!code || code === '0x' || code.toLowerCase().startsWith(DELEGATION_PREFIX)) return;
+    const signers = r.maybe<readonly Address[]>(c.signers);
+    const threshold = r.maybe<bigint>(c.threshold);
+    out[c.address.toLowerCase()] = { address: c.address, signers: signers ? [...signers] : null, threshold: threshold === null ? null : Number(threshold) };
+  });
+  return out;
+}
+
+const orNull = (a: Address): Address | null => (isZero(a) ? null : a);
 
 export async function readAll(client: PublicClient, n: Network, account: Address | null): Promise<ReadResult> {
   const d = n.deployment;
@@ -185,6 +227,19 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     unlockTime: a.add('LPVault.unlockTime', { address: k.LPVault, abi: LPVAULT_ABI, functionName: 'unlockTime' }),
     lockDuration: a.add('LPVault.lockDuration', { address: k.LPVault, abi: LPVAULT_ABI, functionName: 'lockDuration' }),
   };
+  // The owner page (CR-64): who owns each contract and who has been offered it; the Launcher before launch.
+  const V = (fn: string) => a.add(`LPVault.${fn}`, { address: k.LPVault, abi: LPVAULT_ABI, functionName: fn });
+  const L = (fn: string) => a.add(`Launcher.${fn}`, { address: k.Launcher, abi: LAUNCHER_ABI, functionName: fn });
+  const oi = {
+    launcherOwner: L('owner'),
+    launched: L('launched'),
+    treasuryOwner: T('owner'),
+    treasuryPending: T('pendingOwner'),
+    vaultOwner: V('owner'),
+    vaultPending: V('pendingOwner'),
+    tokenId: V('tokenId'),
+    MIN_LOCK_DURATION: V('MIN_LOCK_DURATION'),
+  };
   const w = account
     ? {
         eth: ethBalance(account),
@@ -205,10 +260,60 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     : null;
   const r1 = await a.run(client, n, bn);
 
-  const current = num(r1.get(i.rewardsCycle));
   // The staking contract the Treasury pays now (CR-46, CR-50). Every staking figure, the vaults the
   // site offers and their approvals come from this contract, whatever the address file names.
   const stakingAddress = r1.get<Address>(i.staking);
+  const ownerBase = {
+    blockTimestamp: Number(block.timestamp),
+    blockNumber: bn,
+    launcher: { owner: r1.get<Address>(oi.launcherOwner), launched: r1.get<boolean>(oi.launched) },
+    treasury: { owner: r1.get<Address>(oi.treasuryOwner), pendingOwner: orNull(r1.get<Address>(oi.treasuryPending)) },
+    lpVault: {
+      owner: r1.get<Address>(oi.vaultOwner),
+      pendingOwner: orNull(r1.get<Address>(oi.vaultPending)),
+      tokenId: r1.get<bigint>(oi.tokenId),
+      unlockTime: num(r1.get(i.unlockTime)),
+      MIN_LOCK_DURATION: num(r1.get(oi.MIN_LOCK_DURATION)),
+    },
+  };
+  // The staking contract's owner, offered owner and feed (CR-64), in round 2 (or before launch, a round of their own).
+  const stakingOwnerCalls = (batch: Batch) => {
+    const P = (fn: string) => batch.add(`TownStaking.${fn}`, { address: stakingAddress, abi: STAKING_ABI, functionName: fn });
+    return { owner: P('owner'), pending: P('pendingOwner'), feed: P('feed') };
+  };
+  const stakingOwnership = (r: Reader, c: ReturnType<typeof stakingOwnerCalls>): OwnerState['staking'] => ({
+    address: stakingAddress,
+    owner: r.get<Address>(c.owner),
+    pendingOwner: orNull(r.get<Address>(c.pending)),
+    feed: r.get<Address>(c.feed),
+  });
+  // Every owner and offered owner (the Launcher's only before launch), asked in round 3 whether it is a multisig.
+  const ownerHolders = (staking: OwnerState['staking']) =>
+    holdersOf(
+      ownerBase.launcher.launched ? null : ownerBase.launcher.owner,
+      ownerBase.treasury.owner,
+      ownerBase.treasury.pendingOwner,
+      staking.owner,
+      staking.pendingOwner,
+      ownerBase.lpVault.owner,
+      ownerBase.lpVault.pendingOwner,
+    );
+  const codesOf = (holders: Address[]) => Promise.all(holders.map((h) => client.getCode({ address: h, blockNumber: bn })));
+
+  if (!ownerBase.launcher.launched) {
+    // Before launch: the owner page's views only, so the owner can launch (CR-64).
+    const b0 = new Batch();
+    const so0 = stakingOwnerCalls(b0);
+    const r0 = await b0.run(client, n, bn);
+    const staking = stakingOwnership(r0, so0);
+    const holders = ownerHolders(staking);
+    const c0 = new Batch();
+    const ms = multisigCalls(c0, holders);
+    const [rm, codes] = await Promise.all([c0.run(client, n, bn), codesOf(holders)]);
+    return { chain: null, wallet: null, owner: { ...ownerBase, staking, multisigs: multisigsFrom(rm, ms, codes) } };
+  }
+
+  const current = num(r1.get(i.rewardsCycle));
   const pendingRaw = r1.get<Address>(i.pendingStaking);
   const pendingStaking = isZero(pendingRaw) ? null : pendingRaw;
   const LEAN_CYCLES = num(r1.get(i.LEAN_CYCLES));
@@ -236,6 +341,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     totalRewardsPaid: S('totalRewardsPaid'),
     totalVaultFees: S('totalVaultFees'),
   };
+  const so = stakingOwnerCalls(b);
   const perTier = (fn: string) => {
     const out = {} as PerTier<number>;
     for (const t of TIERS) out[t] = S(fn, [t]);
@@ -371,8 +477,11 @@ export async function readAll(client: PublicClient, n: Network, account: Address
 
   // Round 3: for each day the wallet bought: claimed, the day's figures, its rate (CR-47), and the
   // claimable total (BuyerRewards.claimable skips days not ready or already claimed, CL-27); upgrade
-  // prices in the current staking contract.
+  // prices in the current staking contract; the signers of any owner that is a multisig (CR-64).
   const c3 = new Batch();
+  const stakingOwner = stakingOwnership(r2, so);
+  const holders = ownerHolders(stakingOwner);
+  const msIdx = multisigCalls(c3, holders);
   const days = Object.keys(bought)
     .map(Number)
     .sort((x, y) => x - y);
@@ -398,7 +507,8 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       if (t > position[0])
         upIdx[t] = c3.add(`TownStaking.upgradePriceWei(wallet, ${t})`, { address: stakingAddress, abi: STAKING_ABI, functionName: 'upgradePriceWei', args: [account, t] });
   }
-  const r3 = await c3.run(client, n, bn);
+  const [r3, holderCodes] = await Promise.all([c3.run(client, n, bn), codesOf(holders)]);
+  const owner: OwnerState = { ...ownerBase, staking: stakingOwner, multisigs: multisigsFrom(r3, msIdx, holderCodes) };
 
   for (const { c, i: idx } of dayCapIdx) cap[c] = r3.get<bigint>(idx);
   const rateBps: Record<number, number> = { [current]: num(r2.get(rateIdx)) };
@@ -536,7 +646,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       oldVaults,
     };
   }
-  return { chain, wallet };
+  return { chain, wallet, owner };
 }
 
 /**

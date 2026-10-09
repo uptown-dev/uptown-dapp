@@ -65,6 +65,7 @@ export const OTHER_ERRORS = [
   'error ERC20InvalidReceiver(address receiver)',
   'error ReentrancyGuardReentrantCall()',
   'error OwnableUnauthorizedAccount(address account)',
+  'error OwnableInvalidOwner(address owner)',
   'error SafeERC20FailedOperation(address token)',
   // Uniswap v4 router and pool manager (v4-periphery, v4-core) and the Universal Router.
   'error V4TooLittleReceived(uint256 minAmountOutReceived, uint256 amountReceived)',
@@ -83,6 +84,18 @@ export const OTHER_ERRORS = [
 ] as const;
 
 export const ERRORS_ABI = parseAbi([...UPTOWN_ERRORS, ...OTHER_ERRORS]);
+
+/**
+ * OpenZeppelin `Ownable2Step`, which the Treasury, TownStaking and LPVault use (their interfaces
+ * name it without redeclaring it): the owner, the address offered ownership, the offer and the
+ * acceptance (CR-64, the owner page).
+ */
+const OWNABLE_2STEP = [
+  'function owner() view returns (address)',
+  'function pendingOwner() view returns (address)',
+  'function transferOwnership(address newOwner)',
+  'function acceptOwnership()',
+] as const;
 
 export const TOKEN_ABI = parseAbi([
   'function totalSupply() view returns (uint256)',
@@ -156,8 +169,12 @@ export const TREASURY_ABI = parseAbi([
   'function totalOwnerEthWithdrawn() view returns (uint256)',
   'function totalTownWithdrawn() view returns (uint256)',
   'function poke()',
+  // The owner functions, sent only from the owner page (CR-64).
+  'function setSpendRate(uint256 bps)',
+  'function withdrawOwnerEth(address to, uint256 amount)',
+  'function withdrawTown(address to, uint256 amount)',
   // Owner changes with a delay (CR-46): constant, views, the public apply, the owner-only calls
-  // (listed for completeness and for their errors; the site never sends them) and the events.
+  // (sent only from the owner page, CR-64) and the events.
   'function OWNER_DELAY() view returns (uint256)',
   // How long an announced replacement can be applied once due (CR-48), and WETH, which a
   // candidate must name (CR-49).
@@ -178,6 +195,7 @@ export const TREASURY_ABI = parseAbi([
   'event PauseAnnounced(uint256 effectiveAt)',
   'event PauseCancelled()',
   'event Unpaused()',
+  ...OWNABLE_2STEP,
   ...UPTOWN_ERRORS,
   ...OTHER_ERRORS,
 ]);
@@ -215,6 +233,11 @@ export const STAKING_ABI = parseAbi([
   'function upgradeVault(uint8 newTier) payable',
   'function unstake()',
   'function claim()',
+  // The owner's two price powers and the public apply, sent only from the owner page (CR-64).
+  'function setFallbackPrice(uint256 price)',
+  'function announceFeed(address newFeed)',
+  'function applyFeed()',
+  ...OWNABLE_2STEP,
   ...UPTOWN_ERRORS,
   ...OTHER_ERRORS,
 ]);
@@ -223,7 +246,24 @@ export const LPVAULT_ABI = parseAbi([
   'function unlockTime() view returns (uint256)',
   'function lockDuration() view returns (uint256)',
   'function tokenId() view returns (uint256)',
+  'function MIN_LOCK_DURATION() view returns (uint256)',
+  // The owner functions, sent only from the owner page (CR-64).
+  'function collectFees(address recipient)',
+  'function extendLock(uint256 newUnlockTime)',
+  'function withdrawPosition(address to)',
+  ...OWNABLE_2STEP,
+  ...UPTOWN_ERRORS,
+  ...OTHER_ERRORS,
 ]);
+
+/** The Launcher: its owner, whether it has run, and the one launch call (CR-64, before launch only). */
+export const LAUNCHER_ABI = parseAbi(['function owner() view returns (address)', 'function launched() view returns (bool)', 'function launch()', ...UPTOWN_ERRORS, ...OTHER_ERRORS]);
+
+/**
+ * A Safe multisig's signers and how many must approve (CR-64): asked of an owner address that has
+ * code. Anything may sit at such an address, so each answer is read with "allow failure".
+ */
+export const SAFE_ABI = parseAbi(['function getOwners() view returns (address[])', 'function getThreshold() view returns (uint256)']);
 
 /**
  * The two questions the site asks an announced staking contract before marking it verified

@@ -41,7 +41,7 @@ export interface Network {
   explorer: string | null;
   /** The explorer's name, for link titles. */
   explorerName: string | null;
-  /** The Uniswap app's name for the chain, for the sell link; `null` where the app does not run. */
+  /** The Uniswap app's name for the chain; `null` where the app does not run. The site links to no other place to trade (CR-64). */
   uniswapChain: string | null;
   /** Uniswap v4 and helper contracts (PositionManager, V4Quoter, Universal Router 2.1.2, Permit2, Multicall3, WETH). */
   uniswap: ChainContracts | null;
@@ -205,10 +205,4 @@ export function contractUrl(n: Network, name: ContractName, page: 'address' | 'c
 /** The launch position's NFT on the Uniswap v4 PositionManager, held by LPVault. */
 export function positionUrl(n: Network): string | null {
   return nftUrl(n, n.uniswap?.positionManager ?? null, n.deployment?.lpTokenId ?? null);
-}
-
-/** The Uniswap app, selling TOWN for ETH on this chain; null where the app does not run or TOWN is not deployed. */
-export function uniswapSellUrl(n: Network): string | null {
-  const town = n.deployment?.contracts.UpTownToken;
-  return n.uniswapChain && town ? `https://app.uniswap.org/swap?chain=${n.uniswapChain}&inputCurrency=${town}&outputCurrency=NATIVE` : null;
 }

@@ -311,6 +311,49 @@ export interface CandidateCheck {
   upgradeable: boolean;
 }
 
+/**
+ * One contract's two-step ownership (OpenZeppelin `Ownable2Step`): the owner, and the address it has
+ * offered ownership to, which becomes the owner once it accepts.
+ */
+export interface Ownership {
+  /** owner() */
+  owner: Address;
+  /** pendingOwner(); `null` for address(0), no offer open. */
+  pendingOwner: Address | null;
+}
+
+/**
+ * A multisig found at an owner address (CR-64): an address with code that is not an EIP-7702
+ * delegated wallet. Its signers come from the Safe's `getOwners()`; `null` when that read failed,
+ * so the site cannot tell who may act for it.
+ */
+export interface Multisig {
+  address: Address;
+  /** getOwners(); `null` when the call failed. */
+  signers: Address[] | null;
+  /** getThreshold(): how many signers must approve; `null` when the call failed. */
+  threshold: number | null;
+}
+
+/**
+ * Everything the owner page needs besides the figures in `ChainState` (CR-64), read in the same
+ * Multicall3 batch and at the same block. Read before launch too, when `ChainState` cannot be.
+ */
+export interface OwnerState {
+  blockTimestamp: number;
+  blockNumber: bigint;
+  /** The Launcher: its owner (the only caller of `launch`) and whether it has run. */
+  launcher: { owner: Address; launched: boolean };
+  /** Treasury.owner(), pendingOwner(). */
+  treasury: Ownership;
+  /** The staking contract the Treasury pays now (Treasury.staking()): owner(), pendingOwner(), feed(). */
+  staking: Ownership & { address: Address; feed: Address };
+  /** LPVault.owner(), pendingOwner(), tokenId(), unlockTime(), MIN_LOCK_DURATION(). */
+  lpVault: Ownership & { tokenId: bigint; unlockTime: number; MIN_LOCK_DURATION: number };
+  /** Each owner or offered address that is a multisig, by lower-case address. */
+  multisigs: Record<string, Multisig>;
+}
+
 /** The seven UpTown contracts, in the order the footer lists them. */
 export const CONTRACT_NAMES = ['UpTownToken', 'TownHook', 'BuyerRewards', 'Treasury', 'TownStaking', 'LPVault', 'Launcher'] as const;
 export type ContractName = (typeof CONTRACT_NAMES)[number];

@@ -17,19 +17,27 @@
 //   at the same block, the block's place on the page, and day 0 (no yesterday) from a fixture.
 // - F8g housekeeping, the upgradeable flag: the site's check pointed at a real EIP-1967 proxy on the
 //   forked chain (Aave's v3 Pool) and at TownStaking; the mark from a fixture.
-// Nothing here sends a transaction: buttons are checked, never clicked.
+// - CR-64 (F9b), the owner page: the gate for the owner and for a wallet that is not one (live); the
+//   checks on what is typed; the read-only check of an action and the typed confirmation of an
+//   action that cannot be undone (checked, never sent); the Safe path and the read-only page from
+//   fixtures (no Safe exists on the private chain, so the owner address is made to look like one);
+//   the page before launch from a fixture; the Trade page without the Uniswap button.
+// Nothing here sends a transaction: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 import { AppContext, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
 import { makeClient, readAll, readVaults, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
-import { HOOK_ABI, TREASURY_ABI } from '../src/lib/abi';
+import { ERRORS_ABI, HOOK_ABI, TREASURY_ABI } from '../src/lib/abi';
+import { ContractFunctionRevertedError, encodeErrorResult, encodeFunctionData } from 'viem';
+import { Owner, OwnerPage } from '../src/pages/Owner';
+import { pageAccess, showsOwnerLink } from '../src/lib/owner';
 import { dayName, fmtDateTime, fmtTown } from '../src/lib/format';
 import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
-import type { Address, CandidateCheck, ChainState, WalletState } from '../src/data/types';
+import type { Address, CandidateCheck, ChainState, OwnerState, WalletState } from '../src/data/types';
 
 const log = document.getElementById('log')!;
 const stage = document.getElementById('stage')!;
@@ -56,11 +64,14 @@ const W1 = NETWORK.testWallets[0].address;
 const OWNER = NETWORK.deployment!.owner!;
 const WETH = NETWORK.uniswap!.weth;
 
-function app(chain: ChainState, wallet: WalletState | null): AppState {
+let liveOwner: OwnerState | null = null;
+
+function app(chain: ChainState | null, wallet: WalletState | null, extra: Partial<AppState> = {}): AppState {
   return {
     network: NETWORK,
     chain,
     wallet,
+    owner: liveOwner,
     account: wallet?.address ?? null,
     accountLabel: wallet ? 'Test wallet 1' : null,
     data: { state: 'ready', error: null, readAt: Date.now() },
@@ -71,11 +82,12 @@ function app(chain: ChainState, wallet: WalletState | null): AppState {
     wrongNetwork: false,
     switchNetwork: () => {},
     toast: () => {},
+    ...extra,
   };
 }
 
 /** Renders `node` with the given figures and returns its box once painted. */
-async function mount(node: ComponentChildren, chain: ChainState, wallet: WalletState | null, label = ''): Promise<HTMLElement> {
+async function mount(node: ComponentChildren, chain: ChainState | null, wallet: WalletState | null, label = ''): Promise<HTMLElement> {
   const box = document.createElement('div');
   if (GALLERY) {
     const h = document.createElement('p');
@@ -96,7 +108,8 @@ const figText = (el: HTMLElement, view: string) => (el.querySelector(`[data-view
 
 async function run() {
   const live = await readAll(client, NETWORK, W1);
-  const base = live.chain;
+  const base = live.chain!;
+  liveOwner = live.owner;
   const wallet = live.wallet!;
   say(`live figures read at block ${base.blockNumber}, day ${base.rewards.currentCycle}; Treasury.staking() = ${base.treasury.staking}`);
 
@@ -382,6 +395,231 @@ async function run() {
         t.includes('Sold today so far 1,000,000 TOWN Day 0, still counting'),
       t,
     );
+  }
+
+  // ---- F9b (CR-64): the owner page and the Trade page without the Uniswap button -------------
+  {
+    const o = live.owner;
+    const W2 = NETWORK.testWallets[1].address;
+    const W3 = NETWORK.testWallets[2].address;
+    const ownerWallet = { ...wallet, address: OWNER };
+    const w2Wallet = { ...wallet, address: W2 };
+    /** Sets an input the way typing does. */
+    const typeIn = (el: HTMLElement, sel: string, v: string) => {
+      const input = el.querySelector(sel) as HTMLInputElement;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, v);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const inAction = (el: HTMLElement, id: string) => el.querySelector(`[data-action="${id}"]`) as HTMLElement;
+    const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+    const p2 = (x: number) => String(x).padStart(2, '0');
+    const localValue = (ts: number) => {
+      const d = new Date(ts * 1000);
+      return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    };
+    /** Presses the action's Check button and waits for the read-only call's answer. */
+    const runCheck = async (el: HTMLElement, id: string) => {
+      button(inAction(el, id), 'Check:')!.click();
+      for (let i = 0; i < 100; i++) {
+        await settle(100);
+        const r = inAction(el, id).querySelector('.check-result') as HTMLElement | null;
+        if (r) return r;
+      }
+      return null;
+    };
+    const shown = (el: HTMLElement, v: string) => (el.querySelector(`[data-view="${v}"]`) as HTMLElement | null)?.innerText.trim() ?? null;
+
+    // The Trade page: no "Sell on Uniswap" button, no sentence about it, no link to the Uniswap app.
+    {
+      const el = await mount(<Trade />, base, wallet, 'Trade page without the Uniswap button (live)');
+      const all = (el.textContent ?? '').replace(/\s+/g, ' ');
+      check(
+        'CR-64 Trade: no "Sell on Uniswap" button, no sentence about it, no link to app.uniswap.org',
+        !all.includes('Sell on Uniswap') && !all.includes('second way to trade') && !all.includes('Uniswap app') && !el.querySelector('a[href*="uniswap.org"]'),
+        all.match(/Other TOWN pools[^.]*\./)?.[0] ?? '',
+      );
+    }
+
+    // Who sees the page and the link.
+    check('CR-64 the owner test wallet is in the local wallet picker, labelled Owner', NETWORK.local && NETWORK.testWallets.some((w) => w.label === 'Owner' && w.address === OWNER));
+    check('CR-64 owner gate: the Owner link shows for the owner wallet, not for Test wallet 2 or no wallet', showsOwnerLink(o, OWNER) && !showsOwnerLink(o, W2) && !showsOwnerLink(o, null));
+    {
+      const el = await mount(<Owner />, base, ownerWallet, 'Owner page as the owner (live)');
+      const titles = [...el.querySelectorAll('.card-title')].map((h) => h.textContent).join(' | ');
+      const ids = ['setSpendRate', 'withdrawOwnerEth', 'withdrawTown', 'announceStaking', 'announcePause', 'setFallbackPrice', 'announceFeed', 'collectFees', 'extendLock', 'withdrawPosition', 'transferOwnership-Treasury', 'transferOwnership-TownStaking', 'transferOwnership-LPVault'];
+      check(
+        'CR-64 owner gate (live): the owner sees the Treasury, TownStaking and LPVault cards with every action',
+        titles === 'Treasury | TownStaking | LPVault' && ids.every((id) => !!inAction(el, id)) && text(el).includes('Sent from this wallet'),
+        `${titles}; missing ${ids.filter((id) => !inAction(el, id)).join(', ') || 'none'}`,
+      );
+      const views = [
+        'Treasury.spendBps', 'Treasury.MAX_SPEND_BPS', 'Treasury.budget', 'Treasury.ownerEthAvailable', 'Treasury.ownerTownAvailable', 'Treasury.paused', 'Treasury.pauseEffectiveAt',
+        'Treasury.staking', 'Treasury.pendingStaking', 'Treasury.OWNER_DELAY, Treasury.APPLY_WINDOW', 'TownStaking.priceStatus', 'TownStaking.fallbackPrice',
+        'TownStaking.fallbackPriceSetAt + FALLBACK_MAX_AGE', 'TownStaking.feed', 'TownStaking.pendingFeed', 'TownStaking.FEED_CHANGE_DELAY', 'LPVault.tokenId', 'LPVault.unlockTime',
+        'LPVault.MIN_LOCK_DURATION', 'Treasury.owner', 'Treasury.pendingOwner', 'TownStaking.owner', 'TownStaking.pendingOwner', 'LPVault.owner', 'LPVault.pendingOwner',
+      ];
+      const missing = views.filter((v) => !el.querySelector(`[data-view="${v}"]`));
+      check('CR-64 every setting in the CR is shown beside its action', missing.length === 0, missing.join(', '));
+      check(
+        'CR-64 settings equal the chain (live): spend rate, token ID, the three owners',
+        shown(el, 'Treasury.spendBps') === `${base.treasury.spendBps / 100}%` &&
+          shown(el, 'LPVault.tokenId') === `#${o.lpVault.tokenId}` &&
+          shown(el, 'Treasury.owner') === o.treasury.owner &&
+          shown(el, 'TownStaking.owner') === o.staking.owner &&
+          shown(el, 'LPVault.owner') === o.lpVault.owner,
+        `${shown(el, 'Treasury.spendBps')}, ${shown(el, 'LPVault.tokenId')}, ${shown(el, 'LPVault.owner')}`,
+      );
+      check('CR-64 withdrawing the position is off before the unlock date', button(inAction(el, 'withdrawPosition'), 'Check:')?.disabled === true && text(inAction(el, 'withdrawPosition')).includes('Off until the unlock date'));
+
+      // Input checks in the page.
+      typeIn(el, '#owner-rate', '30');
+      await settle();
+      check('CR-64 input check: a rate above 25% is refused in the page', text(inAction(el, 'setSpendRate')).includes('The rate must be between 1% and 25%.'));
+      typeIn(el, '#owner-eth-to', '0x1234');
+      typeIn(el, '#owner-eth-amount', '1');
+      await settle();
+      check('CR-64 input check: a malformed address is refused', text(inAction(el, 'withdrawOwnerEth')).includes('That is not an address'));
+      typeIn(el, '#owner-eth-to', OWNER);
+      typeIn(el, '#owner-eth-amount', '1000');
+      await settle();
+      check('CR-64 input check: more ETH than the owner reserve is refused', text(inAction(el, 'withdrawOwnerEth')).includes('That is more than is available'));
+      typeIn(el, '#owner-price', '0');
+      await settle();
+      check('CR-64 input check: a fallback price of zero is refused', text(inAction(el, 'setFallbackPrice')).includes('Enter a price above zero.'));
+      typeIn(el, '#owner-unlock', localValue(o.lpVault.unlockTime - 86_400));
+      await settle();
+      check('CR-64 input check: an unlock date earlier than the current one is refused', text(inAction(el, 'extendLock')).includes('must be later than the current one'));
+
+      // The confirmation of an action that cannot be undone: offering ownership of LPVault (checked, never sent).
+      typeIn(el, '#owner-offer-LPVault', W1);
+      await settle();
+      const res = await runCheck(el, 'transferOwnership-LPVault');
+      const panel = inAction(el, 'transferOwnership-LPVault').querySelector('.confirm-panel') as HTMLElement | null;
+      const confirm = () => button(inAction(el, 'transferOwnership-LPVault'), 'Confirm: Offer ownership');
+      const offAtFirst = confirm()?.disabled === true;
+      typeIn(el, '#confirm-transferOwnership-LPVault', 'offer');
+      await settle();
+      const offPartial = confirm()?.disabled === true;
+      typeIn(el, '#confirm-transferOwnership-LPVault', 'offer ownership');
+      await settle();
+      const onTyped = confirm()?.disabled === false;
+      check(
+        'CR-64 cannot be undone: the check passes, the consequence is stated, and Confirm stays off until "offer ownership" is typed',
+        res?.dataset.check === 'ok' && !!panel && text(panel).includes('every owner power of LPVault passes to it') && text(panel).includes('Type offer ownership to confirm') && offAtFirst && offPartial && onTyped,
+        `${res?.innerText ?? 'no result'} | off at first ${offAtFirst}, off with "offer" ${offPartial}, on when typed ${onTyped}`,
+      );
+      // A later unlock date: the check passes and "extend the lock" must be typed.
+      typeIn(el, '#owner-unlock', localValue(o.lpVault.unlockTime + 86_400));
+      await settle();
+      const resL = await runCheck(el, 'extendLock');
+      check(
+        'CR-64 cannot be undone: extending the lock checks, says it can never be shortened, and needs "extend the lock" typed',
+        resL?.dataset.check === 'ok' &&
+          button(inAction(el, 'extendLock'), 'Confirm: Extend the lock')?.disabled === true &&
+          text(inAction(el, 'extendLock')).includes('never shortened') &&
+          text(inAction(el, 'extendLock')).includes('Type extend the lock to confirm'),
+        resL?.innerText ?? 'no result',
+      );
+      // The read-only check of a staking replacement shows the treasury's own reason.
+      typeIn(el, '#owner-staking', WETH);
+      await settle();
+      const resW = await runCheck(el, 'announceStaking');
+      check(
+        'CR-64 announcing WETH: the read-only check shows the plain refusal, and no confirmation appears',
+        resW?.dataset.check === 'refused' && resW.dataset.error === 'StakingWrongTreasury' && !inAction(el, 'announceStaking').querySelector('.confirm-panel'),
+        resW?.innerText ?? 'no result',
+      );
+    }
+
+    // A wallet that is not an owner: the page says it is for the owner and shows nothing else.
+    {
+      const el = await mount(<Owner />, base, w2Wallet, 'Owner page as Test wallet 2 (live)');
+      const t = text(el);
+      check('CR-64 non-owner (live): only the notice, no setting and no action', t.includes('This page is for the owner wallet.') && !el.querySelector('.owner-action, .setting, .card'), t);
+    }
+
+    // The Safe path, from a fixture: the owner address made to look like a Safe whose signers are Test wallets 1 and 2.
+    {
+      const safeO: OwnerState = { ...o, multisigs: { [OWNER.toLowerCase()]: { address: OWNER, signers: [W1, W2], threshold: 2 } } };
+      check('CR-64 Safe (fixture): a signer gets the Owner link and the page; a wallet that is not a signer does not', showsOwnerLink(safeO, W1) && pageAccess(safeO, W1).kind === 'open' && pageAccess(safeO, W3).kind === 'closed');
+      const el = await mount(<OwnerPage o={safeO} chain={base} access={pageAccess(safeO, W1)} />, base, wallet, 'Owner page, Safe signer (fixture)');
+      check('CR-64 Safe (fixture): the notice says actions are prepared for the Safe', text(el).includes('Prepared for the Safe, not sent') && text(el).includes('2 of whom must approve'), text(el).slice(0, 300));
+      typeIn(el, '#owner-rate', '12');
+      await settle();
+      const r = await runCheck(el, 'setSpendRate'); // checked as the Safe itself would call it
+      const prep = button(inAction(el, 'setSpendRate'), 'Prepare in Safe');
+      const noSend = !button(inAction(el, 'setSpendRate'), 'Confirm:');
+      prep?.click();
+      await settle();
+      const panel = inAction(el, 'setSpendRate').querySelector('.safe-panel') as HTMLElement | null;
+      const values = panel ? [...panel.querySelectorAll('.copy-value')].map((c) => c.textContent) : [];
+      const data = encodeFunctionData({ abi: TREASURY_ABI, functionName: 'setSpendRate', args: [1200n] });
+      const link = panel?.querySelector('a') as HTMLAnchorElement | null;
+      check(
+        'CR-64 Safe (fixture): "Prepare in Safe" instead of sending, with the target, value 0 and calldata to copy, and a link to app.safe.global',
+        r?.dataset.check === 'ok' &&
+          !!prep &&
+          noSend &&
+          values[0] === k.Treasury &&
+          values[1] === '0' &&
+          values[2] === data &&
+          panel!.querySelectorAll('.copy-row button').length === 3 &&
+          !!link?.href.startsWith('https://app.safe.global'),
+        `${r?.innerText ?? ''} | ${values.join(' | ')} | ${link?.href ?? 'no link'}`,
+      );
+    }
+
+    // An owner contract that does not answer getOwners(): read-only for anyone who connects, with the reason.
+    {
+      const roO: OwnerState = { ...o, multisigs: { [OWNER.toLowerCase()]: { address: OWNER, signers: null, threshold: null } } };
+      const access = pageAccess(roO, W2);
+      const el = await mount(<OwnerPage o={roO} chain={base} access={access} />, base, w2Wallet, 'Owner page, read-only (fixture)');
+      const checks = [...el.querySelectorAll('.owner-action button')].filter((b) => b.textContent!.startsWith('Check:')) as HTMLButtonElement[];
+      check(
+        'CR-64 read-only (fixture): settings shown, every action off, and the reason given',
+        access.kind === 'read-only' && !showsOwnerLink(roO, W2) && checks.length > 0 && checks.every((b) => b.disabled) && text(el).includes('did not answer when asked for its signers'),
+        `${access.kind}, ${checks.length} actions`,
+      );
+    }
+
+    // Before launch, from a fixture: the Launcher card and its launch, checked against the real (launched) chain.
+    {
+      const pre: OwnerState = { ...o, launcher: { ...o.launcher, launched: false } };
+      const el = await mount(<OwnerPage o={pre} chain={null} access={pageAccess(pre, OWNER)} />, null, ownerWallet, 'Owner page before launch (fixture)');
+      const r = await runCheck(el, 'launch');
+      check(
+        'CR-64 before launch (fixture): Launch is offered with "launch" to type; the check gives the launched chain’s plain refusal',
+        !!inAction(el, 'launch') && text(el).includes('Ownership of LPVault') && r?.dataset.error === 'AlreadyLaunched' && r.innerText.includes('UpTown has already launched; the launch cannot be repeated.'),
+        r?.innerText ?? 'no result',
+      );
+      const after = await mount(<Owner />, base, ownerWallet, 'Owner page after launch (live)');
+      check('CR-64 after launch (live): no Launcher card', !inAction(after, 'launch') && !!inAction(after, 'setSpendRate'));
+    }
+
+    // The staking replacement errors, each in a plain sentence.
+    {
+      const names = ['StakingNotContract', 'SameStaking', 'StakingDelegated', 'StakingWrongTreasury', 'StakingWrongWeth', 'StakingChangeNotReady', 'StakingChangeExpired'] as const;
+      const plain = names.map((n) => {
+        const e = new ContractFunctionRevertedError({ abi: ERRORS_ABI, data: encodeErrorResult({ abi: ERRORS_ABI, errorName: n }), functionName: 'announceStaking' });
+        return { n, x: explainError(e) };
+      });
+      check(
+        'CR-64 each staking-replacement error has its own plain sentence',
+        plain.every((p) => p.x.name === p.n && !p.x.message.includes(`(${p.n})`)) && new Set(plain.map((p) => p.x.message)).size === names.length,
+        plain.map((p) => `${p.n}: ${p.x.message}`).join(' || '),
+      );
+      const refusal = async (arg: Address) => {
+        try {
+          await client.simulateContract({ account: OWNER, address: k.Treasury, abi: TREASURY_ABI, functionName: 'announceStaking', args: [arg] });
+          return 'no revert';
+        } catch (e) {
+          return explainError(e).name;
+        }
+      };
+      const noCode = await refusal('0x000000000000000000000000000000000000dEaD');
+      const same = await refusal(base.treasury.staking);
+      check('CR-64 live: an address without code and the current contract give StakingNotContract and SameStaking', noCode === 'StakingNotContract' && same === 'SameStaking', `${noCode}, ${same}`);
+    }
   }
 
   // ---- F8g housekeeping: the upgradeable flag --------------------------------------------------
