@@ -291,6 +291,48 @@ export interface OldVault {
 }
 
 /**
+ * One staking contract's settings and ownership, as the owner page's price, feed and ownership
+ * powers need them (CR-73): the contract the Treasury pays now, or one it has replaced. Every
+ * field is read from that contract itself.
+ */
+export interface StakingControls extends Ownership {
+  /** The contract these settings were read from, and the one its powers act on. */
+  address: Address;
+  /** TownStaking.feed() */
+  feed: Address;
+  /** TownStaking.priceStatus() */
+  priceStatus: { price: bigint; source: PriceSource; updatedAt: number };
+  /** TownStaking.fallbackPrice() */
+  fallbackPrice: bigint;
+  /** TownStaking.fallbackPriceSetAt() */
+  fallbackPriceSetAt: number;
+  /** TownStaking.pendingFeed(); `null` for address(0). */
+  pendingFeed: Address | null;
+  /** TownStaking.pendingFeedEffectiveAt() */
+  pendingFeedEffectiveAt: number;
+  /** TownStaking.FALLBACK_MAX_AGE() */
+  FALLBACK_MAX_AGE: number;
+  /** TownStaking.FEED_CHANGE_DELAY() */
+  FEED_CHANGE_DELAY: number;
+}
+
+/**
+ * A staking contract the site's own list marks as replaced (CR-73). The Treasury no longer pays it,
+ * but the owner still owns it and still holds its two price powers there, so the owner page shows a
+ * card of its own for each one.
+ */
+export interface ReplacedStaking {
+  /** The replaced contract, from the site's own list. */
+  address: Address;
+  /** When the Treasury stopped paying it, from that list (seconds); null if the list gives no date. */
+  replacedOn: number | null;
+  /** Its own settings and ownership; `null` when the contract could not be read on this chain. */
+  controls: StakingControls | null;
+  /** Why nothing could be read, in plain words; `null` when `controls` is there. */
+  unavailable: string | null;
+}
+
+/**
  * What the site found when it asked an announced staking contract which Treasury and which WETH
  * it names (CR-49). `verified` only when both answers match and its code is not an EIP-7702
  * delegation; the Treasury refuses anything else when it is applied.
@@ -348,6 +390,11 @@ export interface OwnerState {
   treasury: Ownership;
   /** The staking contract the Treasury pays now (Treasury.staking()): owner(), pendingOwner(), feed(). */
   staking: Ownership & { address: Address; feed: Address };
+  /**
+   * Each staking contract the site's own list marks as replaced (CR-73), oldest first, read from
+   * that contract itself: the owner still holds its price and feed powers there.
+   */
+  replaced: ReplacedStaking[];
   /** LPVault.owner(), pendingOwner(), tokenId(), unlockTime(), MIN_LOCK_DURATION(). */
   lpVault: Ownership & { tokenId: bigint; unlockTime: number; MIN_LOCK_DURATION: number };
   /** Each owner or offered address that is a multisig, by lower-case address. */

@@ -5,6 +5,10 @@
 // be undone need their name typed. For a multisig owner the page prepares the call (target, value
 // and data) for the Safe app instead of sending it.
 //
+// Besides the staking contract the treasury pays now, the page shows one card for each staking
+// contract the site's own list marks as replaced (CR-73): the owner still owns it and still holds
+// its fallback price, its feed and its ownership there, each read from and acting on that address.
+//
 // The page is hidden, not locked: every owner function refuses any caller but the owner in the
 // contract itself.
 import { useContext, useState } from 'preact/hooks';
@@ -16,12 +20,12 @@ import { amountOrNull } from '../lib/amount';
 import { UNLISTED_STAKING, listedStaking } from '../lib/network';
 import { targetProblem } from '../lib/wallet';
 import { CheckIcon, ExternalIcon, WarnIcon } from '../components/icons';
-import type { Address, ChainState, Multisig, OwnerState } from '../data/types';
+import type { Address, ChainState, Multisig, OwnerState, ReplacedStaking, StakingControls } from '../data/types';
 import { PriceSource } from '../data/types';
 import { ownerTx, type OwnerTarget } from '../lib/actions';
 import { budgetState, pausePending, stakingChange } from '../lib/derive';
 import { explainError } from '../lib/errors';
-import { dayName, fmtBps, fmtDuration, fmtEth, fmtInt, fmtLocalUtc, fmtTown, fmtUsd8 } from '../lib/format';
+import { dayName, fmtBps, fmtDate, fmtDuration, fmtEth, fmtInt, fmtLocalUtc, fmtTown, fmtUsd8 } from '../lib/format';
 import {
   checkAddress,
   checkAmount,
@@ -118,6 +122,10 @@ export function OwnerPage({ o, chain, access }: { o: OwnerState; chain: ChainSta
         <>
           <TreasuryCard ctx={ctx} chain={chain} />
           <StakingCard ctx={ctx} chain={chain} name={stakingName} />
+          {/* CR-73: one card per staking contract the site's list marks as replaced, below the one paid now. */}
+          {o.replaced.map((r) => (
+            <ReplacedStakingCard key={r.address} ctx={ctx} r={r} />
+          ))}
           <VaultCard ctx={ctx} chain={chain} />
         </>
       ) : (
@@ -507,11 +515,30 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 const nowOf = (o: OwnerState) => Math.max(o.blockTimestamp, Math.floor(Date.now() / 1000));
 
 /**
- * CR-72: the staking contract the treasury pays (`o.staking.address`, read from the RPC) gets the
- * owner's staking powers only when the site lists it; otherwise every such action is off, with why.
+ * CR-72: a staking contract gets the owner's staking powers only when the site lists it; otherwise
+ * every such action is off, with why. The contract the treasury pays comes from the RPC, so it may
+ * be one the site does not list yet; a replaced contract always comes from the site's own list.
  */
-function stakingOff(n: ReturnType<typeof useApp>['network'], o: OwnerState): Actor | null {
-  return listedStaking(n, o.staking.address) ? null : { kind: 'off', reason: `${UNLISTED_STAKING}: it does not list ${fullAddress(o.staking.address)}, so nothing is sent there.` };
+function stakingOffFor(n: ReturnType<typeof useApp>['network'], address: Address): Actor | null {
+  return listedStaking(n, address) ? null : { kind: 'off', reason: `${UNLISTED_STAKING}: it does not list ${fullAddress(address)}, so nothing is sent there.` };
+}
+
+/** The settings and ownership of the staking contract the treasury pays now, as one value (CR-73). */
+function controlsOf(chain: ChainState, o: OwnerState): StakingControls {
+  const s = chain.staking;
+  return {
+    address: o.staking.address,
+    owner: o.staking.owner,
+    pendingOwner: o.staking.pendingOwner,
+    feed: o.staking.feed,
+    priceStatus: s.priceStatus,
+    fallbackPrice: s.fallbackPrice,
+    fallbackPriceSetAt: s.fallbackPriceSetAt,
+    pendingFeed: s.pendingFeed,
+    pendingFeedEffectiveAt: s.pendingFeedEffectiveAt,
+    FALLBACK_MAX_AGE: s.FALLBACK_MAX_AGE,
+    FEED_CHANGE_DELAY: s.FEED_CHANGE_DELAY,
+  };
 }
 
 function LauncherCard({ ctx }: { ctx: Ctx }) {
@@ -851,18 +878,9 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
 function StakingCard({ ctx, chain, name }: { ctx: Ctx; chain: ChainState; name: string }) {
   const { network } = useApp();
   const { o } = ctx;
-  const s = chain.staking;
   // CR-72: the staking contract's powers go only to a contract the site lists.
-  const unlisted = stakingOff(network, o);
-  const ownerActor: Actor = unlisted ?? ctx.actor(o.staking.owner, `${name}’s owner`);
-  const anyone: Actor = unlisted ?? ctx.anyone;
-  const now = nowOf(o);
-  const [price, setPrice] = useState('');
-  const [feed, setFeed] = useState('');
-  const tx = (fn: string, args: readonly unknown[] = []) => ownerTx(network, 'TownStaking', fn, args, o.staking.address);
-  const fallbackEnds = s.fallbackPriceSetAt ? s.fallbackPriceSetAt + s.FALLBACK_MAX_AGE : 0;
-  const source = s.priceStatus.source === PriceSource.Feed ? 'The Chainlink feed' : s.priceStatus.source === PriceSource.Fallback ? 'The fallback price' : 'None';
-  const feedReady = s.pendingFeed !== null && now >= s.pendingFeedEffectiveAt;
+  const unlisted = stakingOffFor(network, o.staking.address);
+  const s = controlsOf(chain, o);
   return (
     <Card title={name} class="owner-card" id="owner-staking-card">
       {unlisted && (
@@ -875,120 +893,220 @@ function StakingCard({ ctx, chain, name }: { ctx: Ctx; chain: ChainState; name: 
           </Notice>
         </div>
       )}
-      <Power
-        id="fallback"
-        title="Fallback ETH/USD price"
-        settings={
-          <>
-            <Setting
-              label="Price in use"
-              value={s.priceStatus.source === PriceSource.None ? 'None' : fmtUsd8(s.priceStatus.price)}
-              view="TownStaking.priceStatus"
-              note={`${source}${s.priceStatus.source !== PriceSource.None ? `, set ${fmtLocalUtc(s.priceStatus.updatedAt)}` : ': vault purchases and upgrades are refused'}.`}
-            />
-            <Setting
-              label="Fallback price"
-              value={s.fallbackPrice > 0n ? fmtUsd8(s.fallbackPrice) : 'Not set'}
-              view="TownStaking.fallbackPrice"
-              note={s.fallbackPriceSetAt ? `Set ${fmtLocalUtc(s.fallbackPriceSetAt)}.` : undefined}
-            />
-            <Setting
-              label="Fallback expires"
-              value={fallbackEnds ? fmtLocalUtc(fallbackEnds) : '—'}
-              view="TownStaking.fallbackPriceSetAt + FALLBACK_MAX_AGE"
-              note={`Each setting lasts ${fmtDuration(s.FALLBACK_MAX_AGE)}${fallbackEnds && fallbackEnds < now ? '; this one has expired' : ''}.`}
-            />
-          </>
-        }
-      >
-        <OwnerAction
-          id="setFallbackPrice"
-          label="Set the fallback"
-          actor={ownerActor}
-          dirty={price !== ''}
-          fields={
-            <Field
-              id="owner-price"
-              label="ETH price in dollars"
-              value={price}
-              onInput={setPrice}
-              placeholder="2500"
-              suffix="USD"
-              hint="Up to 8 decimals; above zero."
-              uses={(() => {
-                const p = checkPrice(price);
-                return <Uses value={p.ok ? p.value : null} decimals={8} unit="USD" />;
-              })()}
-            />
-          }
-          build={() => {
-            const p = checkPrice(price);
-            return p.ok
-              ? {
-                  ok: true,
-                  value: {
-                    req: tx('setFallbackPrice', [p.value]),
-                    preview: `The fallback becomes ${fmtUsd8(p.value)}, valid until about ${fmtLocalUtc(now + s.FALLBACK_MAX_AGE)}. It is used only while the Chainlink feed is unhealthy.`,
-                  },
-                }
-              : p;
-          }}
-          consequence={`Used only while the Chainlink feed is unhealthy, and for at most ${fmtDuration(s.FALLBACK_MAX_AGE)} from now; a healthy feed always wins. A wrong price makes vault prices depart from their dollar targets during a feed outage, and a near-free vault lets its buyer collect an empty tier’s backlog cheaply. Existing stakes and earned rewards are untouched.`}
-          done={() => 'The fallback price is set.'}
-        />
-      </Power>
-
-      <Power
-        id="feed"
-        title="ETH/USD price feed"
-        settings={
-          <>
-            <Setting label="Feed in use" value={<Addr a={o.staking.feed} />} view="TownStaking.feed" />
-            <Setting label="Announced feed" value={s.pendingFeed ? <Addr a={s.pendingFeed} /> : 'None'} view="TownStaking.pendingFeed" />
-            {s.pendingFeed && <Setting label="Can be applied from" value={fmtLocalUtc(s.pendingFeedEffectiveAt)} view="TownStaking.pendingFeedEffectiveAt" />}
-            <Setting label="Wait before a new feed" value={fmtDuration(s.FEED_CHANGE_DELAY)} view="TownStaking.FEED_CHANGE_DELAY" />
-          </>
-        }
-      >
-        <OwnerAction
-          id="announceFeed"
-          label="Announce a feed"
-          actor={ownerActor}
-          dirty={feed !== ''}
-          fields={<Field id="owner-feed" label="New Chainlink ETH/USD feed" value={feed} onInput={setFeed} placeholder="0x…" suffix="address" hint="It must report 8 decimals." />}
-          build={() => {
-            const a = checkAddress(feed, { notZero: true });
-            if (!a.ok) return a;
-            return { ok: true, value: { req: tx('announceFeed', [a.value]), preview: `The feed ${fullAddress(a.value)} reports 8 decimals. It could be applied from about ${fmtLocalUtc(now + s.FEED_CHANGE_DELAY)}.` } };
-          }}
-          consequence={`After ${fmtDuration(s.FEED_CHANGE_DELAY)}, anyone can apply it. A wrong feed misprices vaults after the wait, with the same effect as a wrong fallback price; existing stakes and earned rewards are untouched. A new announcement replaces any pending one.`}
-          done={() => 'The feed is announced; the wait has begun.'}
-        />
-        {s.pendingFeed && (
-          <>
-            <OwnerAction
-              id="announceFeed-cancel"
-              label="Cancel the announced feed"
-              actor={ownerActor}
-              build={() => ({ ok: true, value: { req: tx('announceFeed', [ZERO]), preview: 'The announced feed would be withdrawn.' } })}
-              consequence="Withdraws the announced feed; the current one stays in use."
-              done={() => 'The announced feed is cancelled.'}
-            />
-            <OwnerAction
-              id="applyFeed"
-              label="Apply the feed"
-              actor={anyone}
-              offReason={feedReady ? null : `Not yet: it can be applied from ${fmtLocalUtc(s.pendingFeedEffectiveAt)}.`}
-              build={() => ({ ok: true, value: { req: tx('applyFeed'), preview: `The feed ${fullAddress(s.pendingFeed!)} would be in use from now on.` } })}
-              consequence="Vault prices are read from the new feed from now on. Anyone may apply it."
-              done={() => 'The new feed is in use.'}
-            />
-          </>
-        )}
-      </Power>
-
+      <FallbackPricePower ctx={ctx} s={s} name={name} ids="" views="TownStaking" off={unlisted} />
+      <FeedPower ctx={ctx} s={s} name={name} ids="" views="TownStaking" off={unlisted} />
       <OwnershipPower ctx={ctx} contract="TownStaking" name={name} />
     </Card>
+  );
+}
+
+/**
+ * One staking contract's card after the treasury has replaced it (CR-73). The owner still owns it,
+ * so it carries that contract's own owner powers — the fallback price, announcing, cancelling or
+ * applying a feed, and ownership — each read from and acting on this address, never the contract the
+ * treasury pays now. Nothing of the treasury's and no vault purchase appears here.
+ */
+function ReplacedStakingCard({ ctx, r }: { ctx: Ctx; r: ReplacedStaking }) {
+  const { network } = useApp();
+  const ids = `-${r.address}`;
+  const views = `TownStaking(${r.address})`;
+  // From the site's own list, so always listed (CR-72); checked again, as every staking target is.
+  const off = stakingOffFor(network, r.address);
+  return (
+    <Card title="Replaced staking contract" class="owner-card replaced-card" id={`owner-staking-replaced${ids}`}>
+      <div class="card-lead">
+        <p class="replaced-head">
+          <span class="replaced-tag">
+            {r.replacedOn !== null ? `Replaced on ${fmtDate(r.replacedOn)}` : 'Replaced'}: the treasury no longer pays it
+          </span>{' '}
+          <code class="break">{fullAddress(r.address)}</code>
+        </p>
+        <p class="small muted">
+          Vaults left in this contract keep streaming the ETH it has already received, and its stakers can still unstake and claim there. You still own it,
+          so its fallback price, its feed and its ownership are still yours to change: every setting below is read from{' '}
+          <code class="break">{fullAddress(r.address)}</code>, and every action below acts on that contract, not on the one the treasury pays now.
+        </p>
+      </div>
+      {r.controls ? (
+        <>
+          <FallbackPricePower ctx={ctx} s={r.controls} name="this replaced contract" ids={ids} views={views} off={off} />
+          <FeedPower
+            ctx={ctx}
+            s={r.controls}
+            name="this replaced contract"
+            ids={ids}
+            views={views}
+            off={off}
+            note="Announcing a feed this contract cannot read stops it selling or upgrading vaults; unstaking and claiming keep working."
+          />
+          <OwnershipPower ctx={ctx} contract="TownStaking" name="this replaced contract" at={r.controls} />
+        </>
+      ) : (
+        <Notice kind="warn" title="This contract cannot be read">
+          <p>{r.unavailable}</p>
+        </Notice>
+      )}
+    </Card>
+  );
+}
+
+/** What one staking contract's price and feed powers need: its own settings, and how to name them. */
+interface StakingPowerProps {
+  ctx: Ctx;
+  /** The settings of the contract this power acts on, read from that contract. */
+  s: StakingControls;
+  /** How sentences name that contract ("TownStaking", "this replaced contract"). */
+  name: string;
+  /** '' for the contract the treasury pays; '-<address>' for a replaced one, so every id stays unique. */
+  ids: string;
+  /** How each setting names the view it came from: "TownStaking" or "TownStaking(0x…)". */
+  views: string;
+  /** Off for a reason that applies to the whole contract (CR-72: the site does not list it). */
+  off: Actor | null;
+}
+
+/** The owner's fallback ETH/USD price in one staking contract (spec "Owner powers"). */
+function FallbackPricePower({ ctx, s, name, ids, views, off }: StakingPowerProps) {
+  const { network } = useApp();
+  const { o } = ctx;
+  const now = nowOf(o);
+  const [price, setPrice] = useState('');
+  const tx = (fn: string, args: readonly unknown[] = []) => ownerTx(network, 'TownStaking', fn, args, s.address);
+  const ownerActor: Actor = off ?? ctx.actor(s.owner, `${name}’s owner`);
+  const fallbackEnds = s.fallbackPriceSetAt ? s.fallbackPriceSetAt + s.FALLBACK_MAX_AGE : 0;
+  const source = s.priceStatus.source === PriceSource.Feed ? 'The Chainlink feed' : s.priceStatus.source === PriceSource.Fallback ? 'The fallback price' : 'None';
+  return (
+    <Power
+      id={`fallback${ids}`}
+      title="Fallback ETH/USD price"
+      settings={
+        <>
+          <Setting
+            label="Price in use"
+            value={s.priceStatus.source === PriceSource.None ? 'None' : fmtUsd8(s.priceStatus.price)}
+            view={`${views}.priceStatus`}
+            note={`${source}${s.priceStatus.source !== PriceSource.None ? `, set ${fmtLocalUtc(s.priceStatus.updatedAt)}` : ': vault purchases and upgrades are refused'}.`}
+          />
+          <Setting
+            label="Fallback price"
+            value={s.fallbackPrice > 0n ? fmtUsd8(s.fallbackPrice) : 'Not set'}
+            view={`${views}.fallbackPrice`}
+            note={s.fallbackPriceSetAt ? `Set ${fmtLocalUtc(s.fallbackPriceSetAt)}.` : undefined}
+          />
+          <Setting
+            label="Fallback expires"
+            value={fallbackEnds ? fmtLocalUtc(fallbackEnds) : '—'}
+            view={`${views}.fallbackPriceSetAt + FALLBACK_MAX_AGE`}
+            note={`Each setting lasts ${fmtDuration(s.FALLBACK_MAX_AGE)}${fallbackEnds && fallbackEnds < now ? '; this one has expired' : ''}.`}
+          />
+        </>
+      }
+    >
+      <OwnerAction
+        id={`setFallbackPrice${ids}`}
+        label="Set the fallback"
+        actor={ownerActor}
+        dirty={price !== ''}
+        fields={
+          <Field
+            id={`owner-price${ids}`}
+            label="ETH price in dollars"
+            value={price}
+            onInput={setPrice}
+            placeholder="2500"
+            suffix="USD"
+            hint="Up to 8 decimals; above zero."
+            uses={(() => {
+              const p = checkPrice(price);
+              return <Uses value={p.ok ? p.value : null} decimals={8} unit="USD" />;
+            })()}
+          />
+        }
+        build={() => {
+          const p = checkPrice(price);
+          return p.ok
+            ? {
+                ok: true,
+                value: {
+                  req: tx('setFallbackPrice', [p.value]),
+                  preview: `In ${fullAddress(s.address)} the fallback becomes ${fmtUsd8(p.value)}, valid until about ${fmtLocalUtc(now + s.FALLBACK_MAX_AGE)}. It is used only while the Chainlink feed is unhealthy.`,
+                },
+              }
+            : p;
+        }}
+        consequence={`In ${fullAddress(s.address)}, used only while the Chainlink feed is unhealthy, and for at most ${fmtDuration(s.FALLBACK_MAX_AGE)} from now; a healthy feed always wins. A wrong price makes vault prices depart from their dollar targets during a feed outage, and a near-free vault lets its buyer collect an empty tier’s backlog cheaply. Existing stakes and earned rewards are untouched.`}
+        done={() => `The fallback price is set in ${fullAddress(s.address)}.`}
+      />
+    </Power>
+  );
+}
+
+/** The owner's ETH/USD feed change in one staking contract: announce, cancel, and the public apply. */
+function FeedPower({ ctx, s, name, ids, views, off, note }: StakingPowerProps & { note?: string }) {
+  const { network } = useApp();
+  const { o } = ctx;
+  const now = nowOf(o);
+  const [feed, setFeed] = useState('');
+  const tx = (fn: string, args: readonly unknown[] = []) => ownerTx(network, 'TownStaking', fn, args, s.address);
+  const ownerActor: Actor = off ?? ctx.actor(s.owner, `${name}’s owner`);
+  const anyone: Actor = off ?? ctx.anyone;
+  const feedReady = s.pendingFeed !== null && now >= s.pendingFeedEffectiveAt;
+  return (
+    <Power
+      id={`feed${ids}`}
+      title="ETH/USD price feed"
+      settings={
+        <>
+          <Setting label="Feed in use" value={<Addr a={s.feed} />} view={`${views}.feed`} />
+          <Setting label="Announced feed" value={s.pendingFeed ? <Addr a={s.pendingFeed} /> : 'None'} view={`${views}.pendingFeed`} />
+          {s.pendingFeed && <Setting label="Can be applied from" value={fmtLocalUtc(s.pendingFeedEffectiveAt)} view={`${views}.pendingFeedEffectiveAt`} />}
+          <Setting label="Wait before a new feed" value={fmtDuration(s.FEED_CHANGE_DELAY)} view={`${views}.FEED_CHANGE_DELAY`} />
+        </>
+      }
+    >
+      {note && <p class="small muted feed-note">{note}</p>}
+      <OwnerAction
+        id={`announceFeed${ids}`}
+        label="Announce a feed"
+        actor={ownerActor}
+        dirty={feed !== ''}
+        fields={<Field id={`owner-feed${ids}`} label="New Chainlink ETH/USD feed" value={feed} onInput={setFeed} placeholder="0x…" suffix="address" hint="It must report 8 decimals." />}
+        build={() => {
+          const a = checkAddress(feed, { notZero: true });
+          if (!a.ok) return a;
+          return {
+            ok: true,
+            value: {
+              req: tx('announceFeed', [a.value]),
+              preview: `The feed ${fullAddress(a.value)} reports 8 decimals. In ${fullAddress(s.address)} it could be applied from about ${fmtLocalUtc(now + s.FEED_CHANGE_DELAY)}.`,
+            },
+          };
+        }}
+        consequence={`In ${fullAddress(s.address)}: after ${fmtDuration(s.FEED_CHANGE_DELAY)}, anyone can apply it. A wrong feed misprices vaults after the wait, with the same effect as a wrong fallback price; existing stakes and earned rewards are untouched. A new announcement replaces any pending one.`}
+        done={() => `The feed is announced in ${fullAddress(s.address)}; the wait has begun.`}
+      />
+      {s.pendingFeed && (
+        <>
+          <OwnerAction
+            id={`announceFeed-cancel${ids}`}
+            label="Cancel the announced feed"
+            actor={ownerActor}
+            build={() => ({ ok: true, value: { req: tx('announceFeed', [ZERO]), preview: `The feed announced in ${fullAddress(s.address)} would be withdrawn.` } })}
+            consequence={`Withdraws the feed announced in ${fullAddress(s.address)}; the current one stays in use there.`}
+            done={() => 'The announced feed is cancelled.'}
+          />
+          <OwnerAction
+            id={`applyFeed${ids}`}
+            label="Apply the feed"
+            actor={anyone}
+            offReason={feedReady ? null : `Not yet: it can be applied from ${fmtLocalUtc(s.pendingFeedEffectiveAt)}.`}
+            build={() => ({ ok: true, value: { req: tx('applyFeed'), preview: `The feed ${fullAddress(s.pendingFeed!)} would be in use in ${fullAddress(s.address)} from now on.` } })}
+            consequence={`In ${fullAddress(s.address)}, vault prices are read from the new feed from now on. Anyone may apply it.`}
+            done={() => 'The new feed is in use.'}
+          />
+        </>
+      )}
+    </Power>
   );
 }
 
@@ -1100,17 +1218,26 @@ function VaultCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
   );
 }
 
-/** The two-step ownership of one contract: the owner, the open offer, offering, and accepting. */
-export function OwnershipPower({ ctx, contract, name }: { ctx: Ctx; contract: Owned; name?: string }) {
+/**
+ * The two-step ownership of one contract: the owner, the open offer, offering, and accepting. `at`
+ * points the power at a replaced staking contract instead of the one the treasury pays (CR-73): its
+ * own owner and offer, and its own address as the target.
+ */
+export function OwnershipPower({ ctx, contract, name, at }: { ctx: Ctx; contract: Owned; name?: string; at?: StakingControls }) {
   const { network } = useApp();
   const { o } = ctx;
-  const own = ownershipOf(o, contract);
+  const own = at ?? ownershipOf(o, contract);
   const label = name ?? contract;
-  const [to, setTo] = useState('');
+  /** The contract an action names in its check, confirmation and result: a replaced one by its full address too (CR-72). */
+  const which = at ? `${label} ${fullAddress(at.address)}` : label;
   const target: OwnerTarget = contract;
-  const tx = (fn: string, args: readonly unknown[] = []) => ownerTx(network, target, fn, args, o.staking.address);
-  // CR-72: the staking contract's ownership is handled here only when the site lists it.
-  const off = contract === 'TownStaking' ? stakingOff(network, o) : null;
+  const stakingAddress = at ? at.address : o.staking.address;
+  const ids = at ? `${contract}-${at.address}` : contract;
+  const views = at ? `TownStaking(${at.address})` : contract;
+  const [to, setTo] = useState('');
+  const tx = (fn: string, args: readonly unknown[] = []) => ownerTx(network, target, fn, args, stakingAddress);
+  // CR-72: a staking contract's ownership is handled here only when the site lists it.
+  const off = contract === 'TownStaking' ? stakingOffFor(network, stakingAddress) : null;
   const offered = checkAddress(to, { notZero: true });
   const kind = (a: Address) => {
     const ms = o.multisigs[a.toLowerCase()];
@@ -1118,46 +1245,46 @@ export function OwnershipPower({ ctx, contract, name }: { ctx: Ctx; contract: Ow
   };
   return (
     <Power
-      id={`ownership-${contract}`}
+      id={`ownership-${ids}`}
       title={`Ownership of ${label}`}
       settings={
         <>
-          <Setting label="Owner" value={<Addr a={own.owner} />} view={`${contract}.owner`} note={kind(own.owner)} />
+          <Setting label="Owner" value={<Addr a={own.owner} />} view={`${views}.owner`} note={kind(own.owner)} />
           <Setting
             label="Offered to"
             value={own.pendingOwner ? <Addr a={own.pendingOwner} /> : 'No open offer'}
-            view={`${contract}.pendingOwner`}
+            view={`${views}.pendingOwner`}
             note={own.pendingOwner ? 'It becomes the owner once it accepts. A new offer replaces this one.' : undefined}
           />
         </>
       }
     >
       <OwnerAction
-        id={`transferOwnership-${contract}`}
+        id={`transferOwnership-${ids}`}
         label="Offer ownership"
         actor={off ?? ctx.actor(own.owner, `${label}’s owner`)}
         dirty={to !== ''}
-        fields={<Field id={`owner-offer-${contract}`} label="New owner" value={to} onInput={setTo} placeholder="0x…" suffix="address" hint="Two steps: this offer, then the new owner accepts." />}
+        fields={<Field id={`owner-offer-${ids}`} label="New owner" value={to} onInput={setTo} placeholder="0x…" suffix="address" hint="Two steps: this offer, then the new owner accepts." />}
         build={() => {
           const a = checkAddress(to, { notZero: true });
           if (!a.ok) return a;
-          if (a.value.toLowerCase() === own.owner.toLowerCase()) return { ok: false, error: `That address already owns ${label}.` };
-          return { ok: true, value: { req: tx('transferOwnership', [a.value]), preview: `${fullAddress(a.value)} would be offered ownership of ${label}; it becomes the owner when it accepts.` } };
+          if (a.value.toLowerCase() === own.owner.toLowerCase()) return { ok: false, error: `That address already owns ${which}.` };
+          return { ok: true, value: { req: tx('transferOwnership', [a.value]), preview: `${fullAddress(a.value)} would be offered ownership of ${which}; it becomes the owner when it accepts.` } };
         }}
-        consequence={`Once ${offered.ok ? fullAddress(offered.value) : 'the new owner'} accepts, every owner power of ${label} passes to it, and only it can hand them back. Until then the offer can be replaced by a new one.`}
+        consequence={`Once ${offered.ok ? fullAddress(offered.value) : 'the new owner'} accepts, every owner power of ${which} passes to it, and only it can hand them back. Until then the offer can be replaced by a new one.`}
         confirmWord="offer ownership"
-        done={() => `Ownership of ${label} is offered. The new owner must accept it.`}
+        done={() => `Ownership of ${which} is offered. The new owner must accept it.`}
         onSent={() => setTo('')}
       />
       {own.pendingOwner && (
         <OwnerAction
-          id={`acceptOwnership-${contract}`}
+          id={`acceptOwnership-${ids}`}
           label="Accept ownership"
           actor={off ?? ctx.actor(own.pendingOwner, `the address offered ownership of ${label}`)}
-          build={() => ({ ok: true, value: { req: tx('acceptOwnership'), preview: `This would make ${fullAddress(own.pendingOwner!)} the owner of ${label}.` } })}
-          consequence={`${fullAddress(own.pendingOwner)} becomes the owner of ${label}, with every owner power listed for it here; the previous owner loses them.`}
+          build={() => ({ ok: true, value: { req: tx('acceptOwnership'), preview: `This would make ${fullAddress(own.pendingOwner!)} the owner of ${which}.` } })}
+          consequence={`${fullAddress(own.pendingOwner)} becomes the owner of ${which}, with every owner power listed for it here; the previous owner loses them.`}
           errorWords={{ OwnableUnauthorizedAccount: 'Only the address offered ownership can accept it.' }}
-          done={() => `${fullAddress(own.pendingOwner!)} is now the owner of ${label}.`}
+          done={() => `${fullAddress(own.pendingOwner!)} is now the owner of ${which}.`}
         />
       )}
     </Power>

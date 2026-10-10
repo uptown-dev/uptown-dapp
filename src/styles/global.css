@@ -2682,3 +2682,18 @@ code.break {
 .safe-network-value {
   font-size: 13px;
 }
+
+/* ---- F9j: a replaced staking contract's own card on the owner page (CR-73) ---- */
+.replaced-card {
+  border-left: 3px solid var(--warn-line);
+}
+.replaced-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0 0 6px;
+}
+.feed-note {
+  margin: 0;
+}

@@ -24,17 +24,21 @@
 //   the page before launch from a fixture; the Trade page without the Uniswap button.
 // - CR-71 (F9g), the navigation bar: its items (no "Home"), and the whole site rendered to check that
 //   the "UpTown" name links to the homepage, which item is marked current, and the browser titles.
+// - CR-73 (F9j), a replaced staking contract's own card on the owner page: the site's list decides
+//   which contracts get one, so the fixtures give the list a second staking contract and the real
+//   TownStaking is the replaced one, read live; a contract with no code on this chain is a card
+//   marked unavailable.
 // Nothing here sends a transaction: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 import { AppContext, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
-import { makeClient, quoteBuy, readAll, readVaults, verifyCandidate } from '../src/lib/reads';
+import { makeClient, quoteBuy, readAll, readVaults, replacedRecords, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
 import { ERRORS_ABI, HOOK_ABI, TREASURY_ABI } from '../src/lib/abi';
 import { ContractFunctionRevertedError, encodeErrorResult, encodeFunctionData, getAddress } from 'viem';
 import { Owner, OwnerPage } from '../src/pages/Owner';
 import { networkLabel, pageAccess, showsOwnerLink } from '../src/lib/owner';
-import { UNLISTED_STAKING, listedStaking } from '../src/lib/network';
+import { UNLISTED_STAKING, listedStaking, replacedStaking } from '../src/lib/network';
 import { UnlistedStakingError, addStakeTx, approvePermit2Tx, approveTx, claimWethTx, openVaultTx, ownerTx, unstakeTx, upgradeTx } from '../src/lib/actions';
 import {
   UnknownTargetError,
@@ -50,13 +54,13 @@ import {
 } from '../src/lib/wallet';
 import { COMMA_MESSAGE, amountError, parseAmount } from '../src/lib/amount';
 import { minCheck, rpcBehind } from '../src/lib/derive';
-import { dayName, fmtDateTime, fmtTown } from '../src/lib/format';
+import { dayName, fmtDateTime, fmtTown, fmtUsd8 } from '../src/lib/format';
 import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
 import { App, StaleNotice, WalletChoices, navItems } from '../src/app';
-import type { Address, CandidateCheck, ChainState, OwnerState, WalletState } from '../src/data/types';
+import type { Address, CandidateCheck, ChainState, OwnerState, ReplacedStaking, StakingControls, WalletState } from '../src/data/types';
 
 const log = document.getElementById('log')!;
 const stage = document.getElementById('stage')!;
@@ -106,7 +110,7 @@ function app(chain: ChainState | null, wallet: WalletState | null, extra: Partia
 }
 
 /** Renders `node` with the given figures and returns its box once painted. */
-async function mount(node: ComponentChildren, chain: ChainState | null, wallet: WalletState | null, label = ''): Promise<HTMLElement> {
+async function mount(node: ComponentChildren, chain: ChainState | null, wallet: WalletState | null, label = '', extra: Partial<AppState> = {}): Promise<HTMLElement> {
   const box = document.createElement('div');
   if (GALLERY) {
     const h = document.createElement('p');
@@ -115,7 +119,7 @@ async function mount(node: ComponentChildren, chain: ChainState | null, wallet: 
     h.textContent = `Fixture: ${label}`;
     stage.append(h, box);
   } else stage.replaceChildren(box);
-  render(<AppContext.Provider value={app(chain, wallet)}>{node}</AppContext.Provider>, box);
+  render(<AppContext.Provider value={app(chain, wallet, extra)}>{node}</AppContext.Provider>, box);
   await new Promise((r) => setTimeout(r, 30));
   return box;
 }
@@ -710,6 +714,7 @@ async function run() {
   }
 
   await cr72(base, wallet, live.owner);
+  await cr73(base, wallet, live.owner);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -1089,6 +1094,200 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     );
     chooseWallet(null);
     delete (window as unknown as { ethereum?: unknown }).ethereum;
+  }
+}
+
+// ---- F9j (CR-73): the owner page controls a replaced staking contract too ------------------------
+// The site's own list decides which contracts these cards appear for, so the fixtures below give the
+// network module's list a second staking contract: the real TownStaking, listed as replaced on
+// 10 Oct 2026 and read live, and a second address the treasury pays now.
+async function cr73(base: ChainState, wallet: WalletState, o: OwnerState) {
+  const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+  const typeIn = (el: HTMLElement, sel: string, v: string) => {
+    const input = el.querySelector(sel) as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, v);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const inAction = (el: HTMLElement, id: string) => el.querySelector(`[data-action="${id}"]`) as HTMLElement;
+  const runCheck = async (el: HTMLElement, id: string) => {
+    button(inAction(el, id), 'Check:')!.click();
+    for (let i = 0; i < 100; i++) {
+      await settle(100);
+      const r = inAction(el, id).querySelector('.check-result') as HTMLElement | null;
+      if (r) return r;
+    }
+    return null;
+  };
+  const shown = (el: HTMLElement, v: string) => (el.querySelector(`[data-view="${v}"]`) as HTMLElement | null)?.innerText.trim() ?? null;
+  const addr = (prefix: string): Address => getAddress('0x' + prefix.padEnd(40, '0'));
+  const ownerWallet = { ...wallet, address: OWNER };
+
+  const REPLACED = k.TownStaking; // the real contract, listed as replaced: read live
+  const NEXT = addr('2ec7'); // the staking contract the treasury pays now, also listed
+  const GONE = addr('d00d'); // a listed replaced contract with no code on this chain
+  const OTHER_FEED = addr('feed');
+  const replacedOn = Date.UTC(2026, 9, 10, 12, 0) / 1000;
+  const net2 = { ...NETWORK, stakingContracts: [{ address: REPLACED, replacedOn }, { address: NEXT, replacedOn: null }] };
+
+  // ---- the list decides: only a contract with a replacement date, and never the one paid now ----
+  check(
+    'CR-73 the live list marks no staking contract as replaced, so the live owner page has no replaced card',
+    replacedStaking(NETWORK).length === 0 && o.replaced.length === 0,
+    `${NETWORK.stakingContracts.length} listed, ${replacedStaking(NETWORK).length} with a date, ${o.replaced.length} read`,
+  );
+  {
+    const el = await mount(<Owner />, base, ownerWallet, 'Owner page, live: nothing replaced');
+    check('CR-73 (live): no replaced-contract card on the page', el.querySelectorAll('.replaced-card').length === 0 && !text(el).includes('Replaced staking contract'));
+  }
+  {
+    const both = { ...NETWORK, stakingContracts: [{ address: REPLACED, replacedOn }, { address: NEXT, replacedOn: replacedOn + 86_400 }] };
+    check(
+      'CR-73 the list: only the contracts with a replacement date, and never the one the treasury pays now',
+      replacedStaking(net2).map((r) => r.address).join() === REPLACED &&
+        replacedStaking(both).length === 2 &&
+        replacedRecords(both, NEXT).map((r) => r.address).join() === REPLACED &&
+        replacedRecords(net2, NEXT).map((r) => r.address).join() === REPLACED &&
+        replacedRecords(net2, REPLACED).length === 0,
+      `${replacedStaking(net2).map((r) => r.address).join()} | ${replacedRecords(both, NEXT).map((r) => r.address).join()}`,
+    );
+  }
+
+  // ---- the card: read from the replaced contract, acting on it ---------------------------------
+  // The replaced contract's settings are the live ones (they were read from TownStaking); the
+  // contract paid now gets different values, so a figure from the wrong contract would show.
+  const liveControls: StakingControls = {
+    address: REPLACED,
+    owner: o.staking.owner,
+    pendingOwner: o.staking.pendingOwner,
+    feed: o.staking.feed,
+    priceStatus: base.staking.priceStatus,
+    fallbackPrice: base.staking.fallbackPrice,
+    fallbackPriceSetAt: base.staking.fallbackPriceSetAt,
+    pendingFeed: base.staking.pendingFeed,
+    pendingFeedEffectiveAt: base.staking.pendingFeedEffectiveAt,
+    FALLBACK_MAX_AGE: base.staking.FALLBACK_MAX_AGE,
+    FEED_CHANGE_DELAY: base.staking.FEED_CHANGE_DELAY,
+  };
+  const replaced: ReplacedStaking = { address: REPLACED, replacedOn, controls: liveControls, unavailable: null };
+  const chain2: ChainState = {
+    ...base,
+    treasury: { ...base.treasury, staking: NEXT },
+    staking: { ...base.staking, address: NEXT, fallbackPrice: 77_700_000_000n, fallbackPriceSetAt: base.blockTimestamp - 3_600, pendingFeed: null },
+  };
+  const o2: OwnerState = {
+    ...o,
+    staking: { address: NEXT, owner: o.staking.owner, pendingOwner: null, feed: OTHER_FEED },
+    replaced: [replaced],
+  };
+  {
+    const el = await mount(<OwnerPage o={o2} chain={chain2} access={pageAccess(o2, OWNER)} />, chain2, ownerWallet, 'Owner page: a current and a replaced staking contract (fixture)', {
+      network: net2,
+    });
+    const cards = [...el.querySelectorAll('.replaced-card')] as HTMLElement[];
+    const card = cards[0];
+    const t = text(card ?? el);
+    check(
+      'CR-73 one card per replaced contract and for no other address: one card, its own id, the full address',
+      cards.length === 1 && card.id === `owner-staking-replaced-${REPLACED}` && t.includes(REPLACED),
+      `${cards.length} cards; id ${card?.id}`,
+    );
+    check(
+      'CR-73 labelling: "Replaced on 10 Oct 2026: the treasury no longer pays it", and what still works there',
+      t.includes('Replaced on 10 Oct 2026: the treasury no longer pays it') &&
+        t.includes('Vaults left in this contract keep streaming the ETH it has already received, and its stakers can still unstake and claim there'),
+      t.slice(0, 320),
+    );
+    check(
+      'CR-73 read from the replaced contract, not the current one: its own feed, fallback price and owner',
+      shown(el, `TownStaking(${REPLACED}).feed`) === o.staking.feed &&
+        shown(el, 'TownStaking.feed') === OTHER_FEED &&
+        shown(el, `TownStaking(${REPLACED}).fallbackPrice`) === (base.staking.fallbackPrice > 0n ? fmtUsd8(base.staking.fallbackPrice) : 'Not set') &&
+        shown(el, 'TownStaking.fallbackPrice') === '$777.00' &&
+        shown(el, `TownStaking(${REPLACED}).owner`) === o.staking.owner,
+      `replaced feed ${shown(el, `TownStaking(${REPLACED}).feed`)}, current feed ${shown(el, 'TownStaking.feed')}; replaced fallback ${shown(el, `TownStaking(${REPLACED}).fallbackPrice`)}, current fallback ${shown(el, 'TownStaking.fallbackPrice')}`,
+    );
+    const ids = [`setFallbackPrice-${REPLACED}`, `announceFeed-${REPLACED}`, `transferOwnership-TownStaking-${REPLACED}`];
+    check(
+      'CR-73 the replaced card carries its own powers (fallback price, announce a feed, ownership), and the current card keeps its own',
+      ids.every((id) => !!inAction(card, id)) && ['setFallbackPrice', 'announceFeed', 'transferOwnership-TownStaking'].every((id) => !!inAction(el, id) && !card.contains(inAction(el, id))),
+      `missing in the replaced card: ${ids.filter((id) => !inAction(card, id)).join(', ') || 'none'}`,
+    );
+    check(
+      'CR-73 the feed power of a replaced contract says what announcing an unreadable feed does there, and the current card does not',
+      t.includes('Announcing a feed this contract cannot read stops it selling or upgrading vaults; unstaking and claiming keep working') &&
+        !text(el.querySelector('#owner-staking-card') as HTMLElement).includes('Announcing a feed this contract cannot read'),
+      card.querySelector('.feed-note')?.textContent ?? 'no note',
+    );
+    check(
+      'CR-73 the replaced card offers nothing that does not apply: no vault purchase, no "Paid now", nothing of the treasury',
+      !/Paid now|Open tier|Open a vault|Add TOWN|Upgrade to|Announced replacement|Withdraw ETH|Withdraw TOWN|Withdraw the position|Daily payout/.test(t) &&
+        !card.querySelector('[data-view^="Treasury."], [data-view^="LPVault."]'),
+      [...card.querySelectorAll('button')].map((b) => b.textContent!.trim()).join(' | '),
+    );
+    const allIds = [...el.querySelectorAll('[id]')].map((n) => n.id);
+    check('CR-73 every element id on the page is still unique (the replaced card’s ids carry its address)', new Set(allIds).size === allIds.length, `${allIds.length} ids, ${new Set(allIds).size} unique`);
+
+    // Every power's transaction goes to the replaced contract: the read-only check names it in full.
+    typeIn(el, `#owner-price-${REPLACED}`, '2500');
+    await settle();
+    const r = await runCheck(el, `setFallbackPrice-${REPLACED}`);
+    const panel = inAction(el, `setFallbackPrice-${REPLACED}`).querySelector('.confirm-panel') as HTMLElement | null;
+    check(
+      'CR-73 the replaced contract’s fallback price: the check passes against that contract and names it in full, never the one paid now',
+      r?.dataset.check === 'ok' && r.innerText.includes(REPLACED) && !r.innerText.includes(NEXT) && !!panel && text(panel).includes(REPLACED) && !text(panel).includes(NEXT),
+      `${r?.innerText ?? 'no result'} || ${panel ? text(panel).slice(0, 180) : 'no panel'}`,
+    );
+  }
+
+  // Each power's request, built the way the page builds it: the replaced contract's own address.
+  {
+    const calls: [string, readonly unknown[]][] = [
+      ['setFallbackPrice', [1n]],
+      ['announceFeed', [OTHER_FEED]],
+      ['applyFeed', []],
+      ['transferOwnership', [OWNER]],
+      ['acceptOwnership', []],
+    ];
+    const wrong = calls
+      .map(([fn, args]) => {
+        const toReplaced = ownerTx(net2, 'TownStaking', fn, args, REPLACED);
+        const toCurrent = ownerTx(net2, 'TownStaking', fn, args, NEXT);
+        return toReplaced.address === REPLACED && toCurrent.address === NEXT ? null : `${fn}: ${toReplaced.address} / ${toCurrent.address}`;
+      })
+      .filter(Boolean);
+    check('CR-73 every power’s transaction names the contract it belongs to: the replaced one, or the one paid now', wrong.length === 0, wrong.join('; '));
+    let refused = 'built';
+    try {
+      ownerTx(net2, 'TownStaking', 'setFallbackPrice', [1n], addr('bad1'));
+    } catch (e) {
+      refused = e instanceof UnlistedStakingError ? 'refused' : String(e);
+    }
+    check('CR-73 CR-72 still holds: a staking address the site does not list gets no transaction, replaced or not', refused === 'refused', refused);
+  }
+
+  // ---- two replaced contracts, one of them unreadable on this chain -----------------------------
+  {
+    const net3 = { ...NETWORK, stakingContracts: [{ address: REPLACED, replacedOn }, { address: GONE, replacedOn: replacedOn + 86_400 }, { address: NEXT, replacedOn: null }] };
+    const reason = `There is no contract at this address on ${NETWORK.name}, so there is nothing to read or to change here.`;
+    const o3: OwnerState = { ...o2, replaced: [replaced, { address: GONE, replacedOn: replacedOn + 86_400, controls: null, unavailable: reason }] };
+    const el = await mount(<OwnerPage o={o3} chain={chain2} access={pageAccess(o3, OWNER)} />, chain2, ownerWallet, 'Owner page: two replaced contracts, one with no code (fixture)', {
+      network: net3,
+    });
+    const cards = [...el.querySelectorAll('.replaced-card')] as HTMLElement[];
+    const gone = cards[1];
+    check(
+      'CR-73 a card for every listed replaced contract, in the list’s order, each naming its own address',
+      cards.length === 2 && text(cards[0]).includes(REPLACED) && text(gone).includes(GONE) && !text(gone).includes(REPLACED),
+      `${cards.length} cards: ${cards.map((c) => c.id).join(', ')}`,
+    );
+    check(
+      'CR-73 a listed contract that cannot be read: the card says so with the reason, and offers no action',
+      text(gone).includes('This contract cannot be read') &&
+        text(gone).includes(reason) &&
+        text(gone).includes('Replaced on 11 Oct 2026: the treasury no longer pays it') &&
+        gone.querySelectorAll('button').length === 0,
+      text(gone).slice(0, 260),
+    );
   }
 }
 

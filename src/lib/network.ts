@@ -82,6 +82,10 @@ export interface StakingRecord {
 // Treasury.staking() names, the Stake page shows its figures but turns off opening, adding and
 // upgrading with "This site has not been updated for the new staking contract yet"; unstaking and
 // claiming stay available in the contracts listed here.
+//
+// CR-73: the replacement date also puts a card on the Owner page for each replaced contract, with
+// that contract's own owner powers (fallback price, announce, cancel or apply a feed, ownership).
+// So the date here is what tells the owner page which contracts to offer those powers for.
 // ---------------------------------------------------------------------------------------------
 const STAKING_HISTORY: Record<ChainId, { address: 'TownStaking' | Address; replacedOn: string | null }[]> = {
   1: [{ address: 'TownStaking', replacedOn: null }],
@@ -119,6 +123,16 @@ export const UNLISTED_STAKING = 'This site has not been updated for the new stak
 export function listedStaking(n: Network, address: string | null | undefined): Address | null {
   if (!address) return null;
   return n.stakingContracts.find((r) => r.address.toLowerCase() === address.toLowerCase())?.address ?? null;
+}
+
+/**
+ * The staking contracts the site's own list marks as replaced (a replacement date), oldest first
+ * (CR-73). The Treasury no longer pays them, but the owner still owns them and still holds their
+ * price and feed powers there, so the owner page shows a card for each one. The list is the only
+ * source: an address the RPC alone names never appears here.
+ */
+export function replacedStaking(n: Network): StakingRecord[] {
+  return n.stakingContracts.filter((r) => r.replacedOn !== null);
 }
 
 /**

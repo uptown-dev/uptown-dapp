@@ -5,11 +5,13 @@
 // the days behind it, the wallet's tally per day, the announced staking contract's answers, the
 // wallet's vaults in replaced staking contracts); then the views for the wallet's days. The owner
 // page's views (CR-64) ride in the same rounds: each contract's owner and offered owner in rounds 1
-// and 2, and in round 3 the signers of any owner that is a multisig. Before launch only the owner
-// page's views are read, since most of the others revert until then.
+// and 2, and in round 3 the signers of any owner that is a multisig. Round 2 also reads each
+// replaced staking contract's own settings and ownership, for the owner powers the owner still holds
+// there (CR-73). Before launch only the owner page's views are read, since most of the others revert
+// until then.
 import { createPublicClient, defineChain, encodeAbiParameters, http, type Hex, type PublicClient } from 'viem';
 import { CANDIDATE_ABI, HOOK_ABI, LAUNCHER_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, SAFE_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
-import type { Network, StakingRecord } from './network';
+import { replacedStaking, type Network, type StakingRecord } from './network';
 import {
   PriceSource,
   TIERS,
@@ -21,6 +23,8 @@ import {
   type OldVault,
   type OwnerState,
   type PerTier,
+  type ReplacedStaking,
+  type StakingControls,
   type StreamInfo,
   type Tier,
   type WalletState,
@@ -163,6 +167,90 @@ function multisigsFrom(r: Reader, calls: ReturnType<typeof multisigCalls>, codes
 
 const orNull = (a: Address): Address | null => (isZero(a) ? null : a);
 
+/**
+ * The staking contracts the site's own list marks as replaced (CR-73), minus the one the Treasury
+ * pays now: the owner still owns each of them and still holds its price and feed powers there. The
+ * contract the Treasury pays is never shown as replaced, even if the list has fallen behind.
+ */
+export function replacedRecords(n: Network, stakingAddress: Address): StakingRecord[] {
+  return replacedStaking(n).filter((r) => !same(r.address, stakingAddress));
+}
+
+/** Each replaced contract's own settings and ownership, read from it (CR-73). */
+function replacedCalls(batch: Batch, records: StakingRecord[]) {
+  return records.map((r) => {
+    const P = (fn: string) => batch.add(`replaced staking ${r.address}.${fn}()`, { address: r.address, abi: STAKING_ABI, functionName: fn });
+    return {
+      record: r,
+      owner: P('owner'),
+      pendingOwner: P('pendingOwner'),
+      feed: P('feed'),
+      priceStatus: P('priceStatus'),
+      fallbackPrice: P('fallbackPrice'),
+      fallbackPriceSetAt: P('fallbackPriceSetAt'),
+      pendingFeed: P('pendingFeed'),
+      pendingFeedEffectiveAt: P('pendingFeedEffectiveAt'),
+      FALLBACK_MAX_AGE: P('FALLBACK_MAX_AGE'),
+      FEED_CHANGE_DELAY: P('FEED_CHANGE_DELAY'),
+    };
+  });
+}
+
+/**
+ * The replaced contracts for the owner page (CR-73). A listed address with no code on this chain (as
+ * on a fresh local chain), or one that does not answer a staking contract's views, gives a card
+ * marked unavailable with the reason instead of failing the page.
+ */
+function replacedFrom(n: Network, r: Reader, calls: ReturnType<typeof replacedCalls>, codes: (Hex | undefined)[]): ReplacedStaking[] {
+  return calls.map((c, j) => {
+    const base = { address: c.record.address, replacedOn: c.record.replacedOn };
+    const code = codes[j];
+    if (!code || code === '0x') return { ...base, controls: null, unavailable: `There is no contract at this address on ${n.name}, so there is nothing to read or to change here.` };
+    const owner = r.maybe<Address>(c.owner);
+    const pendingOwner = r.maybe<Address>(c.pendingOwner);
+    const feed = r.maybe<Address>(c.feed);
+    const ps = r.maybe<readonly [bigint, number, bigint]>(c.priceStatus);
+    const fallbackPrice = r.maybe<bigint>(c.fallbackPrice);
+    const fallbackPriceSetAt = r.maybe<bigint>(c.fallbackPriceSetAt);
+    const pendingFeed = r.maybe<Address>(c.pendingFeed);
+    const pendingFeedEffectiveAt = r.maybe<bigint>(c.pendingFeedEffectiveAt);
+    const fallbackMaxAge = r.maybe<bigint>(c.FALLBACK_MAX_AGE);
+    const feedChangeDelay = r.maybe<bigint>(c.FEED_CHANGE_DELAY);
+    if (
+      owner === null ||
+      pendingOwner === null ||
+      feed === null ||
+      ps === null ||
+      fallbackPrice === null ||
+      fallbackPriceSetAt === null ||
+      pendingFeed === null ||
+      pendingFeedEffectiveAt === null ||
+      fallbackMaxAge === null ||
+      feedChangeDelay === null
+    ) {
+      return {
+        ...base,
+        controls: null,
+        unavailable: 'The contract at this address did not answer what a staking contract answers (its owner, its price and its feed), so its settings and its powers cannot be shown here.',
+      };
+    }
+    const controls: StakingControls = {
+      address: c.record.address,
+      owner,
+      pendingOwner: orNull(pendingOwner),
+      feed,
+      priceStatus: { price: ps[0], source: Number(ps[1]) as PriceSource, updatedAt: Number(ps[2]) },
+      fallbackPrice,
+      fallbackPriceSetAt: Number(fallbackPriceSetAt),
+      pendingFeed: orNull(pendingFeed),
+      pendingFeedEffectiveAt: Number(pendingFeedEffectiveAt),
+      FALLBACK_MAX_AGE: Number(fallbackMaxAge),
+      FEED_CHANGE_DELAY: Number(feedChangeDelay),
+    };
+    return { ...base, controls, unavailable: null };
+  });
+}
+
 export async function readAll(client: PublicClient, n: Network, account: Address | null): Promise<ReadResult> {
   const d = n.deployment;
   if (!d || !n.uniswap) throw new Error('not deployed');
@@ -304,13 +392,15 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     // Before launch: the owner page's views only, so the owner can launch (CR-64).
     const b0 = new Batch();
     const so0 = stakingOwnerCalls(b0);
-    const r0 = await b0.run(client, n, bn);
+    const rep0 = replacedRecords(n, stakingAddress);
+    const rc0 = replacedCalls(b0, rep0);
+    const [r0, repCodes0] = await Promise.all([b0.run(client, n, bn), codesOf(rep0.map((x) => x.address))]);
     const staking = stakingOwnership(r0, so0);
     const holders = ownerHolders(staking);
     const c0 = new Batch();
     const ms = multisigCalls(c0, holders);
     const [rm, codes] = await Promise.all([c0.run(client, n, bn), codesOf(holders)]);
-    return { chain: null, wallet: null, owner: { ...ownerBase, staking, multisigs: multisigsFrom(rm, ms, codes) } };
+    return { chain: null, wallet: null, owner: { ...ownerBase, staking, replaced: replacedFrom(n, r0, rc0, repCodes0), multisigs: multisigsFrom(rm, ms, codes) } };
   }
 
   const current = num(r1.get(i.rewardsCycle));
@@ -426,13 +516,19 @@ export async function readAll(client: PublicClient, n: Network, account: Address
           earned: b.add(`staking ${r.address}.earned(wallet)`, { address: r.address, abi: STAKING_ABI, functionName: 'earned', args: [account] }),
         }))
     : [];
+  // The staking contracts the site's list marks as replaced (CR-73): their own settings and
+  // ownership, for the owner page's card per replaced contract.
+  const replacedList = replacedRecords(n, stakingAddress);
+  const repCalls = replacedCalls(b, replacedList);
   // The announced contract's code and its EIP-1967 implementation slot, at the same block, read
   // beside round 2: a wallet with an EIP-7702 delegation fails the check (CR-49); a proxy is flagged
-  // as upgradeable (F8f housekeeping).
-  const [r2, candidateCode, candidateImpl] = await Promise.all([
+  // as upgradeable (F8f housekeeping). The replaced contracts' code too, so one with no code on this
+  // chain is shown as unavailable rather than failing the page (CR-73).
+  const [r2, candidateCode, candidateImpl, replacedCodes] = await Promise.all([
     b.run(client, n, bn),
     pendingStaking ? client.getCode({ address: pendingStaking, blockNumber: bn }) : Promise.resolve(undefined),
     pendingStaking ? client.getStorageAt({ address: pendingStaking, slot: EIP1967_IMPLEMENTATION_SLOT, blockNumber: bn }) : Promise.resolve(undefined),
+    codesOf(replacedList.map((x) => x.address)),
   ]);
 
   const cap: Record<number, bigint> = {};
@@ -508,7 +604,12 @@ export async function readAll(client: PublicClient, n: Network, account: Address
         upIdx[t] = c3.add(`TownStaking.upgradePriceWei(wallet, ${t})`, { address: stakingAddress, abi: STAKING_ABI, functionName: 'upgradePriceWei', args: [account, t] });
   }
   const [r3, holderCodes] = await Promise.all([c3.run(client, n, bn), codesOf(holders)]);
-  const owner: OwnerState = { ...ownerBase, staking: stakingOwner, multisigs: multisigsFrom(r3, msIdx, holderCodes) };
+  const owner: OwnerState = {
+    ...ownerBase,
+    staking: stakingOwner,
+    replaced: replacedFrom(n, r2, repCalls, replacedCodes),
+    multisigs: multisigsFrom(r3, msIdx, holderCodes),
+  };
 
   for (const { c, i: idx } of dayCapIdx) cap[c] = r3.get<bigint>(idx);
   const rateBps: Record<number, number> = { [current]: num(r2.get(rateIdx)) };
