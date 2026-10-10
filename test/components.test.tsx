@@ -42,6 +42,10 @@
 //   powers table's rows diffed against the content module; the wallet display rendered on the right
 //   network and on a wrong one (the stylesheet decides the light's colour and shape); the site with
 //   no read line; and the notice that the network service is behind, from a fixture.
+// - CR-80 (F9n), the daily sell-fee message: the three cases of its compare sentence, each from a
+//   fixture — yesterday's rebates above its burn (the owner's "inflation exceeded deflation"), the
+//   two exactly equal ("inflation matched deflation", and a quiet day with both at zero), and the
+//   burn above the rebates (the ETH day, unchanged); and the same clause on the Stats figure.
 // Nothing here sends a transaction: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 // The site's own stylesheet and the owner's own logo files, read as text (CR-75): the checks
@@ -386,6 +390,62 @@ async function run() {
     const st = await mount(<Stats />, chain, wallet, 'Stats page, day 0 (fixture)');
     const t = text(st);
     check('CR-57 day 0 (fixture): TOWN, "Day 0 has no day before it"; yesterday’s figures "—"', t.includes('Sell fee today 2% in TOWN, burned') && t.includes('Day 0 has no day before it') && t.includes('TOWN burned yesterday —'), t.match(/Sell fee today.*?Rebates emitted/)?.[0] ?? '');
+  }
+
+  // ---- CR-80: the owner’s words on a burning day, and the tie -------------------------------
+  // The three cases of the compare sentence, each from a fixture: yesterday’s rebates above its burn
+  // (the owner’s "inflation exceeded deflation"), the two exactly equal ("inflation matched
+  // deflation", including a quiet day with both at zero), and the burn above the rebates (the ETH
+  // day, which keeps "it burned more than it paid").
+  {
+    const y = base.hook.currentCycle - 1;
+    const TOWN = 10n ** 18n;
+    /** A TOWN-mode day: the fee is burned, the reserve is not spent, and yesterday’s two figures are given. */
+    const townDay = (b: bigint, p: bigint): ChainState => ({
+      ...base,
+      hook: { ...base.hook, sellFeeInEth: false, burned: { ...base.hook.burned, [y]: b } },
+      rewards: { ...base.rewards, emissionEstimate: { [y]: p }, reserveExhausted: false },
+    });
+    const sellMode = async (chain: ChainState, label: string) => {
+      const el = await mount(<Trade sell />, chain, wallet, label);
+      return text(el.querySelector('.sell-mode') as HTMLElement);
+    };
+    const above = await sellMode(townDay(0n, 667_925n * TOWN), 'Trade page, Sell, TOWN mode (fixture: burned 0, rebates 667,925)');
+    check(
+      'CR-80 rebates above the burn: "…in rebates: inflation exceeded deflation, so today the fee is burned." — the old clause gone, and no "it" left in front of the new one',
+      above.includes('burned 0 TOWN and paid 667,925 TOWN in rebates: inflation exceeded deflation, so today the fee is burned.') &&
+        !above.includes('did not burn more than it paid') &&
+        !above.includes('it inflation'),
+      above,
+    );
+    const tie = await sellMode(townDay(400_000n * TOWN, 400_000n * TOWN), 'Trade page, Sell, TOWN mode (fixture: a tie, 400,000 each)');
+    const quiet = await sellMode(townDay(0n, 0n), 'Trade page, Sell, TOWN mode (fixture: a quiet day, both 0)');
+    check(
+      'CR-80 the two exactly equal: "inflation matched deflation", on a tie and on a quiet day with both at zero',
+      tie.includes('burned 400,000 TOWN and paid 400,000 TOWN in rebates: inflation matched deflation, so today the fee is burned.') &&
+        quiet.includes('burned 0 TOWN and paid 0 TOWN in rebates: inflation matched deflation, so today the fee is burned.') &&
+        !tie.includes('exceeded') &&
+        !quiet.includes('exceeded'),
+      `${tie} || ${quiet}`,
+    );
+    const ethChain: ChainState = {
+      ...base,
+      hook: { ...base.hook, sellFeeInEth: true, burned: { ...base.hook.burned, [y]: 750_000n * TOWN } },
+      rewards: { ...base.rewards, emissionEstimate: { [y]: 600_000n * TOWN }, reserveExhausted: false },
+    };
+    const eth = await sellMode(ethChain, 'Trade page, Sell, ETH mode (fixture: burned 750,000 > pot 600,000)');
+    check(
+      'CR-80 the burn above the rebates: the ETH day is unchanged — "it burned more than it paid, so today the fee is in ETH.", with no inflation or deflation in it',
+      eth.includes('burned 750,000 TOWN and paid 600,000 TOWN in rebates: it burned more than it paid, so today the fee is in ETH.') && !/inflation|deflation/.test(eth),
+      eth,
+    );
+    // sellFeeWords is one function, so the Stats figure "Sell fee today" carries the same clause.
+    const st = await mount(<Stats />, townDay(0n, 667_925n * TOWN), wallet, 'Stats page, TOWN mode (fixture: burned 0, rebates 667,925)');
+    check(
+      'CR-80 Stats: the same clause beside "Sell fee today" (one wording, one function)',
+      text(st).includes('in rebates: inflation exceeded deflation, so today the fee is burned.'),
+      text(st).match(/Sell fee today[\s\S]*?so today the fee is burned\./)?.[0] ?? '',
+    );
   }
 
   // ---- CR-61: the Stats trading volume, live and on day 0 -----------------------------------

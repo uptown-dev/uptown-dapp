@@ -149,9 +149,10 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
 }
 
 /**
- * Today's sell-fee currency in words (CR-56, CR-57): the headline ("2% in TOWN, burned" or "2% in
- * ETH, to the treasury") and the one-line reason, from TownHook.sellFeeInEth(), TownHook.burned(c-1)
- * and BuyerRewards.emissionEstimate(c-1) (and reserveExhausted(), totalSupply, BURN_FLOOR).
+ * Today's sell-fee currency in words (CR-56, CR-57, CR-80): the headline ("2% in TOWN, burned" or
+ * "2% in ETH, to the treasury") and the one-line reason, from TownHook.sellFeeInEth(),
+ * TownHook.burned(c-1) and BuyerRewards.emissionEstimate(c-1) (and reserveExhausted(), totalSupply,
+ * BURN_FLOOR).
  */
 export function sellFeeWords(chain: ChainState): { mode: string; reason: string } {
   const m = sellFeeMode(chain);
@@ -166,9 +167,14 @@ export function sellFeeWords(chain: ChainState): { mode: string; reason: string 
     const p = m.rebatesYesterday ?? 0n;
     const figures = `Yesterday (${dayName(m.yesterday!)}) burned ${fmtTown(b)} TOWN and paid ${fmtTown(p)} TOWN in rebates`;
     const more = b > p;
+    // CR-80: the owner's words for a burning day ("inflation exceeded deflation"), and "matched" on
+    // an exact tie, where nothing exceeded anything. The ETH day keeps "it burned more than it paid".
+    const town = b === p ? 'inflation matched deflation' : 'inflation exceeded deflation';
     reason =
       more === m.inEth
-        ? `${figures}: it ${more ? 'burned more than it paid, so today the fee is in ETH' : 'did not burn more than it paid, so today the fee is burned'}.`
+        ? more
+          ? `${figures}: it burned more than it paid, so today the fee is in ETH.`
+          : `${figures}: ${town}, so today the fee is burned.`
         : `${figures}; TownHook fixed today’s fee at the day’s first sell.`;
   }
   return { mode, reason };

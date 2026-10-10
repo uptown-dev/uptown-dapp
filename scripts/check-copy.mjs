@@ -9,9 +9,10 @@
 // F8g added words that would make the sell fee's daily currency or the burn read as a trading tip or
 // a value claim (deflationary, scarcity, "good time to sell", "should buy", ...).
 //
-// Where a forbidden word is needed to say what something is NOT, the exact sentence goes in
-// ALLOWED_SENTENCES below; it is removed before the scan, so the same word anywhere else still
-// fails. Keep the list short and list every entry in the handoff.
+// Where a forbidden word is needed to say what something is NOT, or the owner has approved wording
+// that uses one, the exact sentence goes in ALLOWED_SENTENCES below; it is removed before the scan,
+// so the same word anywhere else still fails. Keep the list short and list every entry in the
+// handoff. F9n added the two CR-80 clauses, the owner's own words for the daily sell-fee message.
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
@@ -86,10 +87,16 @@ const RULES = [
 ];
 
 /**
- * Exact sentences allowed to contain a forbidden word, because they say what something is not.
- * Currently empty: the site's copy says what things are not without the forbidden words.
+ * Exact phrases and sentences allowed to contain a forbidden word. Each is removed from the text
+ * before the scan, so the same word anywhere else still fails.
+ *
+ * The two here are the owner's own words for the daily sell-fee message, approved in CR-80: on a day
+ * whose fee is burned, the Trade page's sell form says "inflation exceeded deflation" ("inflation
+ * matched deflation" when yesterday's burn and its rebates were exactly equal). They name what
+ * happened yesterday, with both figures beside them; they are not the "deflationary" value claim the
+ * rule below was written to keep off the site.
  */
-const ALLOWED_SENTENCES = [];
+const ALLOWED_SENTENCES = ['inflation exceeded deflation', 'inflation matched deflation'];
 
 const SOURCE_DIRS = ['src', 'public'];
 const SOURCE_FILES = ['index.html'];
