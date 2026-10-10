@@ -1,2 +1,11 @@
 # The local chain's address file, copied by scripts/addresses.mjs before dev and build (rewritten on every local-chain start).
 src/addresses/31337.json
+
+# Installed packages (npm ci), the build output (npm run build) and the review photographs.
+node_modules/
+dist/
+review-shots/
+
+# Environment files: settings and secrets stay on the computer that has them.
+.env
+.env.*
