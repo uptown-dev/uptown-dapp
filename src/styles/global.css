@@ -223,31 +223,6 @@ main:focus {
   padding: 0 var(--gutter);
 }
 
-/* ---------- local chain strip (local test chain only) ---------- */
-
-.chain-bar {
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  font-size: 11.5px;
-  color: var(--text-2);
-}
-.chain-bar .wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding-top: 4px;
-  padding-bottom: 4px;
-}
-.chain-tag {
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-}
-.chain-note {
-  min-width: 0;
-}
-
 /* ---------- header ---------- */
 
 .site-header {
@@ -394,8 +369,37 @@ main:focus {
 .icon-btn:hover {
   background: var(--surface-2);
 }
+/* The wallet button and, beside it, the network tag (CR-76). The wrap is still the box the wallet
+   menu hangs from, and the button is still its last item, so the menu's right edge is unmoved. */
 .wallet-wrap {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The network tag: the network's name, in the header's tools beside the wallet button, on every
+   network (CR-76). Not a button: no hover, no pointer, nothing happens when it is clicked. Its
+   sentence is the `title` and the visually hidden span inside it. */
+.net-tag {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 3px 8px;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+/* A test network is marked, in the site's own accent: Sepolia and the local chain. */
+.net-tag.net-test {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+/* One name at a time: the short one is shown only where the full one does not fit (below). */
+.net-name-short {
+  display: none;
 }
 .wallet-menu {
   position: absolute;
@@ -488,6 +492,35 @@ main:focus {
   }
   .day-chip {
     display: inline-block;
+  }
+}
+/* Between 480 and 640 px the row is tight: the tag shows the short name ("Local" for the local test
+   chain), and the full name stays in its tooltip and in its text for a screen reader. */
+@media (min-width: 480px) and (max-width: 639px) {
+  .net-name {
+    display: none;
+  }
+  .net-name-short {
+    display: inline;
+  }
+}
+/* On a phone the row has no spare width at all: on a 390 px screen the wordmark, the theme button,
+   the wallet button and the menu button already use 355 of the row's 358 pixels, so a tag of any
+   width beside them would push the row past the edge of the screen. Below 480 px the tag therefore
+   leaves the row's flow and sits directly above the wallet button, right-aligned with it, in the
+   10 px the row grows for it. Nothing else moves and nothing wraps or is clipped. */
+@media (max-width: 479px) {
+  .header-row {
+    height: 70px;
+  }
+  .net-tag {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 3px);
+    font-size: 11px;
+    line-height: 12px;
+    padding: 0 5px;
+    border: 0;
   }
 }
 

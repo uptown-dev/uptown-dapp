@@ -3,7 +3,7 @@ import { getAddress } from 'viem';
 import { AppContext, Notice, PageHead, useApp, type AppState, type DataStatus } from './components/ui';
 import { CloseIcon, ExternalIcon, MenuIcon, DarkModeIcon, LightModeIcon, SkylineMark } from './components/icons';
 import { CONTRACT_NAMES, type Address, type ChainState, type OwnerState, type WalletState } from './data/types';
-import { NETWORK, contractUrl } from './lib/network';
+import { NETWORK, contractUrl, type Network } from './lib/network';
 import { makeClient, readAll } from './lib/reads';
 import { activeProvider, chooseWallet, chosenWallet, rememberedWallet, switchWalletChain, watchWallets, type Eip1193, type WalletInfo } from './lib/wallet';
 import { explainError } from './lib/errors';
@@ -36,6 +36,46 @@ const NAV: { page: string; label: string; title: string }[] = [
 /** The navigation bar's items, in order: every page but the homepage (CR-71); Owner only for the owner wallet (CR-64). */
 export function navItems(ownerLink: boolean) {
   return NAV.filter((n) => n.page !== '' && (n.page !== 'owner' || ownerLink));
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE NETWORK TAG (CR-76). It sits in the header's tools, beside the wallet button, on every
+// network, and names the network the build is for. It replaces the strip that stood above the
+// header on the local chain; the strip's sentence is not lost: it is the tag's tooltip and it is
+// in the tag for a screen reader (the visually hidden span below, since a `title` alone reaches
+// no screen reader). The tag is not a button and does nothing when clicked.
+// ---------------------------------------------------------------------------------------------
+
+/** The one sentence the tag carries: the strip's words on the local chain, the same style elsewhere. */
+export function networkNote(n: Network): string {
+  if (n.local) return `A private copy of Ethereum on this computer (chain ID ${n.chainId}). Test wallets only; nothing here is real.`;
+  if (n.chainId === 1) return `The real Ethereum network (chain ID ${n.chainId}). Real contracts and real money.`;
+  return `Ethereum's test network (chain ID ${n.chainId}). Test coins only; nothing here is real money.`;
+}
+
+/** The name the tag shows where the full one does not fit (the full name stays in the tooltip and for a screen reader). */
+export function shortNetworkName(n: Network): string {
+  return n.local ? 'Local' : n.name;
+}
+
+/** The tag itself: the network's name, marked on a test network, with its sentence for hover and for screen readers. */
+export function NetworkTag({ n }: { n: Network }) {
+  const note = networkNote(n);
+  // Only chain 1 is the real network; Sepolia and the local chain are test networks and are marked.
+  const test = n.chainId !== 1;
+  return (
+    <span class={`net-tag${test ? ' net-test' : ''}`} role="note" title={`${n.name} — ${note}`} data-chain={n.chainId}>
+      <span class="net-name" aria-hidden="true">
+        {n.name}
+      </span>
+      <span class="net-name-short" aria-hidden="true">
+        {shortNetworkName(n)}
+      </span>
+      <span class="visually-hidden">
+        {n.name}. {note}
+      </span>
+    </span>
+  );
 }
 
 /** Pages made of live figures: shown once the figures have been read. */
@@ -354,15 +394,6 @@ export function App() {
         Skip to the page content
       </a>
 
-      {network.local && (
-        <div class="chain-bar" role="note">
-          <div class="wrap">
-            <span class="chain-tag">Local test chain</span>
-            <span class="chain-note">A private copy of Ethereum on this computer (chain ID {network.chainId}). Test wallets only; nothing here is real.</span>
-          </div>
-        </div>
-      )}
-
       <header class="site-header">
         <div class="wrap header-row">
           {/* The homepage's link on every screen size (CR-71); it also closes the narrow-screen menu. */}
@@ -400,6 +431,8 @@ export function App() {
               {theme === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
             </button>
             <div class="wallet-wrap">
+              {/* The network tag, beside the wallet button (CR-76). */}
+              <NetworkTag n={network} />
               {wrongNetwork ? (
                 <button type="button" class="btn btn-small btn-primary wallet-btn" onClick={state.switchNetwork}>
                   Switch to {network.name}
