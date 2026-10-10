@@ -35,6 +35,13 @@
 //   own network entry — the name, the mark on a test network, the tooltip and the text a screen
 //   reader reads; and the whole site rendered to check that the strip above the header is gone and
 //   that the tag sits in the header's tools beside the wallet button and does nothing when clicked.
+// - CR-77 (F9m), the owner's new wording and the wrong-network light: the homepage's two "Why
+//   $TOWN?" paragraphs and the three cards' sentences read back from the rendered page and compared
+//   character for character with the owner's words as CR-77 writes them; the rebate card's figure
+//   against BuyerRewards.rateBps(today); the Docs owner section without its earnings, with the
+//   powers table's rows diffed against the content module; the wallet display rendered on the right
+//   network and on a wrong one (the stylesheet decides the light's colour and shape); the site with
+//   no read line; and the notice that the network service is behind, from a fixture.
 // Nothing here sends a transaction: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 // The site's own stylesheet and the owner's own logo files, read as text (CR-75): the checks
@@ -65,13 +72,16 @@ import {
   type WalletInfo,
 } from '../src/lib/wallet';
 import { COMMA_MESSAGE, amountError, parseAmount } from '../src/lib/amount';
-import { minCheck, rpcBehind } from '../src/lib/derive';
-import { dayName, fmtDateTime, fmtTown, fmtUsd8 } from '../src/lib/format';
+import { afterFeeBps, dayRateBps, minCheck, rateRange, rpcBehind } from '../src/lib/derive';
+import { dayName, fmtBps, fmtDateTime, fmtRate, fmtTown, fmtUsd8, shortAddress } from '../src/lib/format';
 import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
-import { App, NetworkTag, StaleNotice, WalletChoices, navItems, networkNote, shortNetworkName } from '../src/app';
+import { Home } from '../src/pages/Home';
+import { Docs } from '../src/pages/Docs';
+import { OWNER_POWERS } from '../src/content/docs';
+import { App, Freshness, NetworkTag, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
 import type { ChainId, Network } from '../src/lib/network';
 import type { Address, CandidateCheck, ChainState, OwnerState, ReplacedStaking, StakingControls, WalletState } from '../src/data/types';
 
@@ -730,6 +740,7 @@ async function run() {
   await cr73(base, wallet, live.owner);
   await cr75();
   await cr76();
+  await cr77(base, wallet);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -1633,6 +1644,259 @@ async function cr76() {
 
   render(null, site);
   site.remove();
+  style.remove();
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
+// ---- F9m (CR-77): the owner's four texts, the two deleted lines, the tag on a phone, the red light
+// The four texts are checked character for character against the owner's words as CR-77 writes them
+// (the strings below are copied from the change request, not from the site's source), read back from
+// the rendered page. The wrong-network light is rendered from the wallet display itself, in both
+// states, with the site's own stylesheet loaded, so the colours and the shape are the real ones; the
+// whole site is rendered as well, on the right network, to show that nothing red appears there.
+// --------------------------------------------------------------------------------------------------
+const CR77 = {
+  why1: 'Most projects that distribute revenue have no systems that ensure sustained revenue generation. Attention fades after launch, trading slows, and the project fades with it.',
+  why2: "UpTown's sophisticated flywheel is built on top of the pool. Every trade in the TOWN pool passes through TownHook, a contract no one controls, and it turns trading into reasons to participate: buyers claim TOWN rebates at the end of trading days, stakers receive a daily share of the ETH the treasury collects, and on every sale 2% is either charged in $TOWN and burned or charged in ETH and sent to the treasury. The rules are written into the contracts and cannot be changed.",
+  rebates: "of TOWN bought every day, claimable in $TOWN, minus a 2% claim fee, claimable the next day. The rate moves between 5% and 5.5%, decided using data from the last three days' trading activity.",
+  stakers: 'charged in ETH, sent to the treasury; 90% of it streams to stakers as WETH',
+  rules: 'never more. Zero dev allocation. No upgrades; trading never pauses; liquidity locked for a minimum of ten years.',
+};
+
+async function cr77(base: ChainState, wallet: WalletState) {
+  const style = document.createElement('style');
+  style.textContent = GLOBAL_CSS;
+  document.head.append(style);
+
+  // ---- 1. The four texts, character for character, read back from the rendered page --------------
+  const home = await mount(<Home />, base, wallet, 'CR-77: the homepage');
+  const whys = [...home.querySelectorAll('.why p')].map((p) => p.textContent!);
+  const cards = [...home.querySelectorAll('article.feature')].map((a) => {
+    const ps = [...a.querySelectorAll('p')];
+    return { heading: a.querySelector('h2')!.textContent!, figure: ps[0].textContent!, view: ps[0].getAttribute('data-view'), sentence: ps[1].textContent! };
+  });
+  const [rebate, stakers, rules] = cards;
+
+  check(
+    'CR-77 item 2: "Why $TOWN?" shows the owner’s two paragraphs, character for character, each one unbroken',
+    whys.length === 2 && whys[0] === CR77.why1 && whys[1] === CR77.why2,
+    `${whys.length} paragraphs; first matches: ${whys[0] === CR77.why1}; second matches: ${whys[1] === CR77.why2}\n      1: "${whys[0]}"\n      2: "${whys[1]}"`,
+  );
+
+  check(
+    'CR-77 items 3, 4 and 5: the three cards’ sentences are the owner’s words, character for character',
+    rebate.sentence === CR77.rebates && stakers.sentence === CR77.stakers && rules.sentence === CR77.rules,
+    `"${rebate.heading}": ${rebate.sentence === CR77.rebates} | "${stakers.heading}": ${stakers.sentence === CR77.stakers} | "${rules.heading}": ${rules.sentence === CR77.rules}\n      "${rebate.sentence}"\n      "${stakers.sentence}"\n      "${rules.sentence}"`,
+  );
+
+  // ---- 2. The rebate card's figure is the rate BEFORE the claim fee ------------------------------
+  const todayBps = dayRateBps(base, base.rewards.currentCycle);
+  const beforeFee = `up to ${fmtRate(todayBps)} today`;
+  const afterFee = `up to ${fmtRate(afterFeeBps(base, todayBps))} today`;
+  const r = rateRange(base);
+  const noChain = await mount(<Home />, null, null, 'CR-77: the homepage before the contracts are deployed');
+  const noChainFigure = noChain.querySelector('article.feature .feature-number')!.textContent;
+
+  check(
+    'CR-77 item 3: the "Buy rebates" figure is BuyerRewards.rateBps(today), the rate before the claim fee (the sentence subtracts the fee itself), and says so in data-view',
+    rebate.figure === beforeFee && rebate.figure !== afterFee && rebate.view === 'BuyerRewards.rateBps(today)',
+    `shown "${rebate.figure}", before the fee "${beforeFee}", after the fee "${afterFee}", data-view "${rebate.view}"`,
+  );
+  check(
+    'CR-77 item 3: with no contracts on the network the figure is the range before the fee, 5% to 5.5%',
+    noChainFigure === `${fmtBps(r.low)} to ${fmtBps(r.high)}` && noChainFigure === '5% to 5.5%',
+    `"${noChainFigure}"`,
+  );
+
+  // ---- 3. The homepage's owner line is gone ------------------------------------------------------
+  check(
+    'CR-77 item 6: the homepage’s line about the owner’s powers and income is gone',
+    !text(home).includes('earns income from fees') && home.querySelector('.owner-line') === null && !GLOBAL_CSS.includes('.owner-line'),
+    `the text "earns income from fees" on the page: ${text(home).includes('earns income from fees')}; .owner-line elements: ${home.querySelectorAll('.owner-line').length}; the rule in the stylesheet: ${GLOBAL_CSS.includes('.owner-line')}`,
+  );
+
+  // ---- 4. Docs: what the owner earns is gone, the powers table is untouched ----------------------
+  const docs = await mount(<Docs />, base, wallet, 'CR-77: the Docs page');
+  const section = docs.querySelector('#docs-owner') as HTMLElement;
+  const rows = [...section.querySelectorAll('table.powers tbody tr')].map((tr) => [...tr.querySelectorAll('th, td')].map((c) => c.textContent!));
+  const want = OWNER_POWERS.map((p) => [p.power, p.contract, p.delay, p.worstCase]);
+  const heads = [...section.querySelectorAll('table.powers thead th')].map((th) => th.textContent!);
+  const t = text(section);
+
+  check(
+    'CR-77 item 7: the Docs owner section no longer says what the owner earns — no heading, no list, no owner-income figures',
+    !t.includes('What the owner earns') &&
+      section.querySelector('.income-list') === null &&
+      !GLOBAL_CSS.includes('.income-list') &&
+      !t.includes('ETH reserve, not yet withdrawn') &&
+      !t.includes('TOWN claim fees, not yet withdrawn') &&
+      !t.includes('ETH withdrawn so far') &&
+      !t.includes('TOWN withdrawn so far') &&
+      !t.includes('The pool fees the owner collects are not shown'),
+    `"What the owner earns": ${t.includes('What the owner earns')}; .income-list: ${section.querySelectorAll('.income-list').length}; the four figures and the pool-fee note: ${['ETH reserve, not yet withdrawn', 'ETH withdrawn so far', 'TOWN claim fees, not yet withdrawn', 'TOWN withdrawn so far', 'The pool fees the owner collects are not shown'].filter((s) => t.includes(s)).join(', ') || 'none'}`,
+  );
+  check(
+    'CR-77 item 7: the powers table is unchanged — every row of the spec’s list, with the worst-case column, and the owner’s address still shown',
+    JSON.stringify(rows) === JSON.stringify(want) &&
+      heads.join(' | ') === 'Power | Contract | Delay | Worst case if misused' &&
+      t.includes('What the owner can do: the complete list') &&
+      t.includes(shortAddress(OWNER)) &&
+      t.includes('The owner cannot mint TOWN'),
+    `${rows.length} rows, all identical to the content module: ${JSON.stringify(rows) === JSON.stringify(want)}; columns: ${heads.join(' | ')}; the owner’s address ${shortAddress(OWNER)} shown: ${t.includes(shortAddress(OWNER))}`,
+  );
+
+  // ---- 5. The red light in the wallet display ----------------------------------------------------
+  const lightBox = document.createElement('div');
+  stage.append(lightBox);
+  const display = (wrongNetwork: boolean) => {
+    render(
+      <WalletButton
+        network={NETWORK}
+        account={W1}
+        accountLabel="Test wallet 1"
+        wrongNetwork={wrongNetwork}
+        walletChain={wrongNetwork ? 1 : NETWORK.chainId}
+        pickerOpen={false}
+        hasMenu
+        onClick={() => {}}
+      />,
+      lightBox,
+    );
+    const btn = lightBox.querySelector('.wallet-btn') as HTMLButtonElement;
+    const dot = btn.querySelector('.dot') as HTMLElement;
+    const cs = getComputedStyle(dot);
+    return {
+      cls: btn.className,
+      title: btn.getAttribute('title'),
+      ariaLabel: btn.getAttribute('aria-label'),
+      // What is on the button for everyone to see (the text for a screen reader taken out).
+      shown: [...btn.childNodes]
+        .filter((n) => !(n instanceof HTMLElement && n.classList.contains('visually-hidden')))
+        .map((n) => n.textContent)
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim(),
+      forScreenReader: [...btn.querySelectorAll('.visually-hidden')].map((s) => s.textContent).join(' '),
+      wrong: dot.classList.contains('dot-wrong'),
+      // A round green dot, or a triangle drawn with borders: no box of its own, square corners,
+      // see-through sides and a coloured bottom border.
+      shape:
+        cs.width === '0px' && cs.height === '0px' && cs.borderRadius === '0px' && cs.borderLeftColor === 'rgba(0, 0, 0, 0)' && cs.borderBottomWidth === '7px'
+          ? 'triangle'
+          : cs.borderRadius === '50%' && cs.width === '7px'
+            ? 'round dot'
+            : `other (${cs.width} x ${cs.height}, radius ${cs.borderRadius}, borders ${cs.borderBottomWidth}/${cs.borderLeftColor})`,
+      colour: cs.borderRadius === '50%' ? cs.backgroundColor : cs.borderBottomColor,
+    };
+  };
+  const right = display(false);
+  const wrong = display(true);
+  render(null, lightBox);
+  lightBox.remove();
+
+  // The site's own --ok and --warn-text, in the light theme and in the dark one (headless Edge's own
+  // setting is dark, so that is the theme the test page starts in): the light must be one of each.
+  const OK_GREEN = ['rgb(22, 163, 74)', 'rgb(74, 222, 128)'];
+  const WARN_RED = ['rgb(180, 35, 24)', 'rgb(253, 162, 155)'];
+  check(
+    'CR-77 item 1: on the wrong network the light beside the address is red; on the right network it is the green dot, and the address is shown in both',
+    right.wrong === false &&
+      right.shape === 'round dot' &&
+      OK_GREEN.includes(right.colour) &&
+      wrong.wrong === true &&
+      wrong.shape === 'triangle' &&
+      WARN_RED.includes(wrong.colour) &&
+      right.shown === wrong.shown,
+    `right network: ${right.shape}, ${right.colour} (the site’s --ok); wrong network: ${wrong.shape}, ${wrong.colour} (the site’s --warn-text); the address shown in both: "${right.shown}" / "${wrong.shown}"`,
+  );
+  check(
+    'CR-77 item 1: the wrong network is not told by colour alone — a different shape, the site’s warning outline, the reason in the tooltip and the words "Wrong network" for a screen reader',
+    wrong.shape !== right.shape &&
+      wrong.cls.includes('btn-danger') &&
+      right.cls.includes('btn-secondary') &&
+      wrong.title === `Wrong network: your wallet is on another network (chain ID 1). This site is UpTown on ${NETWORK.name}. Select the wallet to put it right.` &&
+      wrong.forScreenReader === 'Wrong network' &&
+      wrong.ariaLabel!.includes('Wrong network: your wallet is on another network (chain ID 1).') &&
+      wrong.ariaLabel!.includes('Select to switch network or disconnect.') &&
+      right.title === null &&
+      right.forScreenReader === '' &&
+      !right.ariaLabel!.includes('Wrong network'),
+    `wrong: class "${wrong.cls}", title "${wrong.title}", screen reader "${wrong.forScreenReader}", aria-label "${wrong.ariaLabel}" || right: class "${right.cls}", title ${right.title}, aria-label "${right.ariaLabel}"`,
+  );
+
+  // The display stays the way to put it right: the menu's note and its "Switch to …" action.
+  const noteBox = document.createElement('div');
+  stage.append(noteBox);
+  let switched = 0;
+  render(<WrongNetworkNote network={NETWORK} walletChain={1} onSwitch={() => switched++} />, noteBox);
+  const noteText = (noteBox.querySelector('.wallet-wrong') as HTMLElement).innerText.replace(/\s+/g, ' ').trim();
+  const switchBtn = button(noteBox, 'Switch to');
+  switchBtn!.click();
+  await new Promise((rr) => setTimeout(rr, 30));
+  check(
+    'CR-77 item 1: the wallet display stays the way to put it right — the reason in plain words and a "Switch to <network>" action that works',
+    noteText.startsWith('Wrong network Your wallet is on another network (chain ID 1), so this site cannot read your own figures and a transaction sent from it would fail.') &&
+      noteText.includes(`UpTown here is on ${NETWORK.name}.`) &&
+      switchBtn!.textContent!.trim() === `Switch to ${NETWORK.name}` &&
+      switched === 1,
+    `"${noteText}" | the action: "${switchBtn!.textContent!.trim()}", called ${switched} time(s)`,
+  );
+  render(null, noteBox);
+  noteBox.remove();
+
+  // ---- 6. The whole site: no read line, nothing red on the right network, the tag's rules --------
+  const site = document.createElement('div');
+  stage.append(site);
+  render(<App />, site);
+  await new Promise((rr) => setTimeout(rr, 60));
+  // Wait until a read has landed (the box carries the block it was read at), so the checks below
+  // are made on the page a visitor sees and not on the moment before the first read.
+  for (let i = 0; i < 150 && !(site.querySelector('.read-line') as HTMLElement | null)?.dataset.block; i++) await new Promise((rr) => setTimeout(rr, 100));
+  const siteText = text(site);
+  const readLine = site.querySelector('.read-line') as HTMLElement;
+
+  check(
+    'CR-77 item 6: no page shows "Figures read from … read again every 15 seconds …" or a "Read now" link any more; the box that held it is empty and takes no space',
+    !siteText.includes('Figures read from') &&
+      !siteText.includes('read again every 15 seconds') &&
+      !siteText.includes('Read now') &&
+      button(site, 'Read now') === null &&
+      readLine.childElementCount === 0 &&
+      getComputedStyle(readLine).display === 'none' &&
+      readLine.dataset.block !== '',
+    `the texts on the page: ${['Figures read from', 'read again every 15 seconds', 'Read now'].filter((s) => siteText.includes(s)).join(', ') || 'none'}; the box: ${readLine.childElementCount} children, display ${getComputedStyle(readLine).display}, block ${readLine.dataset.block}`,
+  );
+  check(
+    'CR-77 item 1: on the right network the whole site shows no red light and says nothing about a wrong network',
+    site.querySelector('.dot-wrong') === null && site.querySelector('.wallet-wrong') === null && !siteText.includes('Wrong network'),
+    `red lights on the page: ${site.querySelectorAll('.dot-wrong').length}; wrong-network notes: ${site.querySelectorAll('.wallet-wrong').length}`,
+  );
+  check(
+    'CR-77 item 1: below 480 px the stylesheet shows no tag at all, and the header row keeps its 60 px height (F9l’s taller phone row is gone)',
+    /@media \(max-width: 479px\) \{\s*\.net-tag \{\s*display: none;\s*\}\s*\}/.test(GLOBAL_CSS) &&
+      !/@media \(max-width: 479px\)[^@]*\.header-row/.test(GLOBAL_CSS) &&
+      !/@media \(max-width: 479px\)[^@]*height: 70px/.test(GLOBAL_CSS) &&
+      /\.header-row \{[^}]*height: 60px;[^}]*\}/.test(GLOBAL_CSS),
+    `the phone rule hides the tag: ${/@media \(max-width: 479px\) \{\s*\.net-tag \{\s*display: none;\s*\}\s*\}/.test(GLOBAL_CSS)}; it still changes the header row: ${/@media \(max-width: 479px\)[^@]*\.header-row/.test(GLOBAL_CSS)}`,
+  );
+
+  render(null, site);
+  site.remove();
+
+  // ---- 7. The notice that the network service is behind is still there, in its new place ---------
+  const old = { ...base, blockTimestamp: Math.floor(Date.now() / 1000) - 600 };
+  const fresh = { ...base, blockTimestamp: Math.floor(Date.now() / 1000) };
+  const behind = await mount(<Freshness />, old, wallet, 'CR-77: the network service is behind');
+  const notBehind = await mount(<Freshness />, fresh, wallet, 'CR-77: the network service is up to date');
+  check(
+    'CR-77 item 6: the notice that the network service is behind stays, in its own box at the top of the page content, and nothing is shown when the block is fresh',
+    text(behind).startsWith('The network service is behind: figures and estimates may be out of date.') &&
+      !!behind.querySelector('.stale-wrap > .stale-note') &&
+      text(notBehind) === '' &&
+      notBehind.querySelector('.stale-wrap') === null,
+    `behind: "${text(behind)}" | fresh: "${text(notBehind)}"`,
+  );
+
   style.remove();
   history.replaceState(null, '', location.pathname + location.search);
 }
