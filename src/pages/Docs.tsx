@@ -3,7 +3,7 @@ import { useApp, Details, Fig, Figures, Notice, PageHead, Verify } from '../comp
 import { OWNER_CANNOT, OWNER_POWERS, THINGS_TO_KNOW } from '../content/docs';
 import { PriceSource } from '../data/types';
 import { afterFeeBps, burnFloor, claimFeeBps, fallbackExpiresAt, pausePending, rateRange, stakingChange, stakingReplaced } from '../lib/derive';
-import { fmtBps, fmtDate, fmtDateTime, fmtEth, fmtTown, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
+import { fmtBps, fmtDate, fmtDateTime, fmtTown, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
 import { addressUrl, contractUrl, positionUrl, readUrl, tokenUrl } from '../lib/network';
 
 /** The table of contents, in order (CR-40). Each section is reachable as #/docs/<id>. */
@@ -230,7 +230,6 @@ function Section({ id, children }: { id: string; children: ComponentChildren }) 
 
 function Owner() {
   const { chain, network } = useApp();
-  const t = chain?.treasury ?? null;
   const owner = network.deployment?.owner ?? null;
   return (
     <Section id="owner">
@@ -257,31 +256,9 @@ function Owner() {
         </Notice>
       )}
 
-      <h3 class="doc-sub">What the owner earns</h3>
-      <ol class="income-list">
-        <li>
-          <strong>The pool fee:</strong> the 0.5% trading fee on every buy and sell in the TOWN pool, collected from the locked liquidity.
-        </li>
-        <li>
-          <strong>10% of all ETH reaching the treasury:</strong> the 2% buy fees, the higher buy fee in the first 15 minutes after launch, the 2% sell fees
-          on the days they are charged in ETH, and vault purchases.
-        </li>
-        <li>
-          <strong>The {fmtBps(claimFeeBps(chain))} claim fee</strong> on every rebate claim, in TOWN.
-        </li>
-      </ol>
-      {t && (
-        <Figures cols={4}>
-          <Fig label="ETH reserve, not yet withdrawn" value={fmtEth(t.ownerEthAvailable)} unit="ETH" view="Treasury.ownerEthAvailable" />
-          <Fig label="ETH withdrawn so far" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" view="Treasury.totalOwnerEthWithdrawn" />
-          <Fig label="TOWN claim fees, not yet withdrawn" value={fmtTown(t.ownerTownAvailable)} unit="TOWN" view="Treasury.ownerTownAvailable" />
-          <Fig label="TOWN withdrawn so far" value={fmtTown(t.totalTownWithdrawn)} unit="TOWN" view="Treasury.totalTownWithdrawn" />
-        </Figures>
-      )}
-      <p class="small faint card-foot">
-        The pool fees the owner collects are not shown: the contracts keep no running total of them.{' '}
-        <Verify inline links={[{ what: 'the Treasury’s owner reserve and withdrawals', href: contractUrl(network, 'Treasury', 'read') }]} />
-      </p>
+      {/* CR-77 item 7: "What the owner earns", its list, the four owner-income figures and the note
+          about the pool fees the contracts keep no total of are all removed. The powers below, their
+          worst cases and the owner's address stay. */}
 
       <h3 class="doc-sub">What the owner can do: the complete list</h3>
       <ul class="powers-list">

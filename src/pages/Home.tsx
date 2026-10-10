@@ -6,13 +6,27 @@ import { contractUrl, readUrl, tokenUrl } from '../lib/network';
 
 const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell pays 2%: burned, or to the treasury in ETH'];
 
+/**
+ * The owner's own words (CR-77 items 2 to 5), character for character as he wrote them, including
+ * his use of "$TOWN" and "TOWN" and his straight apostrophes. Each is one unbroken string, so
+ * nothing here re-words, re-punctuates, re-wraps or splits them, and the text node the browser
+ * shows is the sentence itself. Do not edit these without a change request.
+ */
+const WHY_FIRST = 'Most projects that distribute revenue have no systems that ensure sustained revenue generation. Attention fades after launch, trading slows, and the project fades with it.';
+const WHY_SECOND =
+  "UpTown's sophisticated flywheel is built on top of the pool. Every trade in the TOWN pool passes through TownHook, a contract no one controls, and it turns trading into reasons to participate: buyers claim TOWN rebates at the end of trading days, stakers receive a daily share of the ETH the treasury collects, and on every sale 2% is either charged in $TOWN and burned or charged in ETH and sent to the treasury. The rules are written into the contracts and cannot be changed.";
+const REBATE_CARD = "of TOWN bought every day, claimable in $TOWN, minus a 2% claim fee, claimable the next day. The rate moves between 5% and 5.5%, decided using data from the last three days' trading activity.";
+const STAKER_CARD = 'charged in ETH, sent to the treasury; 90% of it streams to stakers as WETH';
+const RULES_CARD = 'never more. Zero dev allocation. No upgrades; trading never pauses; liquidity locked for a minimum of ten years.';
+
 export function Home() {
   const { chain, network } = useApp();
   const c = chain?.hook.currentCycle ?? null;
-  // Today's rebate rate after the claim fee, BuyerRewards.rateBps(today) (CR-47); before the
-  // contracts are deployed here, the range after the fee.
+  // Today's rebate rate before the claim fee, BuyerRewards.rateBps(today) (CR-47); before the
+  // contracts are deployed here, the range before the fee. CR-77 item 3: the card's sentence now
+  // subtracts the claim fee itself, so the figure above it is the rate before the fee.
   const r = rateRange(chain);
-  const today = chain ? fmtRate(afterFeeBps(chain, dayRateBps(chain, chain.rewards.currentCycle))) : null;
+  const today = chain ? fmtRate(dayRateBps(chain, chain.rewards.currentCycle)) : null;
   const town = network.deployment?.contracts.UpTownToken;
   return (
     <>
@@ -66,22 +80,15 @@ export function Home() {
         </div>
       </section>
 
-      {/* Why $TOWN? The problem, and UpTown's answer (CR-69: the heading and two plain paragraphs, in the hero description's text size; CR-70: full width) */}
+      {/* Why $TOWN? The problem, and UpTown's answer (CR-69: the heading and two plain paragraphs, in the hero description's text size; CR-70: full width; CR-77 item 2: the owner's own two paragraphs, word for word) */}
       <section class="section" aria-labelledby="why-title">
         <div class="wrap">
           <h2 id="why-title" class="section-title">
             Why $TOWN?
           </h2>
           <div class="why">
-            <p>
-              Most projects that earn revenue have no system that keeps it coming. Attention fades after launch, trading slows, and the project fades with
-              it.
-            </p>
-            <p>
-              UpTown built a sophisticated flywheel into the pool itself. Every trade in the TOWN pool passes through TownHook, a contract no one controls, and it
-              turns trading into reasons to take part: buyers claim a TOWN rebate the next day, stakers receive a daily share of the ETH the treasury
-              collects, and on every sale 2% is burned or sent to the treasury in ETH. The rules are written into the contracts and cannot be changed.
-            </p>
+            <p>{WHY_FIRST}</p>
+            <p>{WHY_SECOND}</p>
           </div>
         </div>
       </section>
@@ -93,13 +100,10 @@ export function Home() {
               <RebateIcon size={20} />
             </span>
             <h2>Buy rebates</h2>
-            <p class="feature-number num" data-view="BuyerRewards.rateBps(today) × (1 - CLAIM_FEE_BPS / 10000)">
-              {today !== null ? `up to ${today} today` : `${fmtRate(afterFeeBps(null, r.low))} to ${fmtRate(afterFeeBps(null, r.high))}`}
+            <p class="feature-number num" data-view="BuyerRewards.rateBps(today)">
+              {today !== null ? `up to ${today} today` : `${fmtBps(r.low)} to ${fmtBps(r.high)}`}
             </p>
-            <p>
-              of the TOWN you buy comes back as a TOWN rebate, after the claim fee, claimable the next day. The rate moves between {fmtBps(r.low)} and{' '}
-              {fmtBps(r.high)} with the last three days’ trading.
-            </p>
+            <p>{REBATE_CARD}</p>
             <Verify links={[{ what: 'BuyerRewards’ reserve and running totals', href: contractUrl(network, 'BuyerRewards', 'read') }]} />
           </article>
           <article class="feature">
@@ -108,7 +112,7 @@ export function Home() {
             </span>
             <h2>ETH for stakers</h2>
             <p class="feature-number num">2% of every buy</p>
-            <p>goes to the treasury in ETH; 90% of it streams to stakers as WETH.</p>
+            <p>{STAKER_CARD}</p>
             <Verify links={[{ what: 'TownHook’s code (the 2% fee)', href: contractUrl(network, 'TownHook', 'code') }]} />
           </article>
           <article class="feature">
@@ -117,7 +121,7 @@ export function Home() {
             </span>
             <h2>Fixed rules</h2>
             <p class="feature-number num">1,000,000,000 TOWN</p>
-            <p>never more. No upgrades; trading never pauses; liquidity locked for ten years.</p>
+            <p>{RULES_CARD}</p>
             <Verify links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, town) }]} />
           </article>
         </div>
@@ -200,10 +204,7 @@ export function Home() {
               ]}
             />
           </Card>
-          <p class="owner-line">
-            The owner holds a short list of powers and earns income from fees: see <a href="#/docs/owner">The owner</a> in the Docs, which explain every
-            part.
-          </p>
+          {/* CR-77 item 6: the line about the owner's powers and income is deleted. */}
         </div>
       </section>
     </>
