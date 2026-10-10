@@ -214,6 +214,16 @@ export async function sendTx(n: Network, client: PublicClient, from: Address, re
   return wallet.writeContract({ address: req.address, abi: req.abi, functionName: req.functionName, args: req.args, value: req.value, gas: req.gas, chain } as never);
 }
 
-export async function waitForTx(client: PublicClient, hash: Hex): Promise<TransactionReceipt> {
-  return client.waitForTransactionReceipt({ hash, pollingInterval: 1_000, timeout: 10 * 60_000 });
+/**
+ * Waits for `hash` to be included. `onReplaced` hears when the wallet replaced the transaction
+ * (sped up: "repriced"; cancelled or changed: "cancelled" or "replaced"), before the replacement's
+ * receipt is returned (CR-82: a run stops on anything but a speed-up).
+ */
+export async function waitForTx(client: PublicClient, hash: Hex, onReplaced?: (reason: 'cancelled' | 'replaced' | 'repriced', newHash: Hex) => void): Promise<TransactionReceipt> {
+  return client.waitForTransactionReceipt({
+    hash,
+    pollingInterval: 1_000,
+    timeout: 10 * 60_000,
+    onReplaced: onReplaced ? (r) => onReplaced(r.reason, r.transaction.hash) : undefined,
+  });
 }

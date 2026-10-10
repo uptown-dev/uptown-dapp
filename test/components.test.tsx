@@ -46,7 +46,11 @@
 //   fixture — yesterday's rebates above its burn (the owner's "inflation exceeded deflation"), the
 //   two exactly equal ("inflation matched deflation", and a quiet day with both at zero), and the
 //   burn above the rebates (the ETH day, unchanged); and the same clause on the Stats figure.
-// Nothing here sends a transaction: only Check buttons (read-only calls) are clicked.
+// - CR-82, CR-83 (F9o), one press for a sale's or a stake's approvals and the action, and the quick
+//   amounts: the site's own forms run against a stand-in wallet and a stand-in chain (no transaction
+//   reaches the local node); the order of every rehearsal, request and confirmation; the stops; the
+//   unlimited sell approvals; the 25/50/75/100% buttons on both sides.
+// Nothing here sends a transaction to any chain: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 // The site's own stylesheet and the owner's own logo files, read as text (CR-75): the checks
 // below compare what the page draws with what the owner delivered, and let the stylesheet pick.
@@ -57,12 +61,13 @@ import { AppContext, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
 import { makeClient, quoteBuy, readAll, readVaults, replacedRecords, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
-import { ERRORS_ABI, HOOK_ABI, TREASURY_ABI } from '../src/lib/abi';
-import { ContractFunctionRevertedError, encodeErrorResult, encodeFunctionData, getAddress } from 'viem';
+import { ERRORS_ABI, HOOK_ABI, PERMIT2_ABI, ROUTER_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from '../src/lib/abi';
+import { ContractFunctionRevertedError, decodeAbiParameters, decodeFunctionData, encodeErrorResult, encodeFunctionData, formatUnits, getAddress, type PublicClient } from 'viem';
 import { Owner, OwnerPage } from '../src/pages/Owner';
 import { networkLabel, pageAccess, showsOwnerLink } from '../src/lib/owner';
 import { UNLISTED_STAKING, listedStaking, replacedStaking } from '../src/lib/network';
-import { UnlistedStakingError, addStakeTx, approvePermit2Tx, approveTx, claimWethTx, openVaultTx, ownerTx, unstakeTx, upgradeTx } from '../src/lib/actions';
+import { MAX_UINT160, MAX_UINT256, UnlistedStakingError, addStakeTx, approvePermit2Tx, approveTx, claimWethTx, openVaultTx, ownerTx, unstakeTx, upgradeTx, withMargin } from '../src/lib/actions';
+import { BUY_GAS_ALLOWANCE, buyGasReserve } from '../src/lib/quick';
 import {
   UnknownTargetError,
   activeProvider,
@@ -77,7 +82,7 @@ import {
 } from '../src/lib/wallet';
 import { COMMA_MESSAGE, amountError, parseAmount } from '../src/lib/amount';
 import { afterFeeBps, dayRateBps, minCheck, rateRange, rpcBehind } from '../src/lib/derive';
-import { dayName, fmtBps, fmtDateTime, fmtRate, fmtTown, fmtUsd8, shortAddress } from '../src/lib/format';
+import { dayName, fmtBps, fmtDateTime, fmtEth, fmtRate, fmtTown, fmtUsd8, shortAddress } from '../src/lib/format';
 import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
@@ -801,6 +806,7 @@ async function run() {
   await cr75();
   await cr76();
   await cr77(base, wallet);
+  await cr82(base, wallet);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -861,7 +867,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     const approveFake = { ...approveTx(NETWORK, k.TownStaking, 1n), args: [FAKE, 1n] };
     check(
       'CR-72 item 1: the send check refuses a call to an unlisted address, and a TOWN approval naming one; allows the site’s own',
-      !!targetProblem(NETWORK, toFake) && !!targetProblem(NETWORK, approveFake)?.startsWith(UNLISTED_STAKING) && targetProblem(NETWORK, claimWethTx(NETWORK, k.TownStaking)) === null && targetProblem(NETWORK, approvePermit2Tx(NETWORK, 1n)) === null,
+      !!targetProblem(NETWORK, toFake) && !!targetProblem(NETWORK, approveFake)?.startsWith(UNLISTED_STAKING) && targetProblem(NETWORK, claimWethTx(NETWORK, k.TownStaking)) === null && targetProblem(NETWORK, approvePermit2Tx(NETWORK)) === null,
       `${targetProblem(NETWORK, toFake)} | ${targetProblem(NETWORK, approveFake)}`,
     );
     let sent = 'resolved';
@@ -973,7 +979,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     const st = await mount(<Stake />, base, noVault, 'Stake, open a vault, "2,5" typed (fixture)');
     typeIn(st, '#vault-town', '2,5');
     await settle();
-    const stOpen = text(st).includes(COMMA_MESSAGE) && button(st, '2. Open tier')?.disabled === true && button(st, '1. Approve TOWN')?.disabled === true;
+    const stOpen = text(st).includes(COMMA_MESSAGE) && button(st, 'Open tier')?.disabled === true && button(st, 'Approve and open')?.disabled !== false;
     typeIn(st, '#vault-town', '1,000.5');
     await settle();
     const stOpenUses = usesIn(st.querySelector('.field'));
@@ -982,7 +988,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     await settle();
     typeIn(st2, '#add-town', '0,5');
     await settle();
-    const stAdd = text(st2).includes(COMMA_MESSAGE) && button(st2, '2. Add TOWN')?.disabled === true;
+    const stAdd = text(st2).includes(COMMA_MESSAGE) && button(st2, 'Add TOWN')?.disabled === true;
     typeIn(st2, '#add-town', '2.5');
     await settle();
     check(
@@ -1054,7 +1060,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     typeIn(s, '#sell-min', '0');
     await settle();
     const sb = s.querySelector('#trade-panel-sell') as HTMLElement;
-    check('CR-72 item 3: sell minimum 0: refused, "3. Sell" off', text(sb).includes('The minimum received cannot be 0') && button(sb, '3. Sell')?.disabled === true);
+    check('CR-72 item 3: sell minimum 0: refused, the sell button off', text(sb).includes('The minimum received cannot be 0') && (sb.querySelector('.sell-go') as HTMLButtonElement | null)?.disabled === true);
   }
 
   // ---- 4. Full addresses on the Owner page; the network in the Safe panel ----------------------------
@@ -1959,6 +1965,529 @@ async function cr77(base: ChainState, wallet: WalletState) {
 
   style.remove();
   history.replaceState(null, '', location.pathname + location.search);
+}
+
+// ---- F9o (CR-82, CR-83): one press for the approvals and the action; the quick amounts --------
+// A stand-in wallet and a stand-in chain. The site's own forms run against them: every transaction
+// goes through wallet.ts's sendTx (its target check, its chain check and its read-only rehearsal,
+// all unchanged) to a stand-in EIP-1193 wallet, chosen the way a visitor chooses one (EIP-6963), on a
+// copy of the network entry marked as a public network, so nothing ever reaches the local node. The
+// stand-in records every rehearsal ("check"), every request ("send"), every refusal and every
+// confirmation ("mined"), in the order they happen, and confirms each transaction after a short
+// wait, changing its own figures the way the chain would (an approval raises the allowance).
+async function cr82(base: ChainState, wallet: WalletState) {
+  const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+  const typeIn = (el: HTMLElement, sel: string, v: string) => {
+    const input = el.querySelector(sel) as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, v);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const E = 10n ** 18n;
+  const TOWN = k.UpTownToken;
+  const P2 = NETWORK.uniswap!.permit2;
+  const ROUTER = NETWORK.uniswap!.universalRouter;
+  const QUOTER = NETWORK.uniswap!.v4Quoter;
+  const STAKING = base.staking.address;
+  const same = (a: unknown, b: string) => typeof a === 'string' && a.toLowerCase() === b.toLowerCase();
+  const PUBLIC: Network = { ...NETWORK, local: false };
+  const NOW = Math.floor(Date.now() / 1000) + 5_000;
+  const DAYS30 = 30 * 24 * 60 * 60;
+  const SHOWN_PRICE = 1_234_567_000_000_000n; // the tier 1 vault price the fixture shows (0.001234567 ETH)
+  const chain: ChainState = { ...base, blockTimestamp: NOW, staking: { ...base.staking, vaultPriceWei: { ...base.staking.vaultPriceWei, 1: SHOWN_PRICE } } };
+
+  const EXACT_IN = [
+    {
+      type: 'tuple',
+      components: [
+        {
+          name: 'poolKey',
+          type: 'tuple',
+          components: [
+            { name: 'currency0', type: 'address' },
+            { name: 'currency1', type: 'address' },
+            { name: 'fee', type: 'uint24' },
+            { name: 'tickSpacing', type: 'int24' },
+            { name: 'hooks', type: 'address' },
+          ],
+        },
+        { name: 'zeroForOne', type: 'bool' },
+        { name: 'amountIn', type: 'uint128' },
+        { name: 'amountOutMinimum', type: 'uint128' },
+        { name: 'minHopPriceX36', type: 'uint256' },
+        { name: 'hookData', type: 'bytes' },
+      ],
+    },
+  ] as const;
+
+  interface Fake {
+    balance: bigint;
+    toPermit2: bigint;
+    router: { amount: bigint; expiration: number };
+    staking: bigint;
+    price: bigint;
+    quote: bigint;
+    eth: bigint;
+    maxFee: bigint;
+    log: string[];
+    reject: Set<string>;
+    revert: Set<string>;
+    sent: Record<string, readonly unknown[]>;
+    value: Record<string, bigint>;
+    /** Called as each request reaches the wallet, before it answers. */
+    onSend?: (name: string) => void;
+    /** Called as each transaction is confirmed. */
+    onMined?: (name: string) => void;
+    /** What the status box said when each request reached the wallet. */
+    seen: Record<string, string>;
+  }
+  let f: Fake;
+  const fresh = (over: Partial<Fake> = {}): Fake => ({
+    balance: 2_000_000n * E,
+    toPermit2: 0n,
+    router: { amount: 0n, expiration: 0 },
+    staking: 0n,
+    price: SHOWN_PRICE,
+    quote: 5n * 10n ** 16n,
+    eth: 3n * E,
+    maxFee: 7n * 10n ** 9n,
+    log: [],
+    reject: new Set(),
+    revert: new Set(),
+    sent: {},
+    value: {},
+    seen: {},
+    ...over,
+  });
+
+  /** Which step a call is: a sale's approvals, the sale, a staking approval, a staking action. */
+  const nameOf = (to: string, data: `0x${string}`): { name: string; args: readonly unknown[] } => {
+    if (same(to, TOWN)) {
+      const d = decodeFunctionData({ abi: TOKEN_ABI, data });
+      return { name: same(d.args![0], P2) ? 'approve' : 'stake-approve', args: d.args! };
+    }
+    if (same(to, P2)) return { name: 'allow', args: decodeFunctionData({ abi: PERMIT2_ABI, data }).args! };
+    if (same(to, ROUTER)) {
+      const d = decodeFunctionData({ abi: ROUTER_ABI, data });
+      const [, inputs, deadline] = d.args as readonly [string, readonly `0x${string}`[], bigint];
+      const [, params] = decodeAbiParameters([{ type: 'bytes' }, { type: 'bytes[]' }], inputs[0]);
+      const [p] = decodeAbiParameters(EXACT_IN, (params as readonly `0x${string}`[])[0]);
+      return { name: p.zeroForOne ? 'buy' : 'sell', args: [p.amountIn, p.amountOutMinimum, deadline] };
+    }
+    if (same(to, STAKING)) {
+      const d = decodeFunctionData({ abi: STAKING_ABI, data });
+      return { name: d.functionName, args: d.args ?? [] };
+    }
+    return { name: `unknown ${to}`, args: [] };
+  };
+
+  const pending = new Map<string, string>();
+  let nonce = 0;
+  let statusBox: HTMLElement | null = null;
+  const provider = {
+    async request({ method, params }: { method: string; params?: unknown[] }) {
+      if (method === 'eth_chainId') return '0x7a69';
+      if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [W1];
+      if (method === 'eth_sendTransaction') {
+        const t = params![0] as { to: string; data: `0x${string}`; value?: string };
+        const { name, args } = nameOf(t.to, t.data);
+        f.log.push(`send ${name}`);
+        f.sent[name] = args;
+        if (t.value) f.value[name] = BigInt(t.value);
+        f.seen[name] = statusBox?.querySelector('.run-status') ? text(statusBox.querySelector('.run-status') as HTMLElement) : '';
+        f.onSend?.(name);
+        if (f.reject.has(name)) {
+          f.log.push(`rejected ${name}`);
+          throw Object.assign(new Error('User rejected the request.'), { code: 4001 });
+        }
+        const hash = `0x${(++nonce).toString(16).padStart(64, '0')}`;
+        pending.set(hash, name);
+        return hash;
+      }
+      throw new Error(`the stand-in wallet does not do ${method}`);
+    },
+  };
+  const standIn: WalletInfo = { uuid: 'f9o-stand-in', name: 'Stand-in wallet', icon: null, rdns: 'test.f9o.standin', provider };
+
+  const fake = {
+    ...client,
+    async getBlock() {
+      return { number: 1_000n + BigInt(nonce), timestamp: BigInt(NOW) };
+    },
+    async readContract(a: { address: string; functionName: string; args?: readonly unknown[] }) {
+      if (same(a.address, TOWN) && a.functionName === 'balanceOf') return f.balance;
+      if (same(a.address, TOWN) && a.functionName === 'allowance') return same(a.args![1], P2) ? f.toPermit2 : f.staking;
+      if (same(a.address, P2) && a.functionName === 'allowance') return [f.router.amount, f.router.expiration, 0];
+      if (same(a.address, STAKING) && a.functionName === 'vaultPriceWei') return f.price;
+      throw new Error(`the stand-in chain does not read ${a.functionName}`);
+    },
+    async simulateContract(a: { address: string; abi: unknown; functionName: string; args?: readonly unknown[] }) {
+      if (same(a.address, QUOTER)) return { result: [f.quote, 0n], request: a };
+      const data = encodeFunctionData({ abi: a.abi, functionName: a.functionName, args: a.args } as unknown as Parameters<typeof encodeFunctionData>[0]);
+      f.log.push(`check ${nameOf(a.address, data).name}`);
+      return { result: undefined, request: a };
+    },
+    async waitForTransactionReceipt({ hash }: { hash: string }) {
+      await settle(80);
+      const name = pending.get(hash)!;
+      const failed = f.revert.has(name);
+      const args = f.sent[name];
+      if (!failed) {
+        if (name === 'approve') f.toPermit2 = args[1] as bigint;
+        if (name === 'allow') f.router = { amount: args[2] as bigint, expiration: Number(args[3]) };
+        if (name === 'stake-approve') f.staking = args[1] as bigint;
+        if (name === 'sell') f.balance -= args[0] as bigint;
+      }
+      f.log.push(`mined ${name}${failed ? ' (failed)' : ''}`);
+      f.onMined?.(name);
+      return { status: failed ? 'reverted' : 'success', transactionHash: hash, gasUsed: 50_000n, blockNumber: 1_000n + BigInt(nonce) };
+    },
+    async getBalance() {
+      return f.eth;
+    },
+    async estimateFeesPerGas() {
+      return { maxFeePerGas: f.maxFee, maxPriorityFeePerGas: 10n ** 9n };
+    },
+  } as unknown as PublicClient;
+  const extra = { network: PUBLIC, client: fake };
+  const walletOf = (x: Fake, over: Partial<WalletState> = {}): WalletState => ({
+    ...wallet,
+    address: W1,
+    townBalance: x.balance,
+    ethBalance: x.eth,
+    townAllowanceToPermit2: x.toPermit2,
+    routerAllowance: x.router,
+    townAllowanceToStaking: x.staking,
+    ...over,
+  });
+  const finished = async (el: HTMLElement) => {
+    for (let i = 0; i < 300; i++) {
+      const st = el.querySelector('.run-status') as HTMLElement | null;
+      if (st && (st.dataset.run === 'done' || st.dataset.run === 'stopped')) return st;
+      await settle(50);
+    }
+    return null;
+  };
+  /** The sell form with `amount` typed and its estimate shown; returns the panel. */
+  const sellForm = async (x: Fake, amount: string, label: string, over: Partial<WalletState> = {}) => {
+    f = x;
+    const el = await mount(<Trade sell />, chain, walletOf(x, over), label, extra);
+    statusBox = el;
+    typeIn(el, '#sell-town', amount);
+    const box = el.querySelector('#trade-panel-sell') as HTMLElement;
+    for (let i = 0; i < 60 && !/\d/.test((box.querySelector('.swap-output') as HTMLElement).innerText.replace(/^0$/, '')); i++) await settle(50);
+    await settle(80);
+    return box;
+  };
+  const press = (box: HTMLElement, sel = '.sell-go') => (box.querySelector(sel) as HTMLButtonElement).click();
+  const sends = (x: Fake) => x.log.filter((l) => l.startsWith('send ')).map((l) => l.slice(5));
+  const ONE_K = 1_000n * E;
+  const autoMin = (q: bigint) => ((q * 9_900n) / 10_000n / 10n ** 12n) * 10n ** 12n;
+
+  chooseWallet(standIn);
+  try {
+    // ---- 1. A first sell: approve, allow, sell, each only after the one before is confirmed ----
+    {
+      const x = fresh();
+      const box = await sellForm(x, '1000', 'CR-82: a first sell, stand-in wallet with no approvals');
+      const before = text(box);
+      const label = (box.querySelector('.sell-go') as HTMLButtonElement).textContent!.trim();
+      press(box);
+      const st = await finished(box);
+      check(
+        'CR-82 first sell: before the press the button reads "Approve and sell" and the form says the sale takes 3 transactions and that the wallet asks to confirm each one',
+        label === 'Approve and sell' && before.includes('This sale takes 3 transactions: approve TOWN, then allow the router, then sell TOWN.') && before.includes('Your wallet asks you to confirm each one'),
+        `${label} | ${before.match(/This sale takes[^.]*\.[^.]*\./)?.[0] ?? 'no plan line'}`,
+      );
+      const want = ['check approve', 'send approve', 'mined approve', 'check allow', 'send allow', 'mined allow', 'check sell', 'send sell', 'mined sell'];
+      check(
+        'CR-82 first sell: one press runs approve, allow, sell in that order, each rehearsed by wallet.ts and sent only after the one before is confirmed',
+        x.log.join(' > ') === want.join(' > ') && st?.dataset.run === 'done',
+        x.log.join(' > '),
+      );
+      check(
+        'CR-82 first sell: while the router permission waits for the wallet, the status shows step 2 of 3, step 1 confirmed and step 3 next',
+        x.seen.allow.startsWith('Sell TOWN: step 2 of 3') && x.seen.allow.includes('Approve TOWN: confirmed') && x.seen.allow.includes('Allow the router: confirm it in your wallet') && x.seen.allow.includes('Sell TOWN: next'),
+        x.seen.allow,
+      );
+      check(
+        'CR-83: the first approval asks Permit2 for type(uint256).max, the second asks for type(uint160).max for the router, expiring 30 days on',
+        same(x.sent.approve[0], P2) && x.sent.approve[1] === MAX_UINT256 && MAX_UINT256 === 2n ** 256n - 1n &&
+          same(x.sent.allow[0], TOWN) && same(x.sent.allow[1], ROUTER) && x.sent.allow[2] === MAX_UINT160 && MAX_UINT160 === 2n ** 160n - 1n && Number(x.sent.allow[3]) === NOW + DAYS30,
+        `approve(${x.sent.approve.join(', ')}) | allow(${x.sent.allow.join(', ')}), expiry ${Number(x.sent.allow[3]) - NOW} s after now`,
+      );
+      check(
+        'CR-82 first sell: the sale sends the amount typed and the minimum the visitor saw (the automatic one), with a fresh 20-minute deadline',
+        x.sent.sell[0] === ONE_K && x.sent.sell[1] === autoMin(x.quote) && Number(x.sent.sell[2]) === NOW + 20 * 60,
+        `amount ${x.sent.sell[0]}, minimum ${x.sent.sell[1]} (shown ${autoMin(x.quote)}), deadline now + ${Number(x.sent.sell[2]) - NOW} s`,
+      );
+      check('CR-82 first sell: the finished status lists the three transactions, each confirmed, and says what was sold', (st?.dataset.hashes ?? '').split(',').length === 3 && text(st!).includes('Done. You sold 1,000 TOWN'), text(st!));
+    }
+
+    // ---- 2. Only the router permission missing (expired): two transactions ----
+    {
+      const x = fresh({ toPermit2: MAX_UINT256, router: { amount: MAX_UINT160, expiration: NOW - 60 } });
+      const box = await sellForm(x, '1000', 'CR-82: the router permission expired');
+      const before = text(box);
+      const label = (box.querySelector('.sell-go') as HTMLButtonElement).textContent!.trim();
+      press(box);
+      const st = await finished(box);
+      check(
+        'CR-82 router permission expired: "Renew and sell", "This sale takes 2 transactions", then allow and sell only, in order',
+        label === 'Renew and sell' && before.includes('This sale takes 2 transactions: allow the router, then sell TOWN.') && x.log.join(' > ') === 'check allow > send allow > mined allow > check sell > send sell > mined sell' && st?.dataset.run === 'done',
+        `${label} | ${x.log.join(' > ')}`,
+      );
+    }
+
+    // ---- 3. A rejection at each step stops the run ----
+    for (const [step, done] of [
+      ['approve', ''],
+      ['allow', 'Approve TOWN'],
+      ['sell', 'Approve TOWN, Allow the router'],
+    ] as const) {
+      const x = fresh({ reject: new Set([step]) });
+      const box = await sellForm(x, '1000', `CR-82: rejected at ${step}`);
+      press(box);
+      const st = await finished(box);
+      const after = sends(x);
+      const t = st ? text(st) : '';
+      check(
+        `CR-82 rejected in the wallet at "${step}": the run stops, nothing more is sent, and the status says which steps finished and that pressing again carries on`,
+        after[after.length - 1] === step &&
+          x.log[x.log.length - 1] === `rejected ${step}` &&
+          st?.dataset.run === 'stopped' &&
+          st.dataset.error === 'UserRejected' &&
+          t.includes('You cancelled the request in your wallet') &&
+          (done ? t.includes(`Done before it stopped: ${done}.`) : !t.includes('Done before it stopped')) &&
+          t.includes('Pressing the button again carries on from what is still missing'),
+        `${x.log.join(' > ')} | ${t}`,
+      );
+    }
+
+    // ---- 4. A transaction that fails stops the run ----
+    {
+      const x = fresh({ revert: new Set(['allow']) });
+      const box = await sellForm(x, '1000', 'CR-82: the router permission fails on chain');
+      press(box);
+      const st = await finished(box);
+      check(
+        'CR-82 a transaction included but failed (the router permission): the run stops and the sale is never sent',
+        x.log.join(' > ') === 'check approve > send approve > mined approve > check allow > send allow > mined allow (failed)' && st?.dataset.run === 'stopped' && text(st).includes('included but failed'),
+        `${x.log.join(' > ')} | ${st ? text(st) : ''}`,
+      );
+    }
+
+    // ---- 5. The amount changed mid-run ----
+    {
+      const x = fresh();
+      const box = await sellForm(x, '1000', 'CR-82: the amount changed while the approval was waiting');
+      x.onSend = (name) => {
+        if (name === 'approve') typeIn(box, '#sell-town', '2000');
+      };
+      press(box);
+      const st = await finished(box);
+      check(
+        'CR-82 the amount changed while the first approval was on its way: once it is confirmed nothing more is sent, and the status says the amount changed',
+        sends(x).join(',') === 'approve' && x.log.includes('mined approve') && st?.dataset.run === 'stopped' && text(st).includes('The amount changed.') && text(st).includes('Done before it stopped: Approve TOWN.'),
+        `${x.log.join(' > ')} | ${st ? text(st) : ''}`,
+      );
+    }
+
+    // ---- 6. A fresh estimate below the minimum stops before the sale ----
+    {
+      const x = fresh();
+      const box = await sellForm(x, '1000', 'CR-82: the price moved while the approvals confirmed');
+      const shownMin = autoMin(x.quote);
+      x.onMined = (name) => {
+        if (name === 'allow') x.quote = x.quote / 2n;
+      };
+      press(box);
+      const st = await finished(box);
+      const t = st ? text(st) : '';
+      check(
+        'CR-82 the fresh estimate taken after the approvals is below the minimum the visitor saw: the sale is not sent; the status gives the new estimate and says to press again',
+        sends(x).join(',') === 'approve,allow' &&
+          st?.dataset.run === 'stopped' &&
+          st.dataset.error === 'PriceMoved' &&
+          t.includes(`The price moved while the approvals confirmed: the estimate is now ${fmtEth(x.quote, 6)} ETH, below the minimum of ${fmtEth(shownMin, 6)} ETH you saw, so the sale was not sent.`) &&
+          t.includes('press the button again'),
+        `${x.log.join(' > ')} | ${t}`,
+      );
+    }
+
+    // ---- 7. CR-83: older, smaller approvals below the amount are asked for again ----
+    {
+      const x = fresh({ toPermit2: 500n * E, router: { amount: 500n * E, expiration: NOW + 10 * 86_400 } });
+      const box = await sellForm(x, '1000', 'CR-83: older approvals of 500 TOWN, selling 1,000');
+      const label = (box.querySelector('.sell-go') as HTMLButtonElement).textContent!.trim();
+      press(box);
+      const st = await finished(box);
+      check(
+        'CR-83 a wallet whose older approvals (500 TOWN each) are below the amount (1,000 TOWN) is asked for both again, without a limit this time, then sells',
+        label === 'Approve and sell' && sends(x).join(',') === 'approve,allow,sell' && x.sent.approve[1] === MAX_UINT256 && x.sent.allow[2] === MAX_UINT160 && st?.dataset.run === 'done',
+        `${label} | ${x.log.join(' > ')}`,
+      );
+    }
+
+    // ---- 8. CR-83: unlimited approvals, the router's permission unexpired, more TOWN bought: one transaction ----
+    {
+      const x = fresh({ balance: 9_000_000n * E, toPermit2: MAX_UINT256, router: { amount: MAX_UINT160 - 1_000n * E, expiration: NOW + 20 * 86_400 } });
+      const box = await sellForm(x, '5,000,000', 'CR-83: unlimited approvals, more TOWN bought since');
+      const before = text(box);
+      const label = (box.querySelector('.sell-go') as HTMLButtonElement).textContent!.trim();
+      press(box);
+      const st = await finished(box);
+      check(
+        'CR-83 a wallet with the unlimited approvals and an unexpired router permission, holding more TOWN after a buy, sells with one transaction: "Sell TOWN", no plan line, no approval',
+        label === 'Sell TOWN' && !before.includes('This sale takes') && x.log.join(' > ') === 'check sell > send sell > mined sell' && x.sent.sell[0] === 5_000_000n * E && st?.dataset.run === 'done',
+        `${label} | ${x.log.join(' > ')}`,
+      );
+    }
+
+    // ---- 9. Approve, then open a vault; the price-rose stop; approve, then add ----
+    const noVault = { positionOf: { tier: 0 as const, amount: 0n }, earned: 0n, oldVaults: [] };
+    {
+      const x = fresh();
+      f = x;
+      const el = await mount(<Stake />, chain, walletOf(x, noVault), 'CR-82: approve, then open a tier 1 vault', extra);
+      statusBox = el;
+      typeIn(el, '#vault-town', '1000');
+      await settle();
+      const before = text(el.querySelector('.action-form') as HTMLElement);
+      const label = (el.querySelector('.stake-go') as HTMLButtonElement).textContent!.trim();
+      press(el, '.stake-go');
+      const st = await finished(el);
+      check(
+        'CR-82 open a vault: "Approve and open tier 1 vault", "This takes 2 transactions"; the exact-amount approval, then, once confirmed, the vault with the ETH shown',
+        label === 'Approve and open tier 1 vault' &&
+          before.includes('This takes 2 transactions: approve exactly 1,000 TOWN for the staking contract, then open the vault.') &&
+          x.log.join(' > ') === 'check stake-approve > send stake-approve > mined stake-approve > check openVault > send openVault > mined openVault' &&
+          same(x.sent['stake-approve'][0], STAKING) &&
+          x.sent['stake-approve'][1] === ONE_K &&
+          x.value.openVault === withMargin(SHOWN_PRICE) &&
+          st?.dataset.run === 'done',
+        `${label} | ${x.log.join(' > ')} | approve ${x.sent['stake-approve']?.[1]} | value ${x.value.openVault}`,
+      );
+    }
+    {
+      const x = fresh();
+      f = x;
+      x.onMined = (name) => {
+        if (name === 'stake-approve') x.price = SHOWN_PRICE + 10_000_000_000_000n;
+      };
+      const el = await mount(<Stake />, chain, walletOf(x, noVault), 'CR-82: the vault price rose while the approval confirmed', extra);
+      statusBox = el;
+      typeIn(el, '#vault-town', '1000');
+      await settle();
+      press(el, '.stake-go');
+      const st = await finished(el);
+      const t = st ? text(st) : '';
+      check(
+        'CR-82 the vault price read again just before the stake is above the price shown: the vault is not opened; the status gives the new price',
+        sends(x).join(',') === 'stake-approve' && st?.dataset.run === 'stopped' && st.dataset.error === 'PriceRose' && t.includes(`rose to ${fmtEth(x.price, 6)} ETH, above the ${fmtEth(SHOWN_PRICE, 6)} ETH shown`),
+        `${x.log.join(' > ')} | ${t}`,
+      );
+    }
+    {
+      const x = fresh();
+      f = x;
+      const el = await mount(<Stake />, chain, walletOf(x, { positionOf: { tier: 1, amount: 5_000n * E } }), 'CR-82: approve, then add TOWN', extra);
+      statusBox = el;
+      (el.querySelector('#tab-add') as HTMLButtonElement).click();
+      await settle();
+      typeIn(el, '#add-town', '1000');
+      await settle();
+      const label = (el.querySelector('.stake-go') as HTMLButtonElement).textContent!.trim();
+      press(el, '.stake-go');
+      const st = await finished(el);
+      check(
+        'CR-82 add TOWN: "Approve and add TOWN"; the exact-amount approval, then, once confirmed, addStake',
+        label === 'Approve and add TOWN' &&
+          x.log.join(' > ') === 'check stake-approve > send stake-approve > mined stake-approve > check addStake > send addStake > mined addStake' &&
+          x.sent['stake-approve'][1] === ONE_K &&
+          x.sent.addStake[0] === ONE_K &&
+          st?.dataset.run === 'done',
+        `${label} | ${x.log.join(' > ')}`,
+      );
+    }
+
+    // ---- 10. The quick amounts ----
+    {
+      // An odd balance, in units: 12,345,678.901234567891234567 TOWN.
+      const odd = 12_345_678_901_234_567_891_234_567n;
+      const x = fresh({ balance: odd });
+      f = x;
+      const el = await mount(<Trade sell />, chain, walletOf(x), 'CR-82: sell 25/50/75/100% of an odd balance', extra);
+      const box = el.querySelector('#trade-panel-sell') as HTMLElement;
+      const got: string[] = [];
+      let ok = true;
+      for (const p of [25, 50, 75, 100] as const) {
+        button(box, `${p}%`)!.click();
+        await settle(80);
+        const field = (box.querySelector('#sell-town') as HTMLInputElement).value;
+        const uses = (box.querySelector('.swap-box .uses') as HTMLElement | null)?.dataset.uses;
+        const want = p === 100 ? odd : (odd * BigInt(p)) / 100n;
+        ok &&= field === formatUnits(want, 18) && uses === want.toString();
+        got.push(`${p}%: "${field}" uses ${uses}`);
+      }
+      check(
+        'CR-82 sell quick amounts: 25/50/75/100% of an odd balance, in whole units; the field and the amount used agree; 100% is the balance exactly',
+        ok && (box.querySelector('#sell-town') as HTMLInputElement).value === '12345678.901234567891234567',
+        got.join(' | '),
+      );
+    }
+    {
+      const x = fresh({ eth: 1_500_000_000_000_000_003n, maxFee: 7n * 10n ** 9n });
+      f = x;
+      const keep = 200_000n * 7n * 10n ** 9n * 3n;
+      const el = await mount(<Trade />, chain, walletOf(x), 'CR-82: buy quick amounts with the gas kept back', extra);
+      const box = el.querySelector('#trade-panel-buy') as HTMLElement;
+      await settle(150);
+      const note = text(box.querySelector('.quick-note') as HTMLElement);
+      const got: string[] = [];
+      let ok = true;
+      for (const p of [25, 50, 75, 100] as const) {
+        button(box, `${p}%`)!.click();
+        await settle(80);
+        const uses = (box.querySelector('.swap-box .uses') as HTMLElement | null)?.dataset.uses;
+        const want = p === 100 ? x.eth - keep : ((x.eth - keep) * BigInt(p)) / 100n;
+        ok &&= uses === want.toString();
+        got.push(`${p}%: ${uses}`);
+      }
+      check(
+        'CR-82 buy quick amounts: the share of the ETH after keeping back 200,000 gas × the maximum fee per gas (7 gwei) × 3 = 0.0042 ETH, and the line says so',
+        ok && buyGasReserve(7n * 10n ** 9n) === keep && BUY_GAS_ALLOWANCE === 200_000n && note === 'Keeps back 0.0042 ETH for the buy’s gas (200,000 gas at 7 gwei, times 3).',
+        `${note} | ${got.join(' | ')}`,
+      );
+    }
+    {
+      const keep = 200_000n * 7n * 10n ** 9n * 3n;
+      const x = fresh({ eth: keep, maxFee: 7n * 10n ** 9n });
+      f = x;
+      const el = await mount(<Trade />, chain, walletOf(x), 'CR-82: buy quick amounts off, the balance only covers the gas kept back', extra);
+      const box = el.querySelector('#trade-panel-buy') as HTMLElement;
+      await settle(150);
+      const buttons = [25, 50, 75, 100].map((p) => button(box, `${p}%`));
+      const note = text(box.querySelector('.quick-note') as HTMLElement);
+      check(
+        'CR-82 buy quick amounts: with a balance that does not exceed the gas kept back, the four buttons are off, with the reason',
+        buttons.every((b) => b?.disabled === true) && note === 'Off: this wallet’s 0.0042 ETH does not cover the 0.0042 ETH kept back for the buy’s gas.',
+        note,
+      );
+    }
+    {
+      f = fresh();
+      const none = await mount(<Trade />, chain, null, 'CR-82: no wallet: no quick amounts', extra);
+      const noneSell = await mount(<Trade sell />, chain, null, 'CR-82: no wallet, sell: no quick amounts', extra);
+      const wrong = await mount(<Trade />, chain, walletOf(f), 'CR-82: wrong network: no quick amounts', { ...extra, wrongNetwork: true });
+      check(
+        'CR-82 quick amounts are absent without a wallet (both sides) and with a wallet on the wrong network',
+        none.querySelectorAll('.quick-btn').length === 0 && noneSell.querySelectorAll('.quick-btn').length === 0 && wrong.querySelectorAll('.quick-btn').length === 0,
+      );
+    }
+  } finally {
+    chooseWallet(null);
+    statusBox = null;
+  }
 }
 
 run()

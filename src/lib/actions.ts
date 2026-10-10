@@ -13,11 +13,13 @@ export const STAKING_GAS_LIMIT = 700_000n;
 /** How long a buy or a sell may wait to be included before the router refuses it. */
 export const BUY_DEADLINE_SECONDS = 20 * 60;
 
-/** How long the router's Permit2 allowance (a sell's step 2) lasts: 30 days, as the Uniswap app uses. */
+/** How long the router's Permit2 allowance (a sell's second approval) lasts: 30 days, as the Uniswap app uses; then it is renewed. */
 export const ROUTER_ALLOWANCE_SECONDS = 30 * 24 * 60 * 60;
 
-/** The largest Permit2 allowance (uint160). */
-const MAX_UINT160 = 2n ** 160n - 1n;
+/** The largest Permit2 allowance (uint160): the router's permission, without a limit (CR-83). */
+export const MAX_UINT160 = 2n ** 160n - 1n;
+/** The largest token allowance (uint256): TOWN's approval of Permit2, without a limit, once ever (CR-83). */
+export const MAX_UINT256 = 2n ** 256n - 1n;
 
 // Universal Router command and action codes (R1b A2).
 const V4_SWAP = '0x10';
@@ -95,19 +97,26 @@ export function sellTx(n: Network, amountIn: bigint, minOut: bigint, deadline: b
   };
 }
 
-/** A sell's step 1: `UpTownToken.approve(Permit2, amount)`. */
-export function approvePermit2Tx(n: Network, amount: bigint): TxRequest {
-  return { address: n.deployment!.contracts.UpTownToken, abi: TOKEN_ABI as Abi, functionName: 'approve', args: [n.uniswap!.permit2, amount] };
+/**
+ * A sell's first approval (CR-83): `UpTownToken.approve(Permit2, type(uint256).max)`, without a
+ * limit, once ever, as the Uniswap app does. Permit2 then moves the wallet's TOWN only for a spender
+ * the wallet itself has allowed in Permit2 (the router, below).
+ */
+export function approvePermit2Tx(n: Network): TxRequest {
+  return { address: n.deployment!.contracts.UpTownToken, abi: TOKEN_ABI as Abi, functionName: 'approve', args: [n.uniswap!.permit2, MAX_UINT256] };
 }
 
-/** A sell's step 2: `Permit2.approve(TOWN, Universal Router, amount, expiration)`, an on-chain approval (no signed message). */
-export function allowRouterTx(n: Network, amount: bigint, expiration: bigint): TxRequest {
-  const a = amount > MAX_UINT160 ? MAX_UINT160 : amount;
+/**
+ * A sell's second approval (CR-83): `Permit2.approve(TOWN, Universal Router, type(uint160).max,
+ * expiration)`, without a limit until `expiration` (30 days on), an on-chain approval (no signed
+ * message). The router moves a wallet's TOWN only in a trade that wallet itself sends.
+ */
+export function allowRouterTx(n: Network, expiration: bigint): TxRequest {
   return {
     address: n.uniswap!.permit2,
     abi: PERMIT2_ABI as Abi,
     functionName: 'approve',
-    args: [n.deployment!.contracts.UpTownToken, n.uniswap!.universalRouter, a, expiration],
+    args: [n.deployment!.contracts.UpTownToken, n.uniswap!.universalRouter, MAX_UINT160, expiration],
   };
 }
 

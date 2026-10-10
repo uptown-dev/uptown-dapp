@@ -852,3 +852,53 @@ export async function quoteBuy(client: PublicClient, n: Network, amountIn: bigin
   });
   return (result as readonly [bigint, bigint])[0];
 }
+
+// ---------------------------------------------------------------------------------------------
+// CR-82: the figures a run of approvals and an action reads again at the moment it sends, each set
+// read at one block. Nothing here is shown as a figure; the forms show what readAll read.
+// ---------------------------------------------------------------------------------------------
+
+/** What a sale needs, read now: the wallet's TOWN, its approval to Permit2, and Permit2's permission for the router. */
+export interface SellApprovals {
+  blockTimestamp: number;
+  balance: bigint;
+  /** UpTownToken.allowance(wallet, Permit2). */
+  toPermit2: bigint;
+  /** Permit2.allowance(wallet, TOWN, router): the amount and the second it expires. */
+  router: { amount: bigint; expiration: number };
+}
+
+export async function readSellApprovals(client: PublicClient, n: Network, account: Address): Promise<SellApprovals> {
+  const k = n.deployment!.contracts;
+  const block = await client.getBlock();
+  const at = { blockNumber: block.number! };
+  const [balance, toPermit2, router] = await Promise.all([
+    client.readContract({ address: k.UpTownToken, abi: TOKEN_ABI, functionName: 'balanceOf', args: [account], ...at }),
+    client.readContract({ address: k.UpTownToken, abi: TOKEN_ABI, functionName: 'allowance', args: [account, n.uniswap!.permit2], ...at }),
+    client.readContract({ address: n.uniswap!.permit2, abi: PERMIT2_ABI, functionName: 'allowance', args: [account, k.UpTownToken, n.uniswap!.universalRouter], ...at }),
+  ]);
+  const [amount, expiration] = router as readonly [bigint, number, number];
+  return { blockTimestamp: Number(block.timestamp), balance: balance as bigint, toPermit2: toPermit2 as bigint, router: { amount, expiration: Number(expiration) } };
+}
+
+/** What opening a vault or adding TOWN needs, read now: the wallet's TOWN and its approval to the staking contract. */
+export async function readStakeApproval(client: PublicClient, n: Network, staking: Address, account: Address): Promise<{ balance: bigint; allowance: bigint }> {
+  const town = n.deployment!.contracts.UpTownToken;
+  const block = await client.getBlock();
+  const at = { blockNumber: block.number! };
+  const [balance, allowance] = await Promise.all([
+    client.readContract({ address: town, abi: TOKEN_ABI, functionName: 'balanceOf', args: [account], ...at }),
+    client.readContract({ address: town, abi: TOKEN_ABI, functionName: 'allowance', args: [account, staking], ...at }),
+  ]);
+  return { balance: balance as bigint, allowance: allowance as bigint };
+}
+
+/** TownStaking.vaultPriceWei(tier), read now; throws when the contract has no price (it reverts). */
+export async function readVaultPrice(client: PublicClient, staking: Address, tier: Tier): Promise<bigint> {
+  return (await client.readContract({ address: staking, abi: STAKING_ABI, functionName: 'vaultPriceWei', args: [tier] })) as bigint;
+}
+
+/** The wallet's TOWN, read now (the quick-amount buttons, CR-82). */
+export async function readTownBalance(client: PublicClient, n: Network, account: Address): Promise<bigint> {
+  return (await client.readContract({ address: n.deployment!.contracts.UpTownToken, abi: TOKEN_ABI, functionName: 'balanceOf', args: [account] })) as bigint;
+}

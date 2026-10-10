@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { RunStatus, Stop, readUntil, useRun, useWatch, type Run, type Runner } from '../components/steps';
 import { useApp, useChain, useTx, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs, TxStatus, Uses, type Tx } from '../components/ui';
 import { amountError, amountOrNull } from '../lib/amount';
 import { UNLISTED_STAKING, listedStaking } from '../lib/network';
@@ -17,6 +18,11 @@ import {
 } from '../lib/derive';
 import { fmtBps, fmtDate, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUsd8, shortAddress } from '../lib/format';
 import { STAKING_GAS_LIMIT, addStakeTx, approveTx, claimWethTx, openVaultTx, unstakeTx, upgradeTx, withMargin } from '../lib/actions';
+import { readStakeApproval, readVaultPrice } from '../lib/reads';
+import { explainError } from '../lib/errors';
+import type { Network } from '../lib/network';
+import type { PublicClient } from 'viem';
+import type { Address } from '../data/types';
 
 /** A TOWN amount typed (CR-72: a point for decimals, commas only between thousands), or null. */
 const parseTown = (s: string): bigint | null => amountOrNull(s, 18);
@@ -442,8 +448,13 @@ function YourVault() {
   const { wallet, network } = useApp();
   const chain = useChain();
   // One transaction state for every vault action, kept here so its result stays in view when the
-  // tabs change (opening a vault turns "Open a vault" into Claim, Add, Upgrade and Unstake).
-  const tx = useTx();
+  // tabs change (opening a vault turns "Open a vault" into Claim, Add, Upgrade and Unstake). Opening
+  // and adding run their approval and the stake from one press (CR-82): their run lives here for the
+  // same reason. Only the latest of the two is shown.
+  const single = useTx();
+  const steps = useRun();
+  const tx: Tx = { ...single, busy: single.busy || steps.busy, run: (...a) => (steps.reset(), single.run(...a)) };
+  const run: Run = { ...steps, busy: steps.busy || single.busy, start: (...a) => (single.reset(), steps.start(...a)) };
   // CR-72: the treasury pays a staking contract the site does not list: its figures, no action.
   const unlisted = listedStaking(network, chain.staking.address) === null;
   if (!wallet) {
@@ -490,11 +501,11 @@ function YourVault() {
         render={(id) => {
           switch (id) {
             case 'open':
-              return <OpenForm tx={tx} />;
+              return <OpenForm tx={tx} run={run} />;
             case 'claim':
               return <ClaimForm tx={tx} />;
             case 'add':
-              return <AddForm tx={tx} />;
+              return <AddForm tx={tx} run={run} />;
             case 'upgrade':
               return <UpgradeForm tx={tx} />;
             default:
@@ -504,6 +515,7 @@ function YourVault() {
       />
       )}
       <TxStatus tx={tx} />
+      <RunStatus run={run} />
       </div>
       <GoodToKnow />
       </div>
@@ -511,29 +523,50 @@ function YourVault() {
   );
 }
 
-/** Step 1 of opening or adding: approve exactly the TOWN typed; shows when the allowance already covers it. */
-function ApproveButton({ tx, amount }: { tx: Tx; amount: bigint | null }) {
-  const chain = useChain();
-  const { wallet, network } = useApp();
-  const enough = !!wallet && amount !== null && amount > 0n && wallet.townAllowanceToStaking >= amount;
+/** Opening or adding: the exact-amount approval when it is missing, then the stake (CR-82). */
+function stakePlan(approve: boolean, action: string): { id: string; label: string }[] {
+  return [...(approve ? [{ id: 'approve', label: 'Approve TOWN' }] : []), { id: 'stake', label: action }];
+}
+
+/** Before the press: how many transactions the action takes, and that the wallet asks for each. */
+function StakePlan({ amount, action }: { amount: bigint; action: string }) {
+  const { network } = useApp();
   return (
-    <button
-      type="button"
-      class="btn btn-secondary"
-      disabled={tx.busy || enough || amount === null || amount === 0n}
-      onClick={() =>
-        amount !== null &&
-        void tx.run('Approve TOWN', () => approveTx(network, chain.staking.address, amount), () => `The staking contract may now move ${fmtTown(amount)} of your TOWN. Now do step 2.`)
-      }
-    >
-      {enough ? '1. TOWN approved' : '1. Approve TOWN'}
-    </button>
+    <p class="run-plan small" data-transactions="2">
+      <strong>This takes 2 transactions:</strong> approve exactly <span class="num">{fmtTown(amount)}</span> TOWN for the staking contract, then {action}.{' '}
+      {network.local
+        ? 'Each is sent from the test wallet as soon as the one before is confirmed.'
+        : 'Your wallet asks you to confirm each one; the second is sent as soon as the first is confirmed.'}
+    </p>
   );
 }
 
-function OpenForm({ tx }: { tx: Tx }) {
+/**
+ * The run behind "Approve and open" and "Approve and add" (CR-82): reads the approval now; sends the
+ * exact-amount approval when it does not cover the amount (staking approvals stay the exact amount);
+ * then, once it is confirmed, `last` prepares and sends the stake.
+ */
+async function approveThen(
+  r: Runner,
+  ctx: { client: PublicClient; network: Network; staking: Address; from: Address; amount: bigint; action: string },
+  last: () => Promise<void>,
+): Promise<void> {
+  const { client, network, staking, from, amount, action } = ctx;
+  const read = () => readStakeApproval(client, network, staking, from);
+  const s = await read();
+  const need = s.allowance < amount;
+  r.plan(stakePlan(need, action));
+  if (s.balance < amount) throw new Stop(`This wallet holds ${fmtTown(s.balance)} TOWN, less than the ${fmtTown(amount)} TOWN typed, so nothing was sent.`, 'Balance', false);
+  if (need) {
+    await r.send('approve', () => approveTx(network, staking, amount));
+    await readUntil(r, read, (x) => x.allowance >= amount, 'the stake');
+  }
+  await last();
+}
+
+function OpenForm({ tx, run }: { tx: Tx; run: Run }) {
   const chain = useChain();
-  const { wallet, network } = useApp();
+  const { wallet, network, client, account } = useApp();
   const st = chain.staking;
   const [tier, setTier] = useState<Tier>(1);
   const [amount, setAmount] = useState('');
@@ -541,6 +574,35 @@ function OpenForm({ tx }: { tx: Tx }) {
   const amt = parseTown(amount);
   const tooMuch = !!wallet && amt !== null && amt > wallet.townBalance;
   const approved = !!wallet && amt !== null && amt > 0n && wallet.townAllowanceToStaking >= amt;
+  useWatch(run, { amount, tier: String(tier), staking: st.address });
+  const open = () => {
+    if (price === null || amt === null || !account) return;
+    const shown = price; // the figure the "You send" line is built from
+    const t = tier;
+    const a = amt;
+    const staking = st.address;
+    const action = `Open tier ${t} vault`;
+    void run.start(`Open a tier ${t} vault`, stakePlan(!approved, action), async (r) => {
+      await approveThen(r, { client, network, staking, from: account, amount: a, action }, async () => {
+        // The vault price read again just before the stake is sent.
+        let now: bigint;
+        try {
+          now = await readVaultPrice(client, staking, t);
+        } catch (e) {
+          throw new Stop(explainError(e).message);
+        }
+        r.check();
+        if (now > shown)
+          throw new Stop(
+            `The tier ${t} vault price rose to ${fmtEth(now, 6)} ETH, above the ${fmtEth(shown, 6)} ETH shown, so the vault was not opened. Press the button again to open it at the new price: you would send about ${fmtEth(withMargin(now), 6)} ETH.`,
+            'PriceRose',
+            false,
+          );
+        await r.send('stake', () => openVaultTx(network, staking, t, a, shown));
+      });
+      return `Your tier ${t} vault is open with ${fmtTown(a)} TOWN staked. The extra ETH was refunded.`;
+    });
+  };
   return (
     <form class="action-form" onSubmit={(e) => e.preventDefault()}>
       <Chips label="Tier" options={TIERS.map((t) => ({ value: t, label: `Tier ${t} · $${st.tierUsd[t]}` }))} value={tier} onChange={setTier} />
@@ -583,20 +645,11 @@ function OpenForm({ tx }: { tx: Tx }) {
         <Row label="You send (about 1% more)" value={price === null ? '—' : `${fmtEth(withMargin(price), 6)} ETH`} />
         <Row label="Refunded at once" value={price === null ? '—' : `≈ ${fmtEth(withMargin(price) - price, 6)} ETH`} />
       </Rows>
+      {amt !== null && amt > 0n && !approved && !tooMuch && !tx.busy && <StakePlan amount={amt} action="open the vault" />}
       <PausedTag />
       <div class="btn-row">
-        <ApproveButton tx={tx} amount={amt} />
-        <button
-          type="button"
-          class="btn btn-primary"
-          disabled={tx.busy || price === null || amt === null || amt === 0n || tooMuch || !approved}
-          onClick={() =>
-            price !== null &&
-            amt !== null &&
-            void tx.run(`Open a tier ${tier} vault`, () => openVaultTx(network, chain.staking.address, tier, amt, price), () => `Your tier ${tier} vault is open with ${fmtTown(amt)} TOWN staked. The extra ETH was refunded.`)
-          }
-        >
-          {`2. Open tier ${tier} vault`}
+        <button type="button" class="btn btn-primary stake-go" disabled={tx.busy || price === null || amt === null || amt === 0n || tooMuch} onClick={open}>
+          {approved || amt === null || amt === 0n ? `Open tier ${tier} vault` : `Approve and open tier ${tier} vault`}
         </button>
       </div>
     </form>
@@ -622,13 +675,25 @@ function ClaimForm({ tx }: { tx: Tx }) {
   );
 }
 
-function AddForm({ tx }: { tx: Tx }) {
+function AddForm({ tx, run }: { tx: Tx; run: Run }) {
   const chain = useChain();
-  const { wallet, network } = useApp();
+  const { wallet, network, client, account } = useApp();
   const [amount, setAmount] = useState('');
   const amt = parseTown(amount);
   const tooMuch = !!wallet && amt !== null && amt > wallet.townBalance;
   const approved = !!wallet && amt !== null && amt > 0n && wallet.townAllowanceToStaking >= amt;
+  useWatch(run, { amount, staking: chain.staking.address });
+  const add = () => {
+    if (amt === null || !account) return;
+    const a = amt;
+    const staking = chain.staking.address;
+    void run.start('Add TOWN', stakePlan(!approved, 'Add TOWN'), async (r) => {
+      await approveThen(r, { client, network, staking, from: account, amount: a, action: 'Add TOWN' }, async () => {
+        await r.send('stake', () => addStakeTx(network, staking, a));
+      });
+      return `${fmtTown(a)} TOWN was added to your vault.`;
+    });
+  };
   return (
     <form class="action-form" onSubmit={(e) => e.preventDefault()}>
       <div class="field">
@@ -659,15 +724,10 @@ function AddForm({ tx }: { tx: Tx }) {
         </span>
         {tooMuch && <FieldError>That is more TOWN than this wallet holds.</FieldError>}
       </div>
+      {amt !== null && amt > 0n && !approved && !tooMuch && !tx.busy && <StakePlan amount={amt} action="add it to your vault" />}
       <div class="btn-row">
-        <ApproveButton tx={tx} amount={amt} />
-        <button
-          type="button"
-          class="btn btn-primary"
-          disabled={tx.busy || amt === null || amt === 0n || tooMuch || !approved}
-          onClick={() => amt !== null && void tx.run('Add TOWN', () => addStakeTx(network, chain.staking.address, amt), () => `${fmtTown(amt)} TOWN was added to your vault.`)}
-        >
-          2. Add TOWN
+        <button type="button" class="btn btn-primary stake-go" disabled={tx.busy || amt === null || amt === 0n || tooMuch} onClick={add}>
+          {approved || amt === null || amt === 0n ? 'Add TOWN' : 'Approve and add TOWN'}
         </button>
       </div>
     </form>

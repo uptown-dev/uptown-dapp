@@ -63,7 +63,7 @@ const PLAIN: Record<string, string> = {
   NoPendingFeed: 'No price feed change has been announced.',
   // OpenZeppelin
   ERC20InsufficientBalance: 'This wallet does not hold enough TOWN for that.',
-  ERC20InsufficientAllowance: 'The staking contract may not move that much of your TOWN yet. Approve TOWN first (step 1).',
+  ERC20InsufficientAllowance: 'The staking contract may not move that much of your TOWN yet. Press the button again: it asks for the approval first.',
   ERC20InvalidSpender: 'That address cannot be approved to move TOWN.',
   ERC20InvalidReceiver: 'That address cannot receive TOWN.',
   ReentrancyGuardReentrantCall: 'The contract refused a call made from inside another call.',
@@ -77,9 +77,9 @@ const PLAIN: Record<string, string> = {
   PriceLimitAlreadyExceeded: 'The pool’s price moved past the limit, so the buy was cancelled.',
   NotEnoughLiquidity: 'The pool does not hold enough TOWN for this buy. Try a smaller amount.',
   InsufficientETH: 'Not enough ETH was sent with the buy.',
-  // Permit2 (a sell's step 2)
-  AllowanceExpired: 'The router’s permission to move your TOWN has expired. Do step 2, “Allow the router”, again, then sell.',
-  InsufficientAllowance: 'The router may not move that much of your TOWN yet. Do step 2, “Allow the router”, for at least this amount, then sell.',
+  // Permit2 (a sell's second approval)
+  AllowanceExpired: 'The router’s permission to move your TOWN has expired. Press the sell button again: it renews the permission, then sells.',
+  InsufficientAllowance: 'The router may not move your TOWN yet. Press the sell button again: it asks for the permission first, then sells.',
 };
 
 /** What a trade is, for the errors that read differently on a sell (CR-43). */
@@ -93,7 +93,7 @@ const SELL: Record<string, string> = {
   DeadlinePassed: 'The sale waited too long to be included and was cancelled. Try again.',
   PriceLimitAlreadyExceeded: 'The pool’s price moved past the limit, so the sale was cancelled.',
   NotEnoughLiquidity: 'The pool does not hold enough ETH for this sale. Try a smaller amount.',
-  ERC20InsufficientAllowance: 'Permit2 may not move that much of your TOWN yet. Do step 1, “Approve TOWN”, for at least this amount, then sell.',
+  ERC20InsufficientAllowance: 'Permit2 may not move your TOWN yet. Press the sell button again: it asks for the approval first, then sells.',
 };
 
 /** The custom error inside a revert, unwrapping the Universal Router's and the pool manager's wrappers. */
@@ -124,12 +124,12 @@ function sentence(name: string, args: readonly unknown[], kind?: TradeKind): str
 
 /**
  * Permit2 moves TOWN with a transfer that hides the token's own error and reverts with the text
- * TRANSFER_FROM_FAILED: on a sell, step 1 does not cover the amount or the wallet holds less TOWN.
+ * TRANSFER_FROM_FAILED: on a sell, TOWN is not approved for Permit2 or the wallet holds less TOWN.
  */
 function reasonSentence(reason: string, kind?: TradeKind): { message: string; name: string } {
   if (reason === 'TRANSFER_FROM_FAILED' && kind === 'sell')
     return {
-      message: 'Permit2 could not move your TOWN: step 1, “Approve TOWN”, does not cover this amount, or the wallet holds less TOWN than this. Check both, then sell.',
+      message: 'Permit2 could not move your TOWN: TOWN is not approved for Permit2, or the wallet holds less TOWN than this. Check the amount, then press the sell button again.',
       name: 'TRANSFER_FROM_FAILED',
     };
   return { message: `The contract refused this: ${reason}.`, name: 'Error' };

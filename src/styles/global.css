@@ -544,6 +544,31 @@ main:focus {
     display: none;
   }
 }
+/* F9o: below 400 px the header row is tighter still. At 360 px the wordmark, the theme button, the
+   wallet button, the menu button and their gaps needed 27 px more than the row has, which made the
+   whole page 372 px wide and scroll sideways. Here the header's side margins and the gaps between its
+   items are smaller, the wallet button's padding is narrower and the theme and menu buttons are 32 px
+   wide instead of 36 (still 36 px tall); nothing is hidden. */
+@media (max-width: 399px) {
+  .site-header .header-row {
+    padding-left: 10px;
+    padding-right: 10px;
+    gap: 6px;
+  }
+  .header-tools {
+    gap: 5px;
+  }
+  .wordmark {
+    gap: 6px;
+  }
+  .wallet-btn {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+  .header-tools .icon-btn {
+    width: 32px;
+  }
+}
 
 /* ---------- buttons ---------- */
 
@@ -2663,6 +2688,75 @@ code.break {
 }
 .owner-foot {
   margin: 0;
+}
+
+/* ---------- F9o (CR-82): quick amounts, one button for approvals and the action ---------- */
+
+/* 25%, 50%, 75% and 100% under an amount field. */
+.quick {
+  margin-top: 8px;
+}
+.quick-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.quick-btn {
+  text-align: center;
+  padding: 4px 0;
+}
+.quick-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.quick-note {
+  margin-top: 6px;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+/* Before the press: how many transactions the action takes. */
+.run-plan {
+  margin: 4px 2px 12px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  overflow-wrap: anywhere;
+}
+.run-plan p + p {
+  margin-top: 4px;
+}
+.action-form .run-plan {
+  margin: 0;
+}
+/* During and after the run: each step with its state and transaction. */
+.run-steps {
+  margin: 4px 0 6px;
+  padding-left: 20px;
+  display: grid;
+  gap: 2px;
+}
+.run-step-label {
+  font-weight: 600;
+}
+.run-step.done .run-step-state {
+  color: var(--text);
+}
+.run-step.todo .run-step-state,
+.run-step.failed .run-step-state {
+  color: var(--text-2);
+}
+.run-step.failed .run-step-state {
+  color: var(--warn-text);
+}
+.run-step.wallet,
+.run-step.pending,
+.run-step.checking {
+  font-weight: 600;
+}
+.run-step a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 /* ---------- F9i (CR-72): the amount a field uses, the stale-data notice, the wallet picker ---------- */

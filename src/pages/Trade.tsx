@@ -1,5 +1,7 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus, Uses } from '../components/ui';
+import { RunStatus, Stop, readUntil, useRun, useWatch } from '../components/steps';
 import { amountError, amountOrNull } from '../lib/amount';
 import { ArrowDownIcon } from '../components/icons';
 import {
@@ -19,9 +21,10 @@ import {
   townSellFee,
 } from '../lib/derive';
 import type { ChainState } from '../data/types';
-import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtTown, fmtUnits, shortAddress, fmtRate } from '../lib/format';
-import { quoteBuy, quoteSell } from '../lib/reads';
+import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtInt, fmtTown, fmtUnits, shortAddress, fmtRate } from '../lib/format';
+import { quoteBuy, quoteSell, readSellApprovals, readTownBalance, type SellApprovals } from '../lib/reads';
 import { BUY_DEADLINE_SECONDS, ROUTER_ALLOWANCE_SECONDS, allowRouterTx, approvePermit2Tx, buyTx, sellTx } from '../lib/actions';
+import { BUY_GAS_ALLOWANCE, BUY_GAS_MARGIN, QUICK_SHARES, buyGasReserve, buyShare, quickText, shareOf, type QuickShare } from '../lib/quick';
 import { explainError } from '../lib/errors';
 
 const SLIPPAGE = [
@@ -65,6 +68,57 @@ function MinMessages({ min, estimate, text, unit, example, trade }: { min: bigin
 /** The latest of the chain's time and the clock, for deadlines and the Permit2 expiry. */
 function nowSeconds(blockTimestamp: number): number {
   return Math.max(blockTimestamp, Math.floor(Date.now() / 1000));
+}
+
+/**
+ * The 25%, 50%, 75% and 100% buttons under an amount field (CR-82 item 4). Shown only with a wallet
+ * connected on the right network; pressing one replaces the field's text, which stays editable.
+ */
+function QuickAmounts({ label, off, onPick, children }: { label: string; off: boolean; onPick: (pct: QuickShare) => void; children?: ComponentChildren }) {
+  return (
+    <div class="quick">
+      <div class="quick-row" role="group" aria-label={label}>
+        {QUICK_SHARES.map((p) => (
+          <button type="button" class="chip quick-btn" key={p} disabled={off} onClick={() => onPick(p)}>
+            {p}%
+          </button>
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** The network's current maximum fee per gas, read again with every new block while `on`; null until read. */
+function useMaxFee(on: boolean): bigint | null {
+  const chain = useChain();
+  const { client } = useApp();
+  const [fee, setFee] = useState<bigint | null>(null);
+  useEffect(() => {
+    if (!on) return;
+    let live = true;
+    client.estimateFeesPerGas().then(
+      (f) => live && setFee(f.maxFeePerGas ?? null),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [on, chain.blockNumber]);
+  return fee;
+}
+
+/** A fee per gas in gwei, for the line on the gas kept back. */
+const fmtGwei = (wei: bigint) => fmtUnits(wei, 9, wei < 10n ** 9n ? 4 : 2);
+
+
+/** A sale's transactions, in order: the approvals still missing, then the sale (CR-82). */
+function sellPlan(approve: boolean, allow: boolean): { id: string; label: string }[] {
+  return [
+    ...(approve ? [{ id: 'approve', label: 'Approve TOWN' }] : []),
+    ...(allow ? [{ id: 'allow', label: 'Allow the router' }] : []),
+    { id: 'sell', label: 'Sell TOWN' },
+  ];
 }
 
 /** The Trade page (CR-43): the site's own buy and sell forms; no link to trade elsewhere (CR-64). */
@@ -115,8 +169,9 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
           <li>
             <strong>Approvals before a first sell.</strong> The router takes your TOWN through Uniswap’s Permit2 contract (
             <code>{network.uniswap ? shortAddress(network.uniswap.permit2) : '—'}</code>), so a first sell needs two approvals, each its own
-            transaction: TOWN to Permit2, then Permit2 to the router for 30 days. Together they cost about 94,000 gas on Ethereum. Both cover all the TOWN
-            the wallet holds, so later sells need no new approval until the 30 days pass or you hold more TOWN.
+            transaction, sent one after the other by the sell button: TOWN to Permit2, once and without a limit, then Permit2 to the router, without a limit
+            for 30 days. Together they cost about 94,000 gas on Ethereum. Later sells need no new approval; every 30 days the router’s permission is renewed
+            with one transaction. The router can move your TOWN only in a trade you send yourself.
           </li>
           <li>
             <strong>Fees on a buy.</strong> The buy fee ({fmtBps(chain.hook.BUY_FEE_BPS)} of the ETH, to the treasury; 10% of it is kept for the owner) and the
@@ -256,7 +311,7 @@ function useQuote(active: boolean, amountIn: bigint | null, ask: (amountIn: bigi
 
 function BuyForm({ active }: { active: boolean }) {
   const chain = useChain();
-  const { wallet, account, network, client } = useApp();
+  const { wallet, account, network, client, wrongNetwork } = useApp();
   const tx = useTx();
   const [amount, setAmount] = useState('0.1');
   const [slippage, setSlippage] = useState(100);
@@ -277,6 +332,29 @@ function BuyForm({ active }: { active: boolean }) {
   const rebate = estimate !== null ? afterClaimFee(chain, (estimate * BigInt(Math.round(rate * 100))) / 1_000_000n) : null;
   const overBalance = !!wallet && amountIn !== null && amountIn > wallet.ethBalance;
   const mins = minCheck(minValue, estimate);
+
+  // CR-82 item 4: the quick amounts keep back the buy's gas (BUY_GAS_ALLOWANCE times the current
+  // maximum fee per gas, times BUY_GAS_MARGIN), so a 100% buy still has its gas.
+  const quickOn = !!wallet && !!account && !wrongNetwork;
+  const maxFee = useMaxFee(active && quickOn);
+  const keep = maxFee !== null ? buyGasReserve(maxFee) : null;
+  const tooLittle = !!wallet && keep !== null && wallet.ethBalance <= keep;
+  const pick = async (pct: QuickShare) => {
+    if (!wallet || !account) return;
+    let balance = wallet.ethBalance;
+    let fee = maxFee;
+    try {
+      // The balance and the fee at the moment of the press.
+      [balance, fee] = await Promise.all([client.getBalance({ address: account }), client.estimateFeesPerGas().then((f) => f.maxFeePerGas ?? null)]);
+    } catch {
+      /* the figures last read */
+    }
+    if (fee === null) return;
+    const v = buyShare(balance, fee, pct);
+    if (v === null) return;
+    setAmount(quickText(v));
+    setMinText(null);
+  };
 
   const buy = () => {
     if (!account || amountIn === null || minValue === null || mins.zero) return;
@@ -316,6 +394,22 @@ function BuyForm({ active }: { active: boolean }) {
           <span class="token-pill">ETH</span>
         </div>
         <Uses value={amountIn} unit="ETH" />
+        {quickOn && (
+          <QuickAmounts label="Fill in a share of your ETH, after the gas kept back" off={keep === null || tooLittle} onPick={(p) => void pick(p)}>
+            <p
+              class="quick-note small muted"
+              data-keep={keep?.toString() ?? ''}
+              data-max-fee={maxFee?.toString() ?? ''}
+              title={maxFee !== null ? `${fmtInt(Number(BUY_GAS_ALLOWANCE))} gas at ${fmtGwei(maxFee)} gwei, times ${BUY_GAS_MARGIN}` : undefined}
+            >
+              {keep === null
+                ? 'Reading the network’s gas price…'
+                : tooLittle
+                  ? `Off: this wallet’s ${fmtEth(wallet!.ethBalance, 6)} ETH does not cover the ${fmtEth(keep, 6)} ETH kept back for the buy’s gas.`
+                  : `Keeps back ${fmtEth(keep, 6)} ETH for the buy’s gas (${fmtInt(Number(BUY_GAS_ALLOWANCE))} gas at ${fmtGwei(maxFee!)} gwei, times ${BUY_GAS_MARGIN}).`}
+            </p>
+          </QuickAmounts>
+        )}
       </div>
 
       <div class="swap-arrow" aria-hidden="true">
@@ -417,8 +511,8 @@ function BuyForm({ active }: { active: boolean }) {
 
 function SellForm({ active }: { active: boolean }) {
   const chain = useChain();
-  const { wallet, account, network, client } = useApp();
-  const tx = useTx();
+  const { wallet, account, network, client, wrongNetwork } = useApp();
+  const run = useRun();
   const [amount, setAmount] = useState('');
   const [slippage, setSlippage] = useState(100);
   const [minText, setMinText] = useState<string | null>(null);
@@ -444,51 +538,91 @@ function SellForm({ active }: { active: boolean }) {
   const mins = minCheck(minValue, estimate);
   const ok = amountIn !== null && amountIn > 0n && !overBalance;
 
-  // The two approvals (Permit2, on-chain transactions, no signed message). Each covers the larger
-  // of the amount typed and the wallet's whole TOWN balance, so later sells need no new approval.
-  const now = nowSeconds(chain.blockTimestamp);
-  const approveAmount = wallet && amountIn !== null ? (amountIn > wallet.townBalance ? amountIn : wallet.townBalance) : null;
-  const step1Done = !!wallet && ok && wallet.townAllowanceToPermit2 >= amountIn!;
+  // The two approvals (Permit2, on-chain transactions, no signed message), without a limit as the
+  // Uniswap app gives them (CR-83): TOWN to Permit2 once ever, then Permit2 to the router for 30 days.
+  // A step counts as done when the allowance on chain covers the amount (and, for the router, has not
+  // expired), so a wallet holding older, smaller approvals is asked once more.
+  const quickOn = !!wallet && !!account && !wrongNetwork;
+  const needApprove = !!wallet && ok && wallet.townAllowanceToPermit2 < amountIn!;
   const ra = wallet?.routerAllowance;
   const routerExpired = !!ra && ra.amount > 0n && ra.expiration < chain.blockTimestamp;
-  const step2Done = !!ra && ok && ra.amount >= amountIn! && ra.expiration >= chain.blockTimestamp;
+  const needAllow = !!wallet && ok && !(!!ra && ra.amount >= amountIn! && ra.expiration >= chain.blockTimestamp);
+  const plan = sellPlan(needApprove, needAllow);
+  const label = needApprove ? 'Approve and sell' : needAllow ? (routerExpired ? 'Renew and sell' : 'Allow the router and sell') : 'Sell TOWN';
 
-  const approve = () => {
-    if (approveAmount === null) return;
-    void tx.run(
-      'Approve TOWN',
-      () => approvePermit2Tx(network, approveAmount),
-      () => `Permit2 may now move up to ${fmtTown(approveAmount)} of your TOWN. Now do step 2.`,
-      'sell',
-    );
+  // CR-82: the run stops, sending nothing more, if any of these change while it goes on.
+  useWatch(run, { amount, minimum: minText ?? `automatic, ${slippage}`, page: active ? 'shown' : 'hidden' });
+
+  const pick = async (pct: QuickShare) => {
+    if (!wallet || !account) return;
+    let balance = wallet.townBalance;
+    try {
+      balance = await readTownBalance(client, network, account); // the balance at the moment of the press
+    } catch {
+      /* the figure last read */
+    }
+    setAmount(quickText(shareOf(balance, pct)));
+    setMinText(null);
   };
-  const allow = () => {
-    if (approveAmount === null) return;
-    const expiration = now + ROUTER_ALLOWANCE_SECONDS;
-    void tx.run(
-      'Allow the router',
-      () => allowRouterTx(network, approveAmount, BigInt(expiration)),
-      () => `The router may now move up to ${fmtTown(approveAmount)} of your TOWN through Permit2, until ${fmtDateTime(expiration)}. Now sell.`,
-      'sell',
-    );
-  };
+
   const sell = () => {
     if (!account || amountIn === null || minValue === null || mins.zero) return;
-    const deadline = BigInt(now + BUY_DEADLINE_SECONDS);
+    const from = account;
     const sold = amountIn;
-    const burned = townFee ?? 0n;
-    const toTreasury = ethFee;
+    // The minimum the visitor saw (their own or the automatic one) is kept for the sale.
+    const min = minValue;
     const paidInEth = inEth;
-    const about = estimate;
-    void tx.run(
+    const shownEstimate = estimate;
+    void run.start(
       'Sell TOWN',
-      () => sellTx(network, sold, minValue, deadline),
-      () =>
-        `You sold ${fmtTown(sold)} TOWN${about !== null ? ` for about ${fmtEth(about, 6)} ETH` : ''}; ${
+      plan,
+      async (r) => {
+        const read = () => readSellApprovals(client, network, from);
+        const missing = (s: SellApprovals) => ({
+          approve: s.toPermit2 < sold,
+          allow: s.router.amount < sold || s.router.expiration < s.blockTimestamp,
+        });
+        // What is still missing, read now: approvals already on chain are not asked for again.
+        let s = await read();
+        const m = missing(s);
+        r.plan(sellPlan(m.approve, m.allow));
+        if (m.approve) {
+          await r.send('approve', () => approvePermit2Tx(network));
+          s = await readUntil(r, read, (x) => !missing(x).approve, 'the sale');
+        }
+        if (m.allow) {
+          await r.send('allow', () => allowRouterTx(network, BigInt(nowSeconds(s.blockTimestamp) + ROUTER_ALLOWANCE_SECONDS)));
+          s = await readUntil(r, read, (x) => !missing(x).allow, 'the sale');
+        }
+        // The sale is prepared now, not when the button was pressed: the balance and both approvals
+        // read again, a fresh estimate after any approval, and a fresh deadline.
+        r.check();
+        const f = await read();
+        if (f.balance < sold) throw new Stop(`This wallet now holds ${fmtTown(f.balance)} TOWN, less than the ${fmtTown(sold)} TOWN to sell, so the sale was not sent.`, 'Balance');
+        const fm = missing(f);
+        if (fm.approve || fm.allow) throw new Stop('The approvals on chain do not cover this sale yet, so it was not sent.', 'Approvals');
+        let about = shownEstimate;
+        if (r.confirmed() > 0) {
+          const now = await quoteSell(client, network, sold);
+          r.check();
+          if (now < min)
+            throw new Stop(
+              `The price moved while the approvals confirmed: the estimate is now ${fmtEth(now, 6)} ETH, below the minimum of ${fmtEth(min, 6)} ETH you saw, so the sale was not sent. Your approvals are in place: press the button again to sell at the new estimate, or change the minimum.`,
+              'PriceMoved',
+              false,
+            );
+          about = now;
+        }
+        const deadline = BigInt(nowSeconds(f.blockTimestamp) + BUY_DEADLINE_SECONDS);
+        await r.send('sell', () => sellTx(network, sold, min, deadline));
+        const burned = paidInEth ? 0n : townSellFee(chain, sold);
+        const toTreasury = paidInEth && about !== null ? ethSellFee(chain, about) : null;
+        return `You sold ${fmtTown(sold)} TOWN${about !== null ? ` for about ${fmtEth(about, 6)} ETH` : ''}; ${
           paidInEth
             ? `${toTreasury !== null ? `about ${fmtEth(toTreasury, 6)} ETH` : '2% of the ETH'} of the sale, the sell fee, went to the treasury`
             : `${fmtTown(burned)} TOWN of it was burned`
-        }. Your rebates are unchanged.`,
+        }. Your rebates are unchanged.`;
+      },
       'sell',
     );
   };
@@ -522,6 +656,11 @@ function SellForm({ active }: { active: boolean }) {
           <span class="token-pill gold">TOWN</span>
         </div>
         <Uses value={amountIn} unit="TOWN" />
+        {quickOn && wallet && (
+          <QuickAmounts label="Fill in a share of your TOWN" off={wallet.townBalance === 0n} onPick={(p) => void pick(p)}>
+            {wallet.townBalance === 0n && <p class="quick-note small muted">Off: this wallet holds no TOWN.</p>}
+          </QuickAmounts>
+        )}
       </div>
 
       <div class="swap-arrow" aria-hidden="true">
@@ -608,32 +747,31 @@ function SellForm({ active }: { active: boolean }) {
 
       {account ? (
         <>
-          {routerExpired && (
-            <p class="small muted swap-note">
-              The router’s permission to move your TOWN expired on {fmtDateTime(ra!.expiration)}. Step 2 renews it.
-            </p>
+          {plan.length > 1 && !run.busy && (
+            <div class="run-plan small" data-transactions={plan.length}>
+              <p>
+                <strong>This sale takes {plan.length} transactions:</strong> {plan.map((p) => p.label.charAt(0).toLowerCase() + p.label.slice(1)).join(', then ')}.{' '}
+                {network.local
+                  ? 'Each is sent from the test wallet as soon as the one before is confirmed.'
+                  : 'Your wallet asks you to confirm each one; each is sent as soon as the one before is confirmed.'}
+              </p>
+              <p class="muted">
+                {needApprove
+                  ? 'TOWN is approved for Permit2 once, without a limit; the router’s permission, also without a limit, is renewed every 30 days. The router can move your TOWN only in a trade you send yourself.'
+                  : routerExpired
+                    ? `The router’s permission to move your TOWN expired on ${fmtDateTime(ra!.expiration)}. Renewing it lasts 30 days, without a limit; the router can move your TOWN only in a trade you send yourself.`
+                    : 'The router’s permission lasts 30 days, without a limit, and is then renewed. The router can move your TOWN only in a trade you send yourself.'}
+              </p>
+            </div>
           )}
-          <div class="btn-row sell-steps">
-            <button type="button" class="btn btn-secondary" disabled={tx.busy || !ok || step1Done} onClick={approve}>
-              {step1Done ? '1. TOWN approved' : '1. Approve TOWN'}
-            </button>
-            <button type="button" class="btn btn-secondary" disabled={tx.busy || !ok || !step1Done || step2Done} onClick={allow}>
-              {step2Done ? '2. Router allowed' : '2. Allow the router'}
-            </button>
-            <button type="button" class="btn btn-primary" disabled={tx.busy || !ok || !step1Done || !step2Done || minValue === null || mins.zero} onClick={sell}>
-              3. Sell
-            </button>
-          </div>
-          {ok && (!step1Done || !step2Done) && (
-            <p class="small muted swap-note">
-              Steps 1 and 2 are needed once: they cover all <span class="num">{fmtTown(approveAmount ?? 0n)}</span> TOWN this wallet holds, for 30 days.
-            </p>
-          )}
+          <button type="button" class="btn btn-primary btn-block sell-go" disabled={run.busy || !ok || minValue === null || mins.zero} onClick={sell}>
+            {run.busy ? 'Selling…' : label}
+          </button>
         </>
       ) : (
         <ConnectPrompt what="your balance and sell" block />
       )}
-      <TxStatus tx={tx} />
+      <RunStatus run={run} />
     </div>
   );
 }
