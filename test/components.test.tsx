@@ -31,6 +31,10 @@
 // - CR-75 (F9k), the owner's logo: the drawing the header and the footer show in each theme,
 //   checked shape for shape against the owner's own two files in frontend/logo/; the theme switch;
 //   the sizes; and the browser-tab icon's shapes against the same files.
+// - CR-76 (F9l), the network tag in the header: the three networks' tags, each rendered from its
+//   own network entry — the name, the mark on a test network, the tooltip and the text a screen
+//   reader reads; and the whole site rendered to check that the strip above the header is gone and
+//   that the tag sits in the header's tools beside the wallet button and does nothing when clicked.
 // Nothing here sends a transaction: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 // The site's own stylesheet and the owner's own logo files, read as text (CR-75): the checks
@@ -67,7 +71,8 @@ import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
-import { App, StaleNotice, WalletChoices, navItems } from '../src/app';
+import { App, NetworkTag, StaleNotice, WalletChoices, navItems, networkNote, shortNetworkName } from '../src/app';
+import type { ChainId, Network } from '../src/lib/network';
 import type { Address, CandidateCheck, ChainState, OwnerState, ReplacedStaking, StakingControls, WalletState } from '../src/data/types';
 
 const log = document.getElementById('log')!;
@@ -724,6 +729,7 @@ async function run() {
   await cr72(base, wallet, live.owner);
   await cr73(base, wallet, live.owner);
   await cr75();
+  await cr76();
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -1469,6 +1475,165 @@ async function cr75() {
   else document.documentElement.setAttribute('data-theme', savedTheme);
   if (savedChoice === null) localStorage.removeItem('uptown-theme');
   else localStorage.setItem('uptown-theme', savedChoice);
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
+// ---- F9l (CR-76): the network tag in the header, in place of the strip above it ------------------
+// The site's own stylesheet decides the tag's mark and which of the two names it shows, so these
+// checks load global.css into the test page for as long as they run and then take it away again.
+// The three networks: the site renders the one this build is for (the local test chain here), so
+// Ethereum's and Sepolia's tags are rendered from their own network entries — the tag reads only the
+// chain ID, the name and the local flag, and those three come from the network module as they do in
+// a build for that chain.
+async function cr76() {
+  const style = document.createElement('style');
+  style.textContent = GLOBAL_CSS;
+  document.head.append(style);
+
+  const asNetwork = (chainId: ChainId, name: string, local: boolean): Network => ({ ...NETWORK, chainId, name, local });
+  const ETHEREUM = asNetwork(1, 'Ethereum', false);
+  const SEPOLIA = asNetwork(11155111, 'Sepolia', false);
+  const LOCAL = asNetwork(31337, 'Local test chain', true);
+  // The three sentences, as the brief writes them.
+  const SENTENCES: Record<number, string> = {
+    1: 'The real Ethereum network (chain ID 1). Real contracts and real money.',
+    11155111: "Ethereum's test network (chain ID 11155111). Test coins only; nothing here is real money.",
+    31337: 'A private copy of Ethereum on this computer (chain ID 31337). Test wallets only; nothing here is real.',
+  };
+
+  // ---- the three networks, each tag rendered on its own ------------------------------------------
+  const box = document.createElement('div');
+  stage.append(box);
+  const tagOf = (n: Network): HTMLElement => {
+    render(<NetworkTag n={n} />, box);
+    return box.querySelector('.net-tag') as HTMLElement;
+  };
+  const seen = [ETHEREUM, SEPOLIA, LOCAL].map((n) => {
+    const el = tagOf(n);
+    const shown = [...el.children].filter((c) => getComputedStyle(c).display !== 'none' && !c.classList.contains('visually-hidden'));
+    const cs = getComputedStyle(el);
+    return {
+      chainId: n.chainId,
+      name: n.name,
+      visible: shown.map((c) => c.textContent).join('|'),
+      shownSpans: shown.length,
+      full: (el.querySelector('.net-name') as HTMLElement).textContent,
+      shortSpan: (el.querySelector('.net-name-short') as HTMLElement).textContent,
+      short: shortNetworkName(n),
+      screenReader: (el.querySelector('.visually-hidden') as HTMLElement).textContent!.replace(/\s+/g, ' ').trim(),
+      title: el.getAttribute('title'),
+      marked: el.classList.contains('net-test'),
+      tag: el.tagName.toLowerCase(),
+      role: el.getAttribute('role'),
+      colour: cs.color,
+      background: cs.backgroundColor,
+      border: cs.borderTopColor,
+    };
+  });
+  const [eth, sep, loc] = seen;
+
+  check(
+    'CR-76 the tag names the network, from the network module: "Ethereum", "Sepolia", "Local test chain" — one name shown at a time',
+    eth.full === 'Ethereum' &&
+      sep.full === 'Sepolia' &&
+      loc.full === 'Local test chain' &&
+      seen.every((s) => s.full === s.name && s.shortSpan === s.short && s.shownSpans === 1 && (s.visible === s.name || s.visible === s.short)),
+    seen.map((s) => `${s.chainId}: full "${s.full}", short "${s.shortSpan}", shown "${s.visible}" (${s.shownSpans} of the two)`).join('; '),
+  );
+
+  check(
+    'CR-76 the strip’s sentence survives: each network’s sentence is the tag’s tooltip and its text for a screen reader, with the full name in both',
+    seen.every((s) => s.screenReader === `${s.name}. ${SENTENCES[s.chainId]}` && s.title === `${s.name} — ${SENTENCES[s.chainId]}`),
+    seen.map((s) => `${s.chainId}: title "${s.title}" | screen reader "${s.screenReader}"`).join('  ||  '),
+  );
+
+  check(
+    'CR-76 the local chain’s sentence is word for word the one the strip carried, with the chain ID from the network module',
+    networkNote(LOCAL) === SENTENCES[31337] && networkNote(LOCAL).includes(`chain ID ${LOCAL.chainId}`),
+    networkNote(LOCAL),
+  );
+
+  check(
+    'CR-76 test networks are marked and Ethereum is plain: Sepolia and the local chain carry the mark, in the site’s own accent colours; chain 1 has none',
+    sep.marked && loc.marked && !eth.marked && sep.colour === loc.colour && sep.colour !== eth.colour && sep.background !== eth.background && sep.border !== eth.border,
+    `chain 1: marked ${eth.marked}, colour ${eth.colour}, background ${eth.background}, border ${eth.border} || test networks: marked ${sep.marked}/${loc.marked}, colour ${sep.colour}, background ${sep.background}, border ${sep.border}`,
+  );
+
+  check(
+    'CR-76 where the short name is shown it still names the network ("Local"), and the full name stays in the tooltip and for a screen reader',
+    loc.short === 'Local' && eth.short === 'Ethereum' && sep.short === 'Sepolia' && seen.every((s) => s.screenReader.startsWith(`${s.name}.`) && s.title!.startsWith(`${s.name} —`)),
+    seen.map((s) => `${s.chainId}: short "${s.short}", full "${s.name}"`).join('; '),
+  );
+
+  render(null, box);
+  box.remove();
+
+  // ---- the whole site: the strip is gone and the tag is in the header beside the wallet button ----
+  const site = document.createElement('div');
+  stage.append(site);
+  render(<App />, site);
+  await new Promise((r) => setTimeout(r, 60));
+  const header = site.querySelector('header.site-header') as HTMLElement;
+  const tools = header.querySelector('.header-tools') as HTMLElement;
+  // The day chip appears once the figures have been read from the chain: wait for it, so the
+  // order of the header's tools below is the one a visitor sees.
+  for (let i = 0; i < 80 && !tools.querySelector('.day-chip'); i++) await new Promise((r) => setTimeout(r, 100));
+  const tag = header.querySelector('.net-tag') as HTMLElement;
+  const walletBtn = header.querySelector('.wallet-btn') as HTMLElement;
+
+  check(
+    'CR-76 the strip above the header is gone: no strip on the page and no rule left for it in the stylesheet',
+    site.querySelector('.chain-bar') === null &&
+      site.querySelector('.chain-tag') === null &&
+      site.querySelector('.chain-note') === null &&
+      !GLOBAL_CSS.includes('.chain-bar') &&
+      !GLOBAL_CSS.includes('.chain-tag') &&
+      !GLOBAL_CSS.includes('.chain-note'),
+    `elements: ${site.querySelectorAll('.chain-bar, .chain-tag, .chain-note').length}; rules named in the stylesheet: ${['.chain-bar', '.chain-tag', '.chain-note'].filter((s) => GLOBAL_CSS.includes(s)).join(', ') || 'none'}`,
+  );
+
+  const tagBox = tag.getBoundingClientRect();
+  const btnBox = walletBtn.getBoundingClientRect();
+  check(
+    'CR-76 one tag, in the header’s tools beside the wallet button: it is this build’s network, it sits immediately before the button and nowhere else on the page',
+    site.querySelectorAll('.net-tag').length === 1 &&
+      tools.contains(tag) &&
+      tag.dataset.chain === String(NETWORK.chainId) &&
+      tag.nextElementSibling === walletBtn &&
+      tagBox.right <= btnBox.left + 0.5 &&
+      btnBox.left - tagBox.right < 12,
+    `tags on the page: ${site.querySelectorAll('.net-tag').length}; chain ${tag.dataset.chain}; the element after it: ${tag.nextElementSibling?.className}; ${(btnBox.left - tagBox.right).toFixed(2)} px between the tag and the button`,
+  );
+
+  check(
+    'CR-76 nothing else in the header changed: the wordmark, the navigation, the day chip, the theme button, the wallet button and the menu button are all still there, in their order',
+    !!header.querySelector('a.wordmark svg.skyline') &&
+      !!header.querySelector('nav.site-nav') &&
+      [...tools.children].map((c) => c.className.split(' ')[0]).join(',') === 'day-chip,icon-btn,wallet-wrap,icon-btn' &&
+      !!header.querySelector('.icon-btn[aria-label^="Switch to"]') &&
+      !!header.querySelector('.nav-toggle'),
+    `the tools, in order: ${[...tools.children].map((c) => c.className).join(' | ')}`,
+  );
+
+  // It is not a button: a span, no link, no handler, and a click changes nothing on the page.
+  const before = site.innerHTML;
+  tag.click();
+  await new Promise((r) => setTimeout(r, 60));
+  check(
+    'CR-76 the tag is not a button and does nothing when it is clicked',
+    loc.tag === 'span' &&
+      loc.role === 'note' &&
+      tag.tagName.toLowerCase() === 'span' &&
+      !tag.getAttribute('href') &&
+      getComputedStyle(tag).cursor !== 'pointer' &&
+      site.innerHTML === before &&
+      site.querySelector('.wallet-menu') === null,
+    `<${tag.tagName.toLowerCase()} role="${tag.getAttribute('role')}">, cursor ${getComputedStyle(tag).cursor}; the page after the click is unchanged: ${site.innerHTML === before}`,
+  );
+
+  render(null, site);
+  site.remove();
+  style.remove();
   history.replaceState(null, '', location.pathname + location.search);
 }
 
