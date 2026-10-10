@@ -457,12 +457,41 @@ main:focus {
   border-radius: 0;
   margin-top: 4px;
 }
+/* The light beside the address: a green round dot while the wallet is on the site's own network. */
 .wallet-btn .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--ok);
   flex: none;
+}
+/* A wallet on another network (CR-77): the light is red, and it is a warning triangle rather than a
+   round dot, so it is not told apart by colour alone. The button around it carries the site's
+   warning outline (btn-danger), its tooltip says what is wrong and the words "Wrong network" are in
+   it for a screen reader. One pixel wider than the dot, so the header row is unchanged. */
+.wallet-btn .dot.dot-wrong {
+  box-sizing: content-box;
+  width: 0;
+  height: 0;
+  border-radius: 0;
+  background: transparent;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 7px solid var(--warn-text);
+}
+/* The wrong network in the wallet menu: the reason in plain words, then the action that puts it right. */
+.wallet-wrong {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.wallet-wrong .wallet-menu-title {
+  color: var(--warn-text);
+}
+.wallet-switch {
+  margin: 2px 8px 2px;
 }
 @media (min-width: 960px) {
   .site-nav {
@@ -506,21 +535,13 @@ main:focus {
 }
 /* On a phone the row has no spare width at all: on a 390 px screen the wordmark, the theme button,
    the wallet button and the menu button already use 355 of the row's 358 pixels, so a tag of any
-   width beside them would push the row past the edge of the screen. Below 480 px the tag therefore
-   leaves the row's flow and sits directly above the wallet button, right-aligned with it, in the
-   10 px the row grows for it. Nothing else moves and nothing wraps or is clipped. */
+   width beside them would push the row past the edge of the screen. CR-77 item 1: below 480 px no
+   tag is shown at all. The row keeps the 60 px height it has everywhere else (F9l's phone layout,
+   which put the tag above the button in 10 px of extra height, is gone), and the signal a visitor
+   must not miss there — a wallet on another network — is the red light in the wallet display. */
 @media (max-width: 479px) {
-  .header-row {
-    height: 70px;
-  }
   .net-tag {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 3px);
-    font-size: 11px;
-    line-height: 12px;
-    padding: 0 5px;
-    border: 0;
+    display: none;
   }
 }
 
@@ -866,12 +887,6 @@ main:focus {
     gap: 18px 32px;
   }
 }
-.owner-line {
-  margin: 14px 2px 0;
-  font-size: 13px;
-  color: var(--text-2);
-}
-
 /* ---------- pages ---------- */
 
 .page {
@@ -1227,16 +1242,6 @@ main:focus {
     grid-template-columns: 1fr 1fr;
     column-gap: 36px;
   }
-}
-.income-list {
-  margin: 0 0 16px;
-  padding-left: 20px;
-  display: grid;
-  gap: 6px;
-  color: var(--text-2);
-}
-.income-list strong {
-  color: var(--text);
 }
 .connect-prompt p {
   color: var(--text-2);
@@ -2383,14 +2388,18 @@ code.break {
   overflow-wrap: anywhere;
 }
 
-/* ---------- when the figures were read ---------- */
+/* ---------- the figures' freshness ---------- */
 
+/* The line that said when the figures were read, and its "Read now" link, are gone (CR-77 item 6);
+   the figures are still read again every 15 seconds and after every transaction. What is left at
+   the foot of the page is the last read's failure, under the figures it speaks of, and on a page
+   with nothing to report the box is empty and takes no space. */
 .read-line {
   padding-top: 8px;
   padding-bottom: 28px;
 }
-.read-line .num {
-  font-variant-numeric: tabular-nums;
+.read-line:empty {
+  display: none;
 }
 .read-error {
   color: var(--warn-text);
@@ -2677,11 +2686,15 @@ code.break {
   text-align: right;
 }
 
-/* The network service lags: near the read line, in the warning colour. */
+/* The network service lags: in the warning colour, directly under the header and above the figures
+   it warns about (CR-77 item 6 gave it this place, where the read line used to carry it). */
 .stale-note {
   color: var(--warn-text);
   margin-top: 4px;
   font-weight: 500;
+}
+.stale-wrap {
+  padding-top: 10px;
 }
 
 /* The installed wallets (EIP-6963): each one's announced icon and name. */

@@ -7,7 +7,7 @@ import { NETWORK, contractUrl, type Network } from './lib/network';
 import { makeClient, readAll } from './lib/reads';
 import { activeProvider, chooseWallet, chosenWallet, rememberedWallet, switchWalletChain, watchWallets, type Eip1193, type WalletInfo } from './lib/wallet';
 import { explainError } from './lib/errors';
-import { dayName, fmtDuration, fmtInt, shortAddress } from './lib/format';
+import { dayName, fmtDuration, shortAddress } from './lib/format';
 import { rpcBehind } from './lib/derive';
 import { chooseTheme, currentTheme, storedTheme, type Theme } from './lib/theme';
 import { Home } from './pages/Home';
@@ -39,11 +39,17 @@ export function navItems(ownerLink: boolean) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE NETWORK TAG (CR-76). It sits in the header's tools, beside the wallet button, on every
-// network, and names the network the build is for. It replaces the strip that stood above the
-// header on the local chain; the strip's sentence is not lost: it is the tag's tooltip and it is
-// in the tag for a screen reader (the visually hidden span below, since a `title` alone reaches
-// no screen reader). The tag is not a button and does nothing when clicked.
+// THE NETWORK TAG (CR-76). It sits in the header's tools, beside the wallet button, and names the
+// network the build is for. It replaces the strip that stood above the header on the local chain;
+// the strip's sentence is not lost: it is the tag's tooltip and it is in the tag for a screen
+// reader (the visually hidden span below, since a `title` alone reaches no screen reader). The tag
+// is not a button and does nothing when clicked.
+//
+// CR-77 item 1: the tag is shown only where it fits beside the wallet button. Below 480 px the
+// stylesheet hides it altogether (there is no room beside the wordmark, the theme button, the
+// wallet button and the menu button), and the header row is back to its 60 px height. On a phone
+// the thing a visitor must not miss is a wallet on another network, and that is the red light in
+// the wallet display (`WalletButton` below), on every screen size.
 // ---------------------------------------------------------------------------------------------
 
 /** The one sentence the tag carries: the strip's words on the local chain, the same style elsewhere. */
@@ -75,6 +81,98 @@ export function NetworkTag({ n }: { n: Network }) {
         {n.name}. {note}
       </span>
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE WALLET DISPLAY, AND THE WRONG NETWORK (CR-77 item 1). The light beside the address is green
+// while the wallet is on the site's own network and red when the wallet is on another one, on
+// every screen size. Colour alone would not do — some visitors cannot tell red from green — so a
+// wrong network is also a different shape (a warning triangle in place of the round dot), the
+// button takes the site's warning outline, its tooltip says in plain words what is wrong, and the
+// words "Wrong network" are inside the button for a screen reader. The display stays the way to
+// put it right: selecting it opens the wallet menu, which repeats the reason in plain words and
+// carries the "Switch to <network>" action.
+// ---------------------------------------------------------------------------------------------
+
+/** The light beside the address in the wallet display: a green dot, or a red triangle on the wrong network. */
+export function WalletLight({ wrong }: { wrong: boolean }) {
+  return <span class={wrong ? 'dot dot-wrong' : 'dot'} aria-hidden="true" />;
+}
+
+/** What is wrong, in plain words: the wallet's own chain, and the network this site is built for. */
+export function wrongNetworkWords(n: Network, walletChain: number | null): string {
+  return `Wrong network: your wallet is on another network${walletChain !== null ? ` (chain ID ${walletChain})` : ''}. This site is UpTown on ${n.name}.`;
+}
+
+/** The wallet display itself: the light, the short address, and what a screen reader is told. */
+export function WalletButton({
+  network,
+  account,
+  accountLabel,
+  wrongNetwork,
+  walletChain,
+  pickerOpen,
+  hasMenu,
+  onClick,
+}: {
+  network: Network;
+  account: Address | null;
+  accountLabel: string | null;
+  wrongNetwork: boolean;
+  walletChain: number | null;
+  pickerOpen: boolean;
+  hasMenu: boolean;
+  onClick: () => void;
+}) {
+  const words = wrongNetworkWords(network, walletChain);
+  const who = `Wallet ${account}${accountLabel ? ` (${accountLabel})` : ''}`;
+  return (
+    <button
+      type="button"
+      class={`btn btn-small ${account ? (wrongNetwork ? 'btn-danger' : 'btn-secondary') : 'btn-primary'} wallet-btn`}
+      aria-expanded={pickerOpen}
+      aria-haspopup={hasMenu ? 'menu' : undefined}
+      onClick={onClick}
+      title={wrongNetwork ? `${words} Select the wallet to put it right.` : undefined}
+      aria-label={
+        account
+          ? wrongNetwork
+            ? `${who} connected. ${words} Select to switch network or disconnect.`
+            : `${who} connected. Select to change or disconnect.`
+          : network.local
+            ? 'Pick a local test wallet'
+            : 'Connect wallet'
+      }
+    >
+      {account ? (
+        <>
+          <WalletLight wrong={wrongNetwork} />
+          {shortAddress(account)}
+          {wrongNetwork && <span class="visually-hidden">Wrong network</span>}
+        </>
+      ) : network.local ? (
+        'Pick a test wallet'
+      ) : (
+        'Connect wallet'
+      )}
+    </button>
+  );
+}
+
+/** In the wallet menu: why the red light is showing, and the action that puts it right. */
+export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: Network; walletChain: number | null; onSwitch: () => void }) {
+  return (
+    <div class="wallet-wrong">
+      <p class="wallet-menu-title">Wrong network</p>
+      <p class="wallet-menu-note">
+        Your wallet is on another network{walletChain !== null ? ` (chain ID ${walletChain})` : ''}, so this site cannot read your own figures and a
+        transaction sent from it would fail. UpTown here is on {network.name}.
+      </p>
+      <button type="button" role="menuitem" class="btn btn-small btn-primary wallet-switch" onClick={onSwitch}>
+        Switch to {network.name}
+      </button>
+    </div>
   );
 }
 
@@ -433,33 +531,20 @@ export function App() {
             <div class="wallet-wrap">
               {/* The network tag, beside the wallet button (CR-76). */}
               <NetworkTag n={network} />
-              {wrongNetwork ? (
-                <button type="button" class="btn btn-small btn-primary wallet-btn" onClick={state.switchNetwork}>
-                  Switch to {network.name}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  class={`btn btn-small ${account ? 'btn-secondary' : 'btn-primary'} wallet-btn`}
-                  aria-expanded={pickerOpen}
-                  aria-haspopup={account || network.local || wallets.length > 1 ? 'menu' : undefined}
-                  onClick={() => (account || network.local || pickerOpen ? setPickerOpen((o) => !o) : connect())}
-                  aria-label={account ? `Wallet ${account}${accountLabel ? ` (${accountLabel})` : ''} connected. Select to change or disconnect.` : network.local ? 'Pick a local test wallet' : 'Connect wallet'}
-                >
-                  {account ? (
-                    <>
-                      <span class="dot" aria-hidden="true" />
-                      {shortAddress(account)}
-                    </>
-                  ) : network.local ? (
-                    'Pick a test wallet'
-                  ) : (
-                    'Connect wallet'
-                  )}
-                </button>
-              )}
+              <WalletButton
+                network={network}
+                account={account}
+                accountLabel={accountLabel}
+                wrongNetwork={wrongNetwork}
+                walletChain={walletChain}
+                pickerOpen={pickerOpen}
+                hasMenu={!!account || network.local || wallets.length > 1}
+                onClick={() => (account || network.local || pickerOpen ? setPickerOpen((o) => !o) : connect())}
+              />
               {pickerOpen && (
                 <div class="wallet-menu" role="menu" aria-label={network.local ? 'Local test wallets' : account ? 'Wallet' : 'Choose a wallet'}>
+                  {/* The wrong network, first in the menu: the reason, and the action that puts it right (CR-77 item 1). */}
+                  {wrongNetwork && <WrongNetworkNote network={network} walletChain={walletChain} onSwitch={() => (state.switchNetwork(), setPickerOpen(false))} />}
                   {!network.local && !account && (
                     <WalletChoices wallets={wallets} onPick={connectWith} />
                   )}
@@ -513,6 +598,8 @@ export function App() {
       </header>
 
       <main ref={mainRef} tabIndex={-1} id="main" onClick={() => pickerOpen && setPickerOpen(false)}>
+        {/* The notice that the network service is behind, directly under the header, above the figures it warns about (CR-77 item 6). */}
+        <Freshness />
         {view}
         <ReadLine />
       </main>
@@ -661,28 +748,35 @@ export function StaleNotice({ blockTimestamp, nowMs }: { blockTimestamp: number 
   );
 }
 
-/** When the figures were last read, and from which block; a refresh button; the last error. */
-function ReadLine() {
-  const { chain, owner, data, network, refresh } = useApp();
+/**
+ * The notice that the network service is behind, at the top of the page content: it warns about
+ * the figures below it, so it stands above them (CR-77 item 6 kept the notice and deleted the line
+ * that used to carry it at the foot of the page). Nothing at all while the latest block is fresh.
+ */
+export function Freshness() {
+  const { chain, owner, network } = useApp();
   if (!network.deployment) return null;
-  const at = data.readAt ? new Date(data.readAt) : null;
-  const time = at ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}:${String(at.getSeconds()).padStart(2, '0')}` : null;
+  const blockTimestamp = chain?.blockTimestamp ?? owner?.blockTimestamp ?? null;
+  if (blockTimestamp === null || !rpcBehind(blockTimestamp, Date.now())) return null;
+  return (
+    <div class="wrap stale-wrap">
+      <StaleNotice blockTimestamp={blockTimestamp} nowMs={Date.now()} />
+    </div>
+  );
+}
+
+/**
+ * The last read's failure, under the figures it speaks of. CR-77 item 6 deleted the line that said
+ * when the figures were read and offered "Read now"; the figures are still read again every 15
+ * seconds and after every transaction, as they were. The box keeps its name and its `data-block`,
+ * which the review drivers in `scripts/` use to tell that a read has landed, and it is empty — and
+ * then takes no space at all (`.read-line:empty`) — on a page with nothing to report.
+ */
+function ReadLine() {
+  const { chain, data, network } = useApp();
+  if (!network.deployment) return null;
   return (
     <div class="wrap read-line" data-block={chain ? chain.blockNumber.toString() : ''}>
-      <p class="small faint">
-        {chain && time ? (
-          <>
-            Figures read from {network.name} at block <span class="num">{fmtInt(Number(chain.blockNumber))}</span>, {time} your time; read again every 15 seconds
-            and after each transaction.{' '}
-          </>
-        ) : (
-          'Reading the figures… '
-        )}
-        <button type="button" class="link-btn" onClick={() => void refresh()}>
-          Read now
-        </button>
-      </p>
-      <StaleNotice blockTimestamp={chain?.blockTimestamp ?? owner?.blockTimestamp ?? null} nowMs={Date.now()} />
       {data.error && chain && <p class="small read-error">The last read failed: {data.error} The figures above are from the read before.</p>}
     </div>
   );
