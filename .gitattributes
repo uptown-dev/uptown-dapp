@@ -1,0 +1,3 @@
+# The owner's logo files: the artwork itself. Keep their bytes exactly as delivered, so no
+# checkout of this folder (on its own or inside the project) rewrites their line endings.
+logo/* -text

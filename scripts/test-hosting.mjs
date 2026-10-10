@@ -3,21 +3,24 @@
 // page carries, and the build's refusal to run without a network. No network, no chain, no browser.
 //
 // - vercel.json: every path gets the security headers; its content-security policy is the built
-//   page's policy (src/lib/policy.ts) with connect-src the mainnet RPC origin of the network module
-//   (src/lib/chains.ts) and frame-ancestors 'none'; X-Frame-Options is DENY; the page is never
-//   cached and the hashed assets are cached for a year. Each rule is also shown to fail on a copy of
-//   the file with that rule broken.
+//   page's policy (src/lib/policy.ts) with connect-src exactly the RPC origins of the two public
+//   networks in the network module (src/lib/chains.ts), mainnet and Sepolia, never the local chain's
+//   (F9p), and frame-ancestors 'none'; X-Frame-Options is DENY; the page is never cached and the
+//   hashed assets are cached for a year. Each rule is also shown to fail on a copy of the file with
+//   that rule broken.
+// - The built page's own policy names only its own network (CL-53), so what a visitor's browser
+//   allows (the header and the page together) is that one network's RPC origin.
 // - scripts/check-chain.mjs (the first step of `npm run build`): stops without VITE_CHAIN_ID or
 //   with any value other than 1, 11155111 or 31337.
-// - dist/index.html, when a build exists: the strict policy for one chain's RPC origin, and no
-//   referrer.
+// - dist/index.html, when a build exists: the strict policy for one chain's RPC origin and no other,
+//   and no referrer; also shown to fail on copies of the page naming two networks.
 //
 // Usage: node scripts/test-hosting.mjs   (also part of `npm test`)
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CHAINS, CHAIN_ORDER, rpcOrigin } from '../src/lib/chains.ts';
+import { CHAINS, CHAIN_ORDER, hostedRpcOrigins, rpcOrigin } from '../src/lib/chains.ts';
 import { hostPolicy, sitePolicy } from '../src/lib/policy.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -25,10 +28,14 @@ const results = [];
 const check = (name, ok, detail = '') => results.push({ name, ok: !!ok, detail });
 
 const MAINNET_ORIGIN = new URL(CHAINS[1].rpcUrl).origin;
+const SEPOLIA_ORIGIN = new URL(CHAINS[11155111].rpcUrl).origin;
+const LOCAL_ORIGIN = new URL(CHAINS[31337].rpcUrl).origin;
+/** The header's connect-src: the two public networks' RPC origins, mainnet first (F9p). */
+const HOSTED = [MAINNET_ORIGIN, SEPOLIA_ORIGIN];
 
 /** The headers every path must carry, exactly as the brief (docs/tasks/F9h-frontend.md) lists them. */
 const EVERY_PATH = {
-  'Content-Security-Policy': hostPolicy(MAINNET_ORIGIN),
+  'Content-Security-Policy': hostPolicy(HOSTED),
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
@@ -68,10 +75,13 @@ function problems(config) {
   if (!csp) p.push('no Content-Security-Policy');
   else {
     const d = directives(csp);
-    const connect = (d.get('connect-src') ?? []).join(' ');
-    if (connect !== MAINNET_ORIGIN) p.push(`connect-src is "${connect}", not the mainnet RPC origin ${MAINNET_ORIGIN}`);
+    const connect = d.get('connect-src') ?? [];
+    if (connect.length !== HOSTED.length || [...connect].sort().join(' ') !== [...HOSTED].sort().join(' ')) {
+      p.push(`connect-src is "${connect.join(' ')}", not exactly the mainnet and Sepolia RPC origins ${HOSTED.join(' ')}`);
+    }
+    if (connect.includes(LOCAL_ORIGIN)) p.push(`connect-src names the local chain's RPC origin ${LOCAL_ORIGIN}`);
     if ((d.get('frame-ancestors') ?? []).join(' ') !== "'none'") p.push("frame-ancestors 'none' is missing");
-    if (csp !== hostPolicy(MAINNET_ORIGIN)) p.push(`the policy is not the built page's policy plus frame-ancestors 'none': ${csp}`);
+    if (csp !== hostPolicy(HOSTED)) p.push(`the policy is not the built page's policy (connect-src mainnet and Sepolia) plus frame-ancestors 'none': ${csp}`);
   }
   if ((all.get('x-frame-options') ?? '').toUpperCase() !== 'DENY') p.push('X-Frame-Options: DENY is missing');
   for (const [k, v] of Object.entries(EVERY_PATH)) {
@@ -88,10 +98,18 @@ function problems(config) {
 const file = join(ROOT, 'vercel.json');
 const config = JSON.parse(readFileSync(file, 'utf8'));
 const found = problems(config);
-check('vercel.json: every header on every path, the policy with the mainnet RPC origin and frame-ancestors \'none\', X-Frame-Options DENY, the cache rules', found.length === 0, found.join('; '));
+check('vercel.json: every header on every path, the policy with the mainnet and Sepolia RPC origins and frame-ancestors \'none\', X-Frame-Options DENY, the cache rules', found.length === 0, found.join('; '));
+const HEADER_CSP = config.headers.find((r) => r.source === '/(.*)').headers.find((h) => h.key === 'Content-Security-Policy').value;
+const headerConnect = directives(HEADER_CSP).get('connect-src') ?? [];
 check(
-  `vercel.json: connect-src is exactly the mainnet network entry's RPC origin (${MAINNET_ORIGIN})`,
-  (directives(EVERY_PATH['Content-Security-Policy']).get('connect-src') ?? []).join(' ') === MAINNET_ORIGIN && rpcOrigin(1) === MAINNET_ORIGIN,
+  `vercel.json: connect-src is exactly the network module's mainnet and Sepolia RPC origins, hostedRpcOrigins() (${HOSTED.join(', ')})`,
+  headerConnect.join(' ') === HOSTED.join(' ') && hostedRpcOrigins().join(' ') === HOSTED.join(' ') && rpcOrigin(1) === MAINNET_ORIGIN && rpcOrigin(11155111) === SEPOLIA_ORIGIN,
+  headerConnect.join(' '),
+);
+check(
+  `vercel.json: connect-src never names the local chain (${LOCAL_ORIGIN}), nor 'self', * or any other source; the file holds no 127.0.0.1 or localhost`,
+  !headerConnect.includes(LOCAL_ORIGIN) && headerConnect.every((s) => HOSTED.includes(s)) && !/127\.0\.0\.1|localhost/i.test(JSON.stringify(config)),
+  headerConnect.join(' '),
 );
 
 // 2. The same checks fail when a rule is broken.
@@ -105,9 +123,13 @@ const setCsp = (hs, f) => {
   h.value = f(h.value);
 };
 const cases = [
-  ['connect-src set to the local node', (hs) => setCsp(hs, (v) => v.replace(MAINNET_ORIGIN, 'http://127.0.0.1:8545')), /connect-src/],
-  ['connect-src set to the Sepolia node', (hs) => setCsp(hs, (v) => v.replace(MAINNET_ORIGIN, rpcOrigin(11155111))), /connect-src/],
-  ['connect-src with a second host', (hs) => setCsp(hs, (v) => v.replace(MAINNET_ORIGIN, `${MAINNET_ORIGIN} https://example.com`)), /connect-src/],
+  ['connect-src only the mainnet node (a Sepolia build could read nothing)', (hs) => setCsp(hs, (v) => v.replace(` ${SEPOLIA_ORIGIN}`, '')), /connect-src/],
+  ['connect-src only the Sepolia node (a mainnet build could read nothing)', (hs) => setCsp(hs, (v) => v.replace(`${MAINNET_ORIGIN} `, '')), /connect-src/],
+  ['connect-src with the local node added', (hs) => setCsp(hs, (v) => v.replace(SEPOLIA_ORIGIN, `${SEPOLIA_ORIGIN} ${LOCAL_ORIGIN}`)), /local chain/],
+  ['connect-src with the Sepolia node swapped for the local one', (hs) => setCsp(hs, (v) => v.replace(SEPOLIA_ORIGIN, LOCAL_ORIGIN)), /local chain/],
+  ['connect-src with a third host', (hs) => setCsp(hs, (v) => v.replace(SEPOLIA_ORIGIN, `${SEPOLIA_ORIGIN} https://example.com`)), /connect-src/],
+  ["connect-src with 'self' added", (hs) => setCsp(hs, (v) => v.replace(SEPOLIA_ORIGIN, `${SEPOLIA_ORIGIN} 'self'`)), /connect-src/],
+  ['connect-src with the mainnet node twice and no Sepolia', (hs) => setCsp(hs, (v) => v.replace(SEPOLIA_ORIGIN, MAINNET_ORIGIN)), /connect-src/],
   ["frame-ancestors 'none' removed", (hs) => setCsp(hs, (v) => v.replace("; frame-ancestors 'none'", '')), /frame-ancestors/],
   ['frame-ancestors set to *', (hs) => setCsp(hs, (v) => v.replace("frame-ancestors 'none'", 'frame-ancestors *')), /frame-ancestors/],
   ['X-Frame-Options removed', (hs) => hs.splice(hs.findIndex((x) => x.key === 'X-Frame-Options'), 1), /X-Frame-Options/],
@@ -119,11 +141,21 @@ for (const [label, edit, want] of cases) {
   check(`the vercel.json test fails with ${label}`, p.some((x) => want.test(x)), p.join('; ') || 'no problem found');
 }
 
-// 3. The built page's policy is the host policy without frame-ancestors, for each chain's origin.
+// 3. The built page's policy is the host policy without frame-ancestors, for one chain's origin only;
+//    what the browser allows (the header and the page together) is that one origin.
 for (const id of CHAIN_ORDER) {
   const d = directives(sitePolicy(rpcOrigin(id)));
   check(`the page policy for chain ${id}: connect-src is only ${rpcOrigin(id)}, no 'self', no inline style, images only from the site and data: (wallet icons, CR-72)`,
     (d.get('connect-src') ?? []).join(' ') === rpcOrigin(id) && (d.get('style-src') ?? []).join(' ') === "'self'" && (d.get('img-src') ?? []).join(' ') === "'self' data:" && (d.get('default-src') ?? []).join(' ') === "'none'" && !d.has('frame-ancestors'));
+  const page = sitePolicy(rpcOrigin(id));
+  check(`the page policy for chain ${id} is the header policy with connect-src narrowed to ${rpcOrigin(id)} and no frame-ancestors`,
+    page === HEADER_CSP.replace(/connect-src [^;]+/, `connect-src ${rpcOrigin(id)}`).replace("; frame-ancestors 'none'", ''));
+  const both = (d.get('connect-src') ?? []).filter((s) => headerConnect.includes(s));
+  if (CHAINS[id].local) {
+    check(`a chain ${id} build served with the vercel.json header could reach no RPC (the local chain is never hosted; the local proofs serve it with their own connect-src)`, both.length === 0, both.join(' '));
+  } else {
+    check(`a chain ${id} build served with the vercel.json header: the browser allows only ${rpcOrigin(id)} (header and page together)`, both.join(' ') === rpcOrigin(id), both.join(' '));
+  }
 }
 
 // 4. The build's first step refuses a build that names no network.
@@ -143,14 +175,32 @@ for (const id of CHAIN_ORDER) {
   check(`npm run build goes on when VITE_CHAIN_ID is ${id}`, r.code === 0 && r.out === `build: for chain ${id}`, r.out);
 }
 
-// 5. The last build, if there is one.
+// 5. The last build, if there is one: its page names exactly one network.
+/** The chain whose strict policy a built page carries, or what is wrong with it. */
+function pagePolicy(html) {
+  const metas = [...html.matchAll(/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/g)];
+  if (metas.length !== 1) return { problem: `${metas.length} content-security policies in the page` };
+  const policy = metas[0][1];
+  const connect = directives(policy).get('connect-src') ?? [];
+  if (connect.length !== 1) return { problem: `connect-src names ${connect.length} sources: ${connect.join(' ')}` };
+  const chain = CHAIN_ORDER.find((id) => policy === sitePolicy(rpcOrigin(id)));
+  return chain === undefined ? { problem: `not the strict policy of any one chain: ${policy}` } : { chain };
+}
 const built = join(ROOT, 'dist', 'index.html');
 if (existsSync(built)) {
   const html = readFileSync(built, 'utf8');
-  const m = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/);
-  const chain = CHAIN_ORDER.find((id) => m && m[1] === sitePolicy(rpcOrigin(id)));
-  check(`dist/index.html carries the strict policy for one chain's RPC origin${chain ? ` (chain ${chain})` : ''}`, chain !== undefined, m ? m[1] : 'no policy');
+  const r = pagePolicy(html);
+  check(`dist/index.html carries the strict policy for one chain's RPC origin and no other${r.chain ? ` (chain ${r.chain}: connect-src ${rpcOrigin(r.chain)})` : ''}`, r.chain !== undefined, r.problem);
   check('dist/index.html carries <meta name="referrer" content="no-referrer">', /<meta name="referrer" content="no-referrer"/.test(html));
+  const withPolicy = (policy) => html.replace(/(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/, (_, a, b) => a + policy + b);
+  for (const [label, copy] of [
+    ['both public networks in the page', withPolicy(sitePolicy(`${MAINNET_ORIGIN} ${SEPOLIA_ORIGIN}`))],
+    ['the local node added to the page', withPolicy(sitePolicy(`${rpcOrigin(r.chain ?? 1)} ${LOCAL_ORIGIN}`))],
+    ['the header policy copied into the page', withPolicy(hostPolicy(HOSTED))],
+  ]) {
+    const q = pagePolicy(copy);
+    check(`the dist/index.html test fails with ${label}`, q.chain === undefined, q.problem ?? 'no problem found');
+  }
 } else {
   check('dist/index.html (skipped: no build)', true);
 }

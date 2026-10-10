@@ -15,13 +15,18 @@
 
 /** The policy, as written in the built page's `<meta http-equiv="Content-Security-Policy">`. */
 export function sitePolicy(rpcOrigin: string): string {
+  return policy([rpcOrigin]);
+}
+
+/** The policy's directives, with connect-src listing the given origins in the order given. */
+function policy(rpcOrigins: readonly string[]): string {
   return [
     "default-src 'none'",
     "script-src 'self'",
     "style-src 'self'",
     "img-src 'self' data:",
     "font-src 'self'",
-    `connect-src ${rpcOrigin}`,
+    `connect-src ${rpcOrigins.join(' ')}`,
     "base-uri 'none'",
     "form-action 'none'",
     "object-src 'none'",
@@ -34,7 +39,12 @@ export function sitePolicy(rpcOrigin: string): string {
  * The same policy as a response header from the host. A header can also forbid framing
  * (`frame-ancestors`, which a `<meta>` policy cannot carry); on IPFS, where no header can be set,
  * the page's own policy still applies.
+ *
+ * Its connect-src names the RPC origins of both public networks the site is built for, mainnet and
+ * Sepolia (`hostedRpcOrigins()` in chains.ts, F9p), so the same host settings serve either build.
+ * The browser enforces the header and the page's own policy together: a request must pass both, so
+ * a built page still reaches only its own network's RPC (CL-53).
  */
-export function hostPolicy(rpcOrigin: string): string {
-  return `${sitePolicy(rpcOrigin)}; frame-ancestors 'none'`;
+export function hostPolicy(rpcOrigins: readonly string[]): string {
+  return `${policy(rpcOrigins)}; frame-ancestors 'none'`;
 }

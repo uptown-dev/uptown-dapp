@@ -31,5 +31,6 @@ npm test
 
 ## Hosting
 
-- `vercel.json` sets the security headers the host sends with every file: the content-security policy, `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy: no-referrer`, `Permissions-Policy` and `Strict-Transport-Security`, and how long the page and its files may be cached. The policy in it names the Ethereum mainnet network service.
+- `vercel.json` sets the security headers the host sends with every file: the content-security policy, `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy: no-referrer`, `Permissions-Policy` and `Strict-Transport-Security`, and how long the page and its files may be cached.
+- The policy in `vercel.json` names the network services of both public networks the site is built for, Ethereum mainnet and Sepolia, and never the local test chain's. So the same file serves a Sepolia build (for testing) and a mainnet build without a change. The built page keeps its own policy, which names only the network it was built for. A browser obeys both policies at once, so a visitor's browser can contact only that one network service: a Sepolia build cannot reach mainnet, and a mainnet build cannot reach Sepolia. `npm test` checks both.
 - The Vercel project needs the environment variable `VITE_CHAIN_ID` (for example `1`), so that its build command, `npm run build`, builds for that network. Its output folder is `dist`.

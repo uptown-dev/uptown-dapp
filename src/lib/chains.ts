@@ -127,6 +127,16 @@ export function rpcOrigins(): string[] {
 }
 
 /**
+ * The RPC origins of the public networks the site is built for (every chain but the local one):
+ * mainnet, then Sepolia. The host's header policy (`vercel.json`, F9p) names these, so one host
+ * setting serves a mainnet or a Sepolia build; each built page's own policy still names only its
+ * own network's origin, and a browser obeys both, so a page can reach only that one.
+ */
+export function hostedRpcOrigins(): string[] {
+  return CHAIN_ORDER.filter((id) => !CHAINS[id].local).map(rpcOrigin);
+}
+
+/**
  * The chain a production build is for (F9h, CL-53). Every `npm run build` names its network in
  * VITE_CHAIN_ID, and the built site then carries that chain's address file, network entry and RPC
  * host and no other chain's. Gives the chain ID, or the message the build stops with.
