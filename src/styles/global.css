@@ -38,8 +38,6 @@
   --warn-bg: #fef3f2;
   --warn-line: #fecdca;
   --ok: #16a34a;
-  --logo-gold: #d9a23a;
-  --logo-base: #b5462f;
   --focus: #b7791f;
   --shadow: 0 1px 2px rgba(24, 24, 27, 0.04), 0 4px 16px rgba(24, 24, 27, 0.04);
   /* Square corners on every button, card, panel and badge (CR-43). */
@@ -73,8 +71,6 @@
     --warn-bg: rgba(240, 68, 56, 0.1);
     --warn-line: rgba(240, 68, 56, 0.32);
     --ok: #4ade80;
-    --logo-gold: #e9b44c;
-    --logo-base: #c4553d;
     --focus: #f0c36a;
     --shadow: none;
   }
@@ -100,8 +96,6 @@
   --warn-bg: rgba(240, 68, 56, 0.1);
   --warn-line: rgba(240, 68, 56, 0.32);
   --ok: #4ade80;
-  --logo-gold: #e9b44c;
-  --logo-base: #c4553d;
   --focus: #f0c36a;
   --shadow: none;
 }
@@ -286,17 +280,41 @@ main:focus {
 .wordmark:hover {
   text-decoration: none;
 }
-.wordmark .glyph {
-  width: 28px;
-  height: 28px;
+/* The owner's logo (CR-75). It is about 1.34 times wider than it is tall, so only the height is
+   set and the width follows the drawing's own proportions. 26 px in the header (the old square
+   glyph was 28 px) and 22 px in the footer (it was 24 px): the skyline is wide, so a slightly
+   lower drawing sits level with the capitals of "UpTown" beside it without crowding the row. */
+.wordmark .skyline {
+  height: 26px;
+  width: auto;
   flex: none;
 }
 .wordmark.small {
   font-size: 16px;
 }
-.wordmark.small .glyph {
-  width: 24px;
-  height: 24px;
+.wordmark.small .skyline {
+  height: 22px;
+}
+/* One drawing per theme, both in the page: the light one by default, the dark one when the
+   browser's setting says dark and the visitor has not chosen light, or when the visitor chose
+   dark. Exactly the rule the colour tokens above follow, so the right drawing is painted the
+   first time the page paints and it changes with the switch at once. */
+.skyline-dark {
+  display: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .skyline-light {
+    display: none;
+  }
+  :root:not([data-theme='light']) .skyline-dark {
+    display: revert;
+  }
+}
+:root[data-theme='dark'] .skyline-light {
+  display: none;
+}
+:root[data-theme='dark'] .skyline-dark {
+  display: revert;
 }
 .site-nav {
   display: none;

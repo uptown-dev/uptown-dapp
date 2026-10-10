@@ -1,16 +1,108 @@
-// The site's own drawings: the header logo, a handful of line icons and the one flow graphic.
-// Colours come from CSS custom properties, so every drawing follows the light or dark theme.
+// The site's own drawings: the owner's logo (CR-75), a handful of line icons and the one flow
+// graphic. The line icons and the flow graphic take their colours from CSS custom properties, so
+// they follow the light or dark theme; the logo carries one drawing per theme and the stylesheet
+// shows the one that belongs to the theme in force.
 
-/** The UpTown logo glyph, kept from the first design. The windows are cut out, so the page shows through on both themes. */
-export function TowerGlyph() {
+/**
+ * The UpTown logo (CR-75): the owner's skyline of five towers with lit windows, copied exactly
+ * from `frontend/logo/uptown-lamplight-on-light.svg` and `frontend/logo/uptown-lamplight-on-dark.svg`
+ * (same viewBox, same shapes, same colours, same drawing order).
+ *
+ * Both versions sit in the page at once and the stylesheet shows one of them (`.skyline-light`,
+ * `.skyline-dark` in global.css) — the same cascade that decides every other colour on the site.
+ * So the right version is there on the very first paint, with no flash, and it changes the instant
+ * the theme switch or the browser's own light/dark setting changes. The windows are the same in
+ * both versions, so they are drawn once, between the towers and the ground bar, exactly where each
+ * of the owner's two files draws them.
+ */
+export function SkylineMark() {
   return (
-    <svg viewBox="0 0 32 32" aria-hidden="true" class="glyph">
-      <path
-        fill-rule="evenodd"
-        d="M9 29V12h3V8h3V3h2v5h3v4h3v17zM12 15h2v2h-2zM18 15h2v2h-2zM12 20h2v2h-2zM18 20h2v2h-2z"
-        fill="var(--logo-gold)"
-      />
-      <rect x="3" y="29" width="26" height="2" fill="var(--logo-base)" />
+    <svg viewBox="10 73 492 367" class="skyline" aria-hidden="true">
+      {/* Light theme: solid dark-indigo towers */}
+      <g class="skyline-light" fill="#1E1B4B">
+        <path d="M24 420 L24 327.143 L40 315.714 L40 420 Z" />
+        <path d="M48 420 L48 310 L62 300 L100 327.143 L100 420 Z" />
+        <path d="M108 420 L108 233.5 L124 223.5 L124 420 Z" />
+        <path d="M132 420 L132 218.5 L152 206 L196 233.5 L196 420 Z" />
+        <path d="M204 420 L204 155.6 L220 146 L220 420 Z" />
+        <path d="M228 420 L228 141.2 L250 128 L296 155.6 L296 420 Z" />
+        <path d="M304 420 L304 233.391 L320 222.957 L320 420 Z" />
+        <path d="M328 420 L328 217.739 L346 206 L388 233.391 L388 420 Z" />
+        <path d="M396 420 L396 107.6 L412 98 L412 420 Z" />
+        <path d="M420 420 L420 93.2 L442 80 L488 107.6 L488 420 Z" />
+      </g>
+      {/* Dark theme: the same skyline with a cream outline */}
+      <g class="skyline-dark" fill="#141233" stroke="#F5EFE2" stroke-width="8" stroke-linejoin="miter">
+        <path d="M20 420 V330 L62 300 L104 330 V420 Z" />
+        <path d="M20 420 V330 L44 313 V420 Z" />
+        <path d="M104 420 V236 L152 206 L200 236 V420 Z" />
+        <path d="M104 420 V236 L128 221 V420 Z" />
+        <path d="M300 420 V236 L346 206 L392 236 V420 Z" />
+        <path d="M300 420 V236 L324 220 V420 Z" />
+        <path d="M392 420 V110 L442 80 L492 110 V420 Z" />
+        <path d="M392 420 V110 L416 96 V420 Z" />
+        <path d="M200 420 V158 L250 128 L300 158 V420 Z" />
+        <path d="M200 420 V158 L224 144 V420 Z" />
+      </g>
+      {/* The lit windows, identical in both versions */}
+      <g fill="#F2B544">
+        <rect x="54" y="348" width="16" height="20" />
+        <rect x="78" y="348" width="16" height="20" />
+        <rect x="54" y="380" width="16" height="20" />
+        <rect x="78" y="380" width="16" height="20" />
+        <rect x="138" y="254" width="16" height="20" />
+        <rect x="174" y="254" width="16" height="20" />
+        <rect x="138" y="286" width="16" height="20" />
+        <rect x="174" y="286" width="16" height="20" />
+        <rect x="138" y="318" width="16" height="20" />
+        <rect x="174" y="318" width="16" height="20" />
+        <rect x="138" y="350" width="16" height="20" />
+        <rect x="174" y="350" width="16" height="20" />
+        <rect x="138" y="382" width="16" height="20" />
+        <rect x="174" y="382" width="16" height="20" />
+        <rect x="234" y="176" width="16" height="20" />
+        <rect x="274" y="176" width="16" height="20" />
+        <rect x="234" y="208" width="16" height="20" />
+        <rect x="274" y="208" width="16" height="20" />
+        <rect x="234" y="240" width="16" height="20" />
+        <rect x="274" y="240" width="16" height="20" />
+        <rect x="234" y="272" width="16" height="20" />
+        <rect x="274" y="272" width="16" height="20" />
+        <rect x="234" y="304" width="16" height="20" />
+        <rect x="274" y="304" width="16" height="20" />
+        <rect x="234" y="336" width="16" height="20" />
+        <rect x="274" y="336" width="16" height="20" />
+        <rect x="234" y="368" width="16" height="20" />
+        <rect x="274" y="368" width="16" height="20" />
+        <rect x="334" y="254" width="16" height="20" />
+        <rect x="366" y="254" width="16" height="20" />
+        <rect x="334" y="286" width="16" height="20" />
+        <rect x="366" y="286" width="16" height="20" />
+        <rect x="334" y="318" width="16" height="20" />
+        <rect x="366" y="318" width="16" height="20" />
+        <rect x="334" y="350" width="16" height="20" />
+        <rect x="366" y="350" width="16" height="20" />
+        <rect x="334" y="382" width="16" height="20" />
+        <rect x="366" y="382" width="16" height="20" />
+        <rect x="426" y="128" width="16" height="20" />
+        <rect x="466" y="128" width="16" height="20" />
+        <rect x="426" y="160" width="16" height="20" />
+        <rect x="466" y="160" width="16" height="20" />
+        <rect x="426" y="192" width="16" height="20" />
+        <rect x="466" y="192" width="16" height="20" />
+        <rect x="426" y="224" width="16" height="20" />
+        <rect x="466" y="224" width="16" height="20" />
+        <rect x="426" y="256" width="16" height="20" />
+        <rect x="466" y="256" width="16" height="20" />
+        <rect x="426" y="288" width="16" height="20" />
+        <rect x="466" y="288" width="16" height="20" />
+        <rect x="426" y="320" width="16" height="20" />
+        <rect x="466" y="320" width="16" height="20" />
+        <rect x="426" y="352" width="16" height="20" />
+        <rect x="466" y="352" width="16" height="20" />
+      </g>
+      <path class="skyline-light" d="M12 412 H500 V438 H12 Z" fill="#1E1B4B" />
+      <path class="skyline-dark" d="M12 412 H500 V438 H12 Z" fill="#F5EFE2" />
     </svg>
   );
 }

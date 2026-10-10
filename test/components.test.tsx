@@ -28,8 +28,16 @@
 //   which contracts get one, so the fixtures give the list a second staking contract and the real
 //   TownStaking is the replaced one, read live; a contract with no code on this chain is a card
 //   marked unavailable.
+// - CR-75 (F9k), the owner's logo: the drawing the header and the footer show in each theme,
+//   checked shape for shape against the owner's own two files in frontend/logo/; the theme switch;
+//   the sizes; and the browser-tab icon's shapes against the same files.
 // Nothing here sends a transaction: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
+// The site's own stylesheet and the owner's own logo files, read as text (CR-75): the checks
+// below compare what the page draws with what the owner delivered, and let the stylesheet pick.
+import GLOBAL_CSS from '../src/styles/global.css?inline';
+import LOGO_ON_LIGHT from '../logo/uptown-lamplight-on-light.svg?raw';
+import LOGO_ON_DARK from '../logo/uptown-lamplight-on-dark.svg?raw';
 import { AppContext, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
 import { makeClient, quoteBuy, readAll, readVaults, replacedRecords, verifyCandidate } from '../src/lib/reads';
@@ -715,6 +723,7 @@ async function run() {
 
   await cr72(base, wallet, live.owner);
   await cr73(base, wallet, live.owner);
+  await cr75();
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -1289,6 +1298,178 @@ async function cr73(base: ChainState, wallet: WalletState, o: OwnerState) {
       text(gone).slice(0, 260),
     );
   }
+}
+
+
+// ---- F9k (CR-75): the owner's logo in the header and the footer, and the browser-tab icon --------
+// The site's own stylesheet decides which of the two drawings is shown, so these checks load
+// global.css into the test page for as long as they run and then take it away again.
+async function cr75() {
+  const style = document.createElement('style');
+  style.textContent = GLOBAL_CSS;
+  document.head.append(style);
+  const savedTitle = document.title;
+  const savedTheme = document.documentElement.getAttribute('data-theme');
+  const savedChoice = localStorage.getItem('uptown-theme');
+
+  /** An attribute as the drawing sees it: the shape's own, else the nearest group's, up to the svg. */
+  const attrUp = (el: Element, name: string): string => {
+    for (let n: Element | null = el; n; n = n.parentElement) {
+      const v = n.getAttribute(name);
+      if (v !== null) return v;
+      if (n.tagName.toLowerCase() === 'svg') break;
+    }
+    return '-';
+  };
+  /** False when the shape, or a group above it, is switched off by the stylesheet. */
+  const shown = (el: Element): boolean => {
+    for (let n: Element | null = el; n; n = n.parentElement) {
+      if (getComputedStyle(n).display === 'none') return false;
+      if (n.tagName.toLowerCase() === 'svg') break;
+    }
+    return true;
+  };
+  /** Every shape of a drawing, in its drawing order: what it is, where it is, and its colours. */
+  const shapes = (svg: Element, onlyShown: boolean): string[] =>
+    [...svg.querySelectorAll('path, rect')]
+      .filter((el) => !onlyShown || shown(el))
+      .map((el) => {
+        const tag = el.tagName.toLowerCase();
+        const where = tag === 'rect' ? ['x', 'y', 'width', 'height'].map((a) => el.getAttribute(a) ?? '0').join(' ') : (el.getAttribute('d') ?? '');
+        return `${tag} ${where} | fill ${attrUp(el, 'fill')} | stroke ${attrUp(el, 'stroke')} ${attrUp(el, 'stroke-width')}`;
+      });
+  const parse = (svg: string) => new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+  const ownerLight = parse(LOGO_ON_LIGHT);
+  const ownerDark = parse(LOGO_ON_DARK);
+  const wantLight = shapes(ownerLight, false);
+  const wantDark = shapes(ownerDark, false);
+
+  const box = document.createElement('div');
+  stage.append(box);
+  render(<App />, box);
+  await new Promise((r) => setTimeout(r, 60));
+  const header = box.querySelector('header.site-header') as HTMLElement;
+  const footer = box.querySelector('footer.site-footer') as HTMLElement;
+  const headMark = header.querySelector('a.wordmark') as HTMLAnchorElement;
+  const footMark = footer.querySelector('a.wordmark.small') as HTMLAnchorElement;
+  const headSvg = headMark?.querySelector('svg.skyline') as SVGElement;
+  const footSvg = footMark?.querySelector('svg.skyline') as SVGElement;
+
+  check(
+    'CR-75 the skyline stands beside the word "UpTown" in the header and in the footer; both still link to #/ with their accessible name',
+    !!headSvg &&
+      !!footSvg &&
+      headMark.getAttribute('href') === '#/' &&
+      footMark.getAttribute('href') === '#/' &&
+      headMark.textContent!.trim() === 'UpTown' &&
+      footMark.textContent!.trim() === 'UpTown' &&
+      /home/i.test(headMark.getAttribute('aria-label') ?? '') &&
+      /home/i.test(footMark.getAttribute('aria-label') ?? '') &&
+      headSvg.getAttribute('viewBox') === ownerLight.getAttribute('viewBox') &&
+      footSvg.getAttribute('viewBox') === ownerDark.getAttribute('viewBox') &&
+      headSvg.getAttribute('aria-hidden') === 'true',
+    `header ${headMark?.getAttribute('href')} "${headMark?.getAttribute('aria-label')}" ${headMark?.textContent?.trim()}; footer ${footMark?.getAttribute('href')} "${footMark?.getAttribute('aria-label')}" ${footMark?.textContent?.trim()}; viewBox ${headSvg?.getAttribute('viewBox')}`,
+  );
+
+  // Nothing has been chosen yet, so the page is following the browser's own light/dark setting: the
+  // drawing on it must already be that setting's one, with no data-theme attribute in sight.
+  const themeNow = () => document.documentElement.getAttribute('data-theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const system = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  check(
+    'CR-75 with nothing chosen the page follows the browser’s own light/dark setting, and the drawing on it is already that setting’s one — no attribute, no script, so nothing to flash',
+    document.documentElement.getAttribute('data-theme') === null && shapes(headSvg, true).join('\n') === (system === 'dark' ? wantDark : wantLight).join('\n'),
+    `the browser's setting is ${system}; data-theme ${document.documentElement.getAttribute('data-theme')}; the drawing shown is the ${shapes(headSvg, true).join('\n') === wantDark.join('\n') ? 'on-dark' : shapes(headSvg, true).join('\n') === wantLight.join('\n') ? 'on-light' : 'neither'} one`,
+  );
+
+  // Everything below is done with the site's own switch, never by setting the theme by hand. The
+  // browser's own setting decides where the page starts, so press until it is the light theme (one
+  // press at most) and work from there.
+  const press = async () => {
+    (header.querySelector('button[aria-label^="Switch to"]') as HTMLButtonElement).click();
+    await new Promise((r) => setTimeout(r, 30));
+  };
+  const started = themeNow();
+  if (started !== 'light') await press();
+
+  // The light theme shows the owner's on-light file, shape for shape, in its own drawing order.
+  const gotLightHead = shapes(headSvg, true);
+  const gotLightFoot = shapes(footSvg, true);
+  check(
+    'CR-75 light theme: the drawing shown is the owner’s uptown-lamplight-on-light.svg, shape for shape, colour for colour, in its own order — in the header and in the footer',
+    themeNow() === 'light' && gotLightHead.join('\n') === wantLight.join('\n') && gotLightFoot.join('\n') === wantLight.join('\n'),
+    `theme ${themeNow()} (the browser started it in ${started}); ${gotLightHead.length} shapes shown, the owner’s file has ${wantLight.length}; first difference: ${wantLight.find((s, i) => s !== gotLightHead[i]) ?? 'none'} vs ${gotLightHead.find((s, i) => s !== wantLight[i]) ?? 'none'}`,
+  );
+
+  // The dark theme shows the on-dark file; and the switch does it at once, without a re-render.
+  const markupBefore = headSvg.outerHTML;
+  await press();
+  const gotDarkHead = shapes(headSvg, true);
+  const gotDarkFoot = shapes(footSvg, true);
+  check(
+    'CR-75 the theme switch changes the drawing at once: after one press of the switch the header and the footer show the owner’s uptown-lamplight-on-dark.svg, shape for shape',
+    document.documentElement.getAttribute('data-theme') === 'dark' && gotDarkHead.join('\n') === wantDark.join('\n') && gotDarkFoot.join('\n') === wantDark.join('\n'),
+    `theme ${document.documentElement.getAttribute('data-theme')}; ${gotDarkHead.length} shapes shown, the owner’s file has ${wantDark.length}; first difference: ${wantDark.find((s, i) => s !== gotDarkHead[i]) ?? 'none'} vs ${gotDarkHead.find((s, i) => s !== wantDark[i]) ?? 'none'}`,
+  );
+  check(
+    'CR-75 no flash of the wrong drawing: the page’s own markup never changes with the theme — both drawings are in it from the first paint and the stylesheet alone picks one',
+    headSvg.outerHTML === markupBefore && headSvg.isSameNode(headMark.querySelector('svg.skyline')) && wantLight.length === wantDark.length,
+    `markup unchanged: ${headSvg.outerHTML === markupBefore}; same element: ${headSvg.isSameNode(headMark.querySelector('svg.skyline'))}`,
+  );
+
+  // Back to light with another press, to show the switch works both ways.
+  await press();
+  check(
+    'CR-75 and back: another press of the switch brings the on-light drawing back',
+    themeNow() === 'light' && shapes(headSvg, true).join('\n') === wantLight.join('\n'),
+    `theme ${themeNow()}, ${shapes(headSvg, true).length} shapes shown`,
+  );
+
+  // The sizes: set by height, the width left to the drawing's own 492 : 367.
+  const hb = headSvg.getBoundingClientRect();
+  const fb = footSvg.getBoundingClientRect();
+  const ratio = 492 / 367;
+  check(
+    'CR-75 the sizes: 26 px tall in the header and 22 px in the footer, each about 1.34 times as wide, and the whole drawing inside its box',
+    Math.abs(hb.height - 26) < 0.6 &&
+      Math.abs(fb.height - 22) < 0.6 &&
+      Math.abs(hb.width - 26 * ratio) < 0.8 &&
+      Math.abs(fb.width - 22 * ratio) < 0.8 &&
+      headSvg.getBoundingClientRect().left >= headMark.getBoundingClientRect().left - 0.5,
+    `header ${hb.width.toFixed(2)} x ${hb.height.toFixed(2)}, footer ${fb.width.toFixed(2)} x ${fb.height.toFixed(2)} (wanted about ${(26 * ratio).toFixed(2)} x 26 and ${(22 * ratio).toFixed(2)} x 22)`,
+  );
+
+  // What the skyline replaces is gone.
+  const css = getComputedStyle(document.documentElement);
+  check(
+    'CR-75 what it replaces is gone: no old single-tower glyph anywhere on the page and no --logo-gold or --logo-base left in the stylesheet',
+    box.querySelector('.glyph') === null && css.getPropertyValue('--logo-gold').trim() === '' && css.getPropertyValue('--logo-base').trim() === '' && !GLOBAL_CSS.includes('--logo-'),
+    `.glyph elements: ${box.querySelectorAll('.glyph').length}; --logo-gold "${css.getPropertyValue('--logo-gold')}", --logo-base "${css.getPropertyValue('--logo-base')}"`,
+  );
+
+  // The browser-tab icon: one file, the same path and name, built from the owner's own shapes.
+  const icon = parse(await (await fetch('/favicon.svg')).text());
+  const iconShapes = shapes(icon.querySelector('g[transform]')!, false);
+  const ownerShapes = new Set(shapes(ownerDark, false));
+  const strays = iconShapes.filter((s) => !ownerShapes.has(s));
+  check(
+    'CR-75 the browser-tab icon is still the one file public/favicon.svg, and every tower and window in it is one of the owner’s own shapes in the owner’s own colours',
+    icon.tagName.toLowerCase() === 'svg' &&
+      icon.getAttribute('viewBox') === '0 0 32 32' &&
+      (icon.querySelector('rect[rx="7"]') as Element | null)?.getAttribute('fill') === '#18181b' &&
+      iconShapes.length === 30 &&
+      strays.length === 0,
+    `${iconShapes.length} shapes taken from the artwork (4 towers, 26 windows), ${strays.length} not in the owner’s file${strays.length ? ': ' + strays[0] : ''}`,
+  );
+
+  render(null, box);
+  box.remove();
+  style.remove();
+  document.title = savedTitle;
+  if (savedTheme === null) document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', savedTheme);
+  if (savedChoice === null) localStorage.removeItem('uptown-theme');
+  else localStorage.setItem('uptown-theme', savedChoice);
+  history.replaceState(null, '', location.pathname + location.search);
 }
 
 run()

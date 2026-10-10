@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { getAddress } from 'viem';
 import { AppContext, Notice, PageHead, useApp, type AppState, type DataStatus } from './components/ui';
-import { CloseIcon, ExternalIcon, MenuIcon, DarkModeIcon, LightModeIcon, TowerGlyph } from './components/icons';
+import { CloseIcon, ExternalIcon, MenuIcon, DarkModeIcon, LightModeIcon, SkylineMark } from './components/icons';
 import { CONTRACT_NAMES, type Address, type ChainState, type OwnerState, type WalletState } from './data/types';
 import { NETWORK, contractUrl } from './lib/network';
 import { makeClient, readAll } from './lib/reads';
@@ -367,7 +367,7 @@ export function App() {
         <div class="wrap header-row">
           {/* The homepage's link on every screen size (CR-71); it also closes the narrow-screen menu. */}
           <a class="wordmark" href="#/" aria-label="UpTown, home" onClick={() => setNavOpen(false)}>
-            <TowerGlyph />
+            <SkylineMark />
             <span>UpTown</span>
           </a>
           <nav class={`site-nav${navOpen ? ' open' : ''}`} id="site-nav" aria-label="Main">
@@ -488,7 +488,7 @@ export function App() {
         <div class="wrap footer-grid">
           <div class="footer-brand">
             <a class="wordmark small" href="#/" aria-label="UpTown, home">
-              <TowerGlyph />
+              <SkylineMark />
               <span>UpTown</span>
             </a>
             <p>UpTown Token (TOWN), an experiment on Ethereum.</p>
