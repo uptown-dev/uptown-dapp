@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 73 492 367" width="492" height="367" role="img" aria-label="UpTown">
+<title>UpTown</title>
+<g fill="#141233" stroke="#F5EFE2" stroke-width="8" stroke-linejoin="miter">
+<path d="M20 420 V330 L62 300 L104 330 V420 Z"/>
+<path d="M20 420 V330 L44 313 V420 Z"/>
+<path d="M104 420 V236 L152 206 L200 236 V420 Z"/>
+<path d="M104 420 V236 L128 221 V420 Z"/>
+<path d="M300 420 V236 L346 206 L392 236 V420 Z"/>
+<path d="M300 420 V236 L324 220 V420 Z"/>
+<path d="M392 420 V110 L442 80 L492 110 V420 Z"/>
+<path d="M392 420 V110 L416 96 V420 Z"/>
+<path d="M200 420 V158 L250 128 L300 158 V420 Z"/>
+<path d="M200 420 V158 L224 144 V420 Z"/>
+</g>
+<g fill="#F2B544">
+<rect x="54" y="348" width="16" height="20"/>
+<rect x="78" y="348" width="16" height="20"/>
+<rect x="54" y="380" width="16" height="20"/>
+<rect x="78" y="380" width="16" height="20"/>
+<rect x="138" y="254" width="16" height="20"/>
+<rect x="174" y="254" width="16" height="20"/>
+<rect x="138" y="286" width="16" height="20"/>
+<rect x="174" y="286" width="16" height="20"/>
+<rect x="138" y="318" width="16" height="20"/>
+<rect x="174" y="318" width="16" height="20"/>
+<rect x="138" y="350" width="16" height="20"/>
+<rect x="174" y="350" width="16" height="20"/>
+<rect x="138" y="382" width="16" height="20"/>
+<rect x="174" y="382" width="16" height="20"/>
+<rect x="234" y="176" width="16" height="20"/>
+<rect x="274" y="176" width="16" height="20"/>
+<rect x="234" y="208" width="16" height="20"/>
+<rect x="274" y="208" width="16" height="20"/>
+<rect x="234" y="240" width="16" height="20"/>
+<rect x="274" y="240" width="16" height="20"/>
+<rect x="234" y="272" width="16" height="20"/>
+<rect x="274" y="272" width="16" height="20"/>
+<rect x="234" y="304" width="16" height="20"/>
+<rect x="274" y="304" width="16" height="20"/>
+<rect x="234" y="336" width="16" height="20"/>
+<rect x="274" y="336" width="16" height="20"/>
+<rect x="234" y="368" width="16" height="20"/>
+<rect x="274" y="368" width="16" height="20"/>
+<rect x="334" y="254" width="16" height="20"/>
+<rect x="366" y="254" width="16" height="20"/>
+<rect x="334" y="286" width="16" height="20"/>
+<rect x="366" y="286" width="16" height="20"/>
+<rect x="334" y="318" width="16" height="20"/>
+<rect x="366" y="318" width="16" height="20"/>
+<rect x="334" y="350" width="16" height="20"/>
+<rect x="366" y="350" width="16" height="20"/>
+<rect x="334" y="382" width="16" height="20"/>
+<rect x="366" y="382" width="16" height="20"/>
+<rect x="426" y="128" width="16" height="20"/>
+<rect x="466" y="128" width="16" height="20"/>
+<rect x="426" y="160" width="16" height="20"/>
+<rect x="466" y="160" width="16" height="20"/>
+<rect x="426" y="192" width="16" height="20"/>
+<rect x="466" y="192" width="16" height="20"/>
+<rect x="426" y="224" width="16" height="20"/>
+<rect x="466" y="224" width="16" height="20"/>
+<rect x="426" y="256" width="16" height="20"/>
+<rect x="466" y="256" width="16" height="20"/>
+<rect x="426" y="288" width="16" height="20"/>
+<rect x="466" y="288" width="16" height="20"/>
+<rect x="426" y="320" width="16" height="20"/>
+<rect x="466" y="320" width="16" height="20"/>
+<rect x="426" y="352" width="16" height="20"/>
+<rect x="466" y="352" width="16" height="20"/>
+</g>
+<path d="M12 412 H500 V438 H12 Z" fill="#F5EFE2"/>
+</svg>
