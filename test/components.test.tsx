@@ -90,7 +90,8 @@ import { Rewards } from '../src/pages/Rewards';
 import { Home } from '../src/pages/Home';
 import { Docs } from '../src/pages/Docs';
 import { OWNER_POWERS } from '../src/content/docs';
-import { App, Freshness, NetworkTag, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
+import { App, Freshness, NetworkTag, PlaceRow, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
+import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetTownAddress } from '../src/lib/places';
 import type { ChainId, Network } from '../src/lib/network';
 import type { Address, CandidateCheck, ChainState, OwnerState, ReplacedStaking, StakingControls, WalletState } from '../src/data/types';
 
@@ -807,6 +808,7 @@ async function run() {
   await cr76();
   await cr77(base, wallet);
   await cr82(base, wallet);
+  await cr84();
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -2488,6 +2490,232 @@ async function cr82(base: ChainState, wallet: WalletState) {
     chooseWallet(null);
     statusBox = null;
   }
+}
+
+// ---- F9q (CR-84): the project's places in the footer ---------------------------------------------
+// The row is rendered on its own, with the site's own chain-1 address file (no TOWN address today,
+// so there is no GMGN mark at all) and with a stand-in address passed in its place (GMGN is then an
+// ordinary link). The stylesheet is loaded for as long as these checks run, because it is the
+// stylesheet that dims the OpenSea mark and that hides its word until the pointer or the keyboard
+// reaches it. Nothing in src/addresses/** is touched.
+async function cr84() {
+  const style = document.createElement('style');
+  style.textContent = GLOBAL_CSS;
+  document.head.append(style);
+  const box = document.createElement('div');
+  stage.append(box);
+
+  /** The row with a TOWN address on Ethereum; without an argument, with the site's own address file. */
+  const row = (...town: (Address | null)[]): HTMLElement => {
+    render(town.length ? <PlaceRow town={town[0]} /> : <PlaceRow />, box);
+    return box.querySelector('.footer-places') as HTMLElement;
+  };
+  const mark = (el: HTMLElement, place: string) => el.querySelector(`[data-place="${place}"]`) as HTMLElement;
+  /** Everything a visitor and a screen reader get from one mark. */
+  const seen = (el: HTMLElement, place: string) => {
+    const m = mark(el, place);
+    const svg = m?.querySelector('svg');
+    const word = m?.querySelector('.place-word') as HTMLElement | null;
+    return {
+      tag: m?.tagName.toLowerCase() ?? null,
+      href: m?.getAttribute('href') ?? null,
+      target: m?.getAttribute('target') ?? null,
+      rel: m?.getAttribute('rel') ?? null,
+      aria: m?.getAttribute('aria-label') ?? null,
+      title: m?.getAttribute('title') ?? null,
+      tabindex: m?.getAttribute('tabindex') ?? null,
+      word: word?.textContent ?? null,
+      wordOpacity: word ? getComputedStyle(word).opacity : null,
+      says: (m?.querySelector('.visually-hidden') as HTMLElement | null)?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
+      shapes: svg ? svg.querySelectorAll('path, rect, circle').length : 0,
+      fromElsewhere: svg ? [...svg.querySelectorAll('*')].some((n) => /^(image|use)$/i.test(n.tagName)) : null,
+      glyphOpacity: svg ? getComputedStyle(svg).opacity : null,
+    };
+  };
+
+  const own = row();
+  const order = [...own.querySelectorAll('li > *')].map((e) => (e as HTMLElement).dataset.place).join(',');
+  check(
+    'CR-84 with the site’s own Ethereum address file (no TOWN address today) the row holds three marks in order: X, Telegram, OpenSea',
+    order === 'X,Telegram,OpenSea',
+    order,
+  );
+
+  const x = seen(own, 'X');
+  const tg = seen(own, 'Telegram');
+  check(
+    'CR-84 X and Telegram are links to the project’s own addresses, each opening in a new tab with the platform’s name and "(opens in a new tab)"',
+    x.tag === 'a' &&
+      x.href === 'https://x.com/UpTownHook' &&
+      x.href === X_URL &&
+      x.target === '_blank' &&
+      x.rel === 'noopener noreferrer' &&
+      x.aria === 'UpTown on X (opens in a new tab)' &&
+      tg.tag === 'a' &&
+      tg.href === 'https://t.me/uptownhook' &&
+      tg.href === TELEGRAM_URL &&
+      tg.target === '_blank' &&
+      tg.rel === 'noopener noreferrer' &&
+      tg.aria === 'UpTown on Telegram (opens in a new tab)',
+    `X ${JSON.stringify(x)} | Telegram ${JSON.stringify(tg)}`,
+  );
+
+  const sea = seen(own, 'OpenSea');
+  check(
+    'CR-84 OpenSea is not a link, leads nowhere, and says "soon" — for the eye and for a screen reader',
+    sea.tag === 'span' && sea.href === null && sea.word === 'soon' && sea.says === 'OpenSea: soon' && sea.title === 'OpenSea: soon' && sea.tabindex === '0',
+    JSON.stringify(sea),
+  );
+
+  // No GMGN mark at all today: nothing in the page, nothing for a screen reader, no gmgn.ai address
+  // and no "at launch" anywhere.
+  const gm = seen(own, 'GMGN');
+  check(
+    'CR-84 (owner, 11 Oct 2026) with no TOWN address on Ethereum there is no GMGN mark at all: nothing in the page, no gmgn.ai address, no "at launch"',
+    mark(own, 'GMGN') === null &&
+      gm.tag === null &&
+      own.querySelectorAll('[href*="gmgn"]').length === 0 &&
+      !own.innerHTML.includes('gmgn') &&
+      !own.innerText.includes('at launch') &&
+      !own.innerHTML.includes('at launch') &&
+      mainnetTownAddress() === null,
+    `marks ${order}; mainnetTownAddress() ${mainnetTownAddress()}; the row says "${own.innerText.replace(/\s+/g, ' ').trim()}"`,
+  );
+  // The build under test is the local chain's, which does have a deployment: the mark is still
+  // absent, because it follows the chain-1 file and not the chain this build is for.
+  check(
+    'CR-84 the GMGN mark follows the Ethereum address file whatever network the build is for (this build: chain 31337, contracts deployed, still no GMGN mark)',
+    NETWORK.chainId === 31337 && NETWORK.deployment !== null && mark(own, 'GMGN') === null,
+    `build chain ${NETWORK.chainId}, deployed ${NETWORK.deployment !== null}`,
+  );
+
+  // The same row with a TOWN address in the file's place: the mark becomes the link, built from it.
+  const TOWN: Address = '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984';
+  const filled = row(TOWN);
+  const filledOrder = [...filled.querySelectorAll('li > *')].map((e) => (e as HTMLElement).dataset.place).join(',');
+  const gmLive = seen(filled, 'GMGN');
+  check(
+    'CR-84 with a TOWN address on Ethereum, GMGN appears third, as an ordinary link to gmgn.ai/eth/token/<address>, opening in a new tab and named',
+    filledOrder === 'X,Telegram,GMGN,OpenSea' &&
+      gmLive.tag === 'a' &&
+      gmLive.href === `https://gmgn.ai/eth/token/${TOWN}` &&
+      gmLive.href === gmgnUrl(TOWN) &&
+      gmLive.target === '_blank' &&
+      gmLive.rel === 'noopener noreferrer' &&
+      gmLive.aria === 'TOWN on GMGN (opens in a new tab)' &&
+      gmLive.word === null &&
+      Number(gmLive.glyphOpacity) === 1 &&
+      gmgnUrl(null) === null,
+    `${filledOrder} | ${JSON.stringify(gmLive)}`,
+  );
+  check(
+    'CR-84 the other marks are unchanged when the address file is filled: X and Telegram still link, OpenSea is still dimmed and says "soon"',
+    seen(filled, 'X').href === X_URL && seen(filled, 'Telegram').href === TELEGRAM_URL && seen(filled, 'OpenSea').tag === 'span' && seen(filled, 'OpenSea').word === 'soon',
+    `OpenSea ${JSON.stringify(seen(filled, 'OpenSea'))}`,
+  );
+
+  // Every mark is drawn in the page: shapes, nothing fetched from another host, no <img> anywhere.
+  const names = ['X', 'Telegram', 'GMGN', 'OpenSea'];
+  const drawn = names.map((p) => seen(filled, p));
+  check(
+    'CR-84 every mark is drawn in the page as an inline SVG (no picture from another host, no <img>, no icon font)',
+    drawn.every((d) => d.shapes > 0 && d.fromElsewhere === false) && filled.querySelectorAll('img').length === 0 && own.querySelectorAll('img').length === 0,
+    drawn.map((d, i) => `${names[i]}: ${d.shapes} shapes`).join(', '),
+  );
+
+  // Dimmed, and the word only when the pointer rests on the mark or the keyboard reaches it.
+  check(
+    'CR-84 the dimmed OpenSea mark is plainly less prominent than the live ones',
+    Number(sea.glyphOpacity) < 0.8 && Number(x.glyphOpacity) === 1 && Number(tg.glyphOpacity) === 1 && Number(seen(filled, 'GMGN').glyphOpacity) === 1,
+    `X ${x.glyphOpacity}, Telegram ${tg.glyphOpacity}, GMGN (filled) ${seen(filled, 'GMGN').glyphOpacity}, OpenSea ${sea.glyphOpacity}`,
+  );
+  {
+    const el = row();
+    const seaMark = mark(el, 'OpenSea');
+    const word = seaMark.querySelector('.place-word') as HTMLElement;
+    const before = getComputedStyle(word).opacity;
+    try {
+      window.focus();
+    } catch {
+      /* the test page cannot take the window's focus: handled below */
+    }
+    seaMark.focus();
+    const focused = document.activeElement === seaMark;
+    // A browser paints `:focus` only while the page itself holds the window's focus, which a
+    // headless test page does not always have. So the rule that shows the word is checked in the
+    // stylesheet as well, and the review driver photographs it with a real Tab in a focused page.
+    const docFocus = document.hasFocus();
+    const onFocus = getComputedStyle(word).opacity;
+    seaMark.blur();
+    const after = getComputedStyle(word).opacity;
+    const rule = [...document.styleSheets]
+      .flatMap((s) => {
+        try {
+          return [...s.cssRules];
+        } catch {
+          return [];
+        }
+      })
+      .some((r) => r instanceof CSSStyleRule && /\.place-off:focus \.place-word/.test(r.selectorText) && r.style.opacity === '1');
+    check(
+      'CR-84 a keyboard reaches the dimmed mark, its word is hidden until then, and the stylesheet shows it on focus',
+      before === '0' && focused && seaMark.tabIndex === 0 && rule && (docFocus ? onFocus === '1' : true) && after === '0',
+      `before ${before}, the keyboard reaches it: ${focused} (the page holds the window’s focus: ${docFocus}; the word then at ${onFocus}), after ${after}; the rule ".place-off:focus .place-word { opacity: 1 }" is in the stylesheet: ${rule}`,
+    );
+  }
+
+  // The row as the whole site renders it: once, in the footer, with the same four marks.
+  {
+    const whole = document.createElement('div');
+    stage.append(whole);
+    render(<App />, whole);
+    await new Promise((r) => setTimeout(r, 60));
+    const rows = whole.querySelectorAll('.footer-places');
+    const inFooter = !!whole.querySelector('footer.site-footer .footer-places');
+    const places = [...whole.querySelectorAll('footer.site-footer .place')].map((e) => (e as HTMLElement).dataset.place).join(',');
+    const noGmgn = !whole.innerHTML.includes('gmgn') && !whole.innerHTML.includes('at launch');
+    const head = (whole.querySelector('.footer-places .footer-head') as HTMLElement | null)?.textContent ?? null;
+    // CR-84 changes nothing else in the footer.
+    const brand = (whole.querySelector('footer.site-footer .footer-brand p') as HTMLElement).textContent;
+    const fonts = !!whole.querySelector('footer.site-footer .footer-fonts');
+    const contracts = whole.querySelectorAll('footer.site-footer .footer-contracts li').length;
+    const links = [...whole.querySelectorAll('footer.site-footer nav a')].map((a) => a.textContent).join(',');
+    check(
+      'CR-84 the whole site shows the row once, in the footer, with no GMGN mark anywhere in the page today, and the rest of the footer is unchanged',
+      rows.length === 1 &&
+        inFooter &&
+        places === 'X,Telegram,OpenSea' &&
+        noGmgn &&
+        head === 'Find UpTown' &&
+        brand === 'UpTown Token (TOWN), an experiment on Ethereum.' &&
+        fonts &&
+        contracts === 7 &&
+        links === 'Trade,Rewards,Stake,Stats,Docs',
+      `${rows.length} row(s), in the footer: ${inFooter}, marks ${places}, no GMGN anywhere: ${noGmgn}, head "${head}", page links ${links}, ${contracts} contracts, font notice ${fonts}`,
+    );
+    render(null, whole);
+    whole.remove();
+  }
+
+  // The gallery keeps both states, each named and findable by the review driver.
+  if (GALLERY) {
+    const keep = (id: string, title: string, town?: Address | null) => {
+      const h = document.createElement('p');
+      h.className = 'poke-title';
+      h.style.margin = '28px 0 8px';
+      h.textContent = `Fixture: ${title}`;
+      const d = document.createElement('div');
+      d.id = id;
+      stage.append(h, d);
+      render(town === undefined ? <PlaceRow /> : <PlaceRow town={town} />, d);
+    };
+    keep('cr84-today', 'CR-84: the footer row today, with no TOWN address on Ethereum (three marks)');
+    keep('cr84-filled', 'CR-84: the footer row with a TOWN address on Ethereum (four marks)', TOWN);
+  }
+
+  render(null, box);
+  box.remove();
+  style.remove();
 }
 
 run()
