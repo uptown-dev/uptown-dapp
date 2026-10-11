@@ -1829,9 +1829,12 @@ main:focus {
   font-size: 12.5px;
   color: var(--text-2);
 }
+/* 18 px between the stacked blocks on a narrow screen (22 px before CR-87): part of giving the
+   footer its height back now that the row of platform marks sits in it. At 760 px and above the
+   blocks sit side by side and the gap is 32 px (the media query below). */
 .footer-grid {
   display: grid;
-  gap: 22px;
+  gap: 18px;
 }
 .footer-brand nav {
   margin-top: 14px;
@@ -1906,22 +1909,24 @@ main:focus {
   font-weight: 600;
   text-decoration: underline;
 }
-.footer-fonts {
-  color: var(--text-3);
-  font-size: 11.5px;
-}
-.footer-fonts a {
-  color: var(--text-3);
-}
-
-/* The project's places (CR-84): four drawn platform marks, two of them links and two dimmed.
-   The row keeps 22 px under it, which is where a dimmed mark's word appears, so showing the word
-   moves nothing on the page and never reaches past the footer. */
+/* The project's places (CR-84, CR-87): the drawn platform marks, on the right-hand side with the
+   contract addresses. Every mark is drawn at full strength (CR-87 took the dimming away); the one
+   that is not a link (OpenSea) differs only in its cursor and in the word it shows. The row is the
+   last thing in the footer, so the word, which appears just under its mark, falls inside the
+   footer's own bottom padding and needs no space reserved for it. */
 .footer-places {
-  margin-top: 16px;
-  padding-bottom: 22px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  flex-wrap: wrap;
 }
-.place-row {
+.footer-places .footer-head {
+  margin-bottom: 0;
+}
+/* Scoped to the row's own block: the row now sits inside `.footer-contracts`, whose own `ul` rule
+   (a grid of address columns) would otherwise lay the marks out in one column. */
+.footer-places .place-row {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1934,8 +1939,8 @@ main:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border);
   color: var(--text-2);
   text-decoration: none;
@@ -1945,22 +1950,13 @@ a.place:hover {
   border-color: var(--border-strong);
   background: var(--surface-2);
 }
-/* Dimmed: clearly less prominent than a live mark, still legible, and no pointer that suggests a link. */
-.place-off {
-  color: var(--text-3);
-  border-style: dashed;
+/* Not a link, and not dimmed either (CR-87): the same colour and weight as the two links, with no
+   pointer that suggests a link. The only sign is the word it shows. */
+.place-soon {
   cursor: default;
 }
-/* Only the drawing is dimmed, so the word that appears under it stays fully legible. */
-.place-off .icon {
-  opacity: 0.45;
-}
-.place-off:hover .icon,
-.place-off:focus .icon {
-  opacity: 0.7;
-}
-/* The short word, under its mark: "at launch" or "soon". Hidden until the pointer rests on the
-   mark or a keyboard reaches it; it takes no space of its own either way. */
+/* The short word, under its mark: "soon". Hidden until the pointer rests on the mark or a keyboard
+   reaches it; it takes no space of its own either way. */
 .place-word {
   position: absolute;
   top: calc(100% + 4px);
@@ -1976,8 +1972,8 @@ a.place:hover {
   opacity: 0;
   pointer-events: none;
 }
-.place-off:hover .place-word,
-.place-off:focus .place-word {
+.place-soon:hover .place-word,
+.place-soon:focus .place-word {
   opacity: 1;
 }
 @media (min-width: 760px) {
@@ -1985,9 +1981,6 @@ a.place:hover {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
     gap: 32px;
     align-items: start;
-  }
-  .footer-fonts {
-    grid-column: 1 / -1;
   }
 }
 

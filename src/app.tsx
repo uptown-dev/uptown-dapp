@@ -178,18 +178,21 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE PROJECT'S PLACES IN THE FOOTER (CR-84). One row of four marks, in this order: X, Telegram,
-// GMGN, OpenSea. Each is drawn in the page as an inline shape (`icons.tsx`), because the site's
-// security policy allows no picture from another host and a drawn mark follows the theme.
+// THE PROJECT'S PLACES IN THE FOOTER (CR-84, moved and undimmed by CR-87). One row of four marks,
+// in this order: X, Telegram, GMGN, OpenSea. Each is drawn in the page as an inline shape
+// (`icons.tsx`), because the site's security policy allows no picture from another host and a drawn
+// mark follows the theme. CR-87 puts the row on the right-hand side of the footer, with the
+// contract addresses, instead of under the page links.
 //
 // X and Telegram are links: a new tab, `rel="noopener noreferrer"`, and an accessible name that
 // names the platform and says it opens in a new tab, exactly as the footer's contract links do.
 //
-// OpenSea is a dimmed mark, not a link: no href, so nothing to follow, and the short word "soon"
-// when the pointer rests on it or a keyboard reaches it. It is a focusable element (tabindex 0)
-// carrying both the word a sighted visitor sees (`.place-word`, shown by the stylesheet on hover
-// and on focus) and the same words for a screen reader ("OpenSea: soon"), because a `title` alone
-// never reaches a keyboard.
+// OpenSea is not a link: no href, so nothing to follow, and the short word "soon" when the pointer
+// rests on it or a keyboard reaches it. CR-87 took its dimming away — no dashed border and no
+// reduced opacity, the same colour and weight as the two links — and left everything else as F9q
+// built it: a focusable element (tabindex 0) carrying both the word a sighted visitor sees
+// (`.place-word`, shown by the stylesheet on hover and on focus) and the same words for a screen
+// reader ("OpenSea: soon"), because a `title` alone never reaches a keyboard.
 //
 // GMGN is not shown at all until TOWN exists on Ethereum (the owner's decision of 11 October 2026,
 // replacing CR-84's dimmed mark): no mark, no word, nothing in the page and nothing for a screen
@@ -200,7 +203,7 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
 // and Telegram, with no further change here.
 // ---------------------------------------------------------------------------------------------
 
-/** One mark: a link that opens in a new tab, or a dimmed mark that leads nowhere and shows `word`. */
+/** One mark: a link that opens in a new tab, or a mark that leads nowhere and shows `word` (CR-87: not dimmed). */
 export function PlaceMark({
   name,
   what,
@@ -225,7 +228,7 @@ export function PlaceMark({
   }
   return (
     <li>
-      <span class="place place-off" data-place={name} tabIndex={0} role="note" title={`${name}: ${word}`}>
+      <span class="place place-soon" data-place={name} tabIndex={0} role="note" title={`${name}: ${word}`}>
         {children}
         <span class="visually-hidden">
           {name}: {word}
@@ -241,7 +244,7 @@ export function PlaceMark({
 /**
  * The row: X, Telegram, then GMGN only once TOWN exists on Ethereum, then OpenSea. `town` is
  * TOWN's address on Ethereum; it comes from the site's own chain-1 address file and is a prop only
- * so a test can render the row with a stand-in address.
+ * so a test can render the row with a stand-in address. It sits with the contract addresses (CR-87).
  */
 export function PlaceRow({ town = mainnetTownAddress() }: { town?: Address | null }) {
   const gmgn = gmgnUrl(town);
@@ -719,8 +722,6 @@ export function App() {
                 </li>
               </ul>
             </nav>
-            {/* The project's places (CR-84), under the page links. */}
-            <PlaceRow />
           </div>
           <div class="footer-contracts">
             <p class="footer-head">Contracts{network.explorerName ? ` on ${network.explorerName}` : ''}</p>
@@ -751,10 +752,13 @@ export function App() {
               <p class="footer-note">Not deployed on {network.name} yet: the addresses are published here once they are.</p>
             )}
             {network.deployment && !network.explorer && <p class="footer-note">No block explorer on the {network.name.toLowerCase()}, so these are not links.</p>}
+            {/* The project's places (CR-84), on the right-hand side with the contract addresses (CR-87). */}
+            <PlaceRow />
           </div>
-          <p class="footer-fonts">
-            Fonts under the SIL Open Font Licence: <a href="./licenses/OFL-Inter.txt">Inter</a>, <a href="./licenses/OFL-Cinzel.txt">Cinzel</a> (wordmark).
-          </p>
+          {/* CR-87 removed the visible font licence sentence. The licence files themselves are
+              still published with the site, at licenses/OFL-Inter.txt and licenses/OFL-Cinzel.txt
+              (public/licenses/, copied into dist/ by every build), which is what the fonts'
+              licence requires. */}
         </div>
       </footer>
 
