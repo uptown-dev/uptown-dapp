@@ -808,7 +808,7 @@ async function run() {
   await cr76();
   await cr77(base, wallet);
   await cr82(base, wallet);
-  await cr84cr87();
+  await cr84cr87cr88();
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -2492,18 +2492,33 @@ async function cr82(base: ChainState, wallet: WalletState) {
   }
 }
 
-// ---- F9q (CR-84) and F9r (CR-87): the project's places in the footer -----------------------------
+// ---- F9q (CR-84), F9r (CR-87) and F9s (CR-88): the project's places in the footer ---------------
 // The row is rendered on its own, with the site's own chain-1 address file (no TOWN address today,
-// so there is no GMGN mark at all) and with a stand-in address passed in its place (GMGN is then an
+// so GMGN says "at launch") and with a stand-in address passed in its place (GMGN is then an
 // ordinary link). The stylesheet is loaded for as long as these checks run, because it is the
-// stylesheet that hides the word until the pointer or the keyboard reaches it. Nothing in
-// src/addresses/** is touched.
+// stylesheet that hides the words until the pointer or the keyboard reaches them, that paints each
+// mark its platform's colour, and that decides where the block sits. Nothing in src/addresses/** is
+// touched.
 //
 // CR-87 added: the X and OpenSea drawings are the platforms' own marks, each a single path exactly
-// as the task brief gives it; the Telegram drawing is unchanged, path for path; no mark is dimmed
-// any more (no reduced opacity, no dashed border, the same colour as the two links); the row sits
-// with the contract addresses and not under the page links; and the font licence sentence is gone
-// from every page.
+// as that task brief gave it; the Telegram drawing is unchanged, path for path; no mark is dimmed
+// any more; and the font licence sentence is gone from every page.
+//
+// CR-88 adds:
+//   1. the block is written once and sits in the brand block, under the page links, and the
+//      stylesheet alone moves it into a third column of its own at 1000 px and above;
+//   2. the heading reads "Official Links" and "Find UpTown" is gone from every page;
+//   3. GMGN is shown from today, with exactly OpenSea's treatment and its own word ("at launch"),
+//      and becomes a link the moment the chain-1 address file names TOWN;
+//   4. GMGN's mark is GMGN's own pixel drawing, used as it is: every element and every attribute as
+//      the task brief gives them, its clip-path id made unique, its own colours kept;
+//   6. every mark carries its platform's brand colour — X black on light and white on dark through
+//      the stylesheet's own light/dark cascade, Telegram #26A5E4, OpenSea #2081E2 over a white disc
+//      so its boat reads white in either theme, GMGN its own colours;
+//   7. the four are sized by the drawing that shows rather than by their boxes: X 18, Telegram 22,
+//      GMGN 16 (the only size at or below the box that puts its 2-unit blocks on whole screen
+//      pixels) and OpenSea 28, whose disc is larger than X's box because its boat is only part of
+//      it.
 
 /** The X mark's path, exactly as CR-87's task brief gives it (Simple Icons). */
 const X_PATH =
@@ -2511,10 +2526,44 @@ const X_PATH =
 /** The OpenSea mark's path, exactly as CR-87's task brief gives it (Simple Icons). */
 const OPENSEA_PATH =
   'M12 0C5.374 0 0 5.374 0 12s5.374 12 12 12 12-5.374 12-12S18.629 0 12 0ZM5.92 12.403l.051-.081 3.123-4.884a.107.107 0 0 1 .187.014c.52 1.169.972 2.623.76 3.528-.088.372-.335.876-.614 1.342a2.405 2.405 0 0 1-.117.199.106.106 0 0 1-.09.045H6.013a.106.106 0 0 1-.091-.163zm13.914 1.68a.109.109 0 0 1-.065.101c-.243.103-1.07.485-1.414.962-.878 1.222-1.548 2.97-3.048 2.97H9.053a4.019 4.019 0 0 1-4.013-4.028v-.072c0-.058.048-.106.108-.106h3.485c.07 0 .12.063.115.132-.026.226.017.459.125.67.206.42.636.682 1.099.682h1.726v-1.347H9.99a.11.11 0 0 1-.089-.173l.063-.09c.16-.231.391-.586.621-.992.156-.274.308-.566.43-.86.024-.052.043-.107.065-.16.033-.094.067-.182.091-.269a4.57 4.57 0 0 0 .065-.223c.057-.25.081-.514.081-.787 0-.108-.004-.221-.014-.327-.005-.117-.02-.235-.034-.352a3.415 3.415 0 0 0-.048-.312 6.494 6.494 0 0 0-.098-.468l-.014-.06c-.03-.108-.056-.21-.09-.317a11.824 11.824 0 0 0-.328-.972 5.212 5.212 0 0 0-.142-.355c-.072-.178-.146-.339-.213-.49a3.564 3.564 0 0 1-.094-.197 4.658 4.658 0 0 0-.103-.213c-.024-.053-.053-.104-.072-.152l-.211-.388c-.029-.053.019-.118.077-.101l1.32.357h.01l.173.05.192.054.07.019v-.783c0-.379.302-.686.679-.686a.66.66 0 0 1 .477.202.69.69 0 0 1 .2.484V6.65l.141.039c.01.005.022.01.031.017.034.024.084.062.147.11.05.038.103.086.165.137a10.351 10.351 0 0 1 .574.504c.214.199.454.432.684.691.065.074.127.146.192.226.062.079.132.156.19.232.079.104.16.212.235.324.033.053.074.108.105.161.096.142.178.288.257.435.034.067.067.141.096.213.089.197.159.396.202.598a.65.65 0 0 1 .029.132v.01c.014.057.019.12.024.184a2.057 2.057 0 0 1-.106.874c-.031.084-.06.17-.098.254-.075.17-.161.343-.264.502-.034.06-.075.122-.113.182-.043.063-.089.123-.127.18a3.89 3.89 0 0 1-.173.221c-.053.072-.106.144-.166.209-.081.098-.16.19-.245.278-.048.058-.1.118-.156.17-.052.06-.108.113-.156.161-.084.084-.15.147-.208.202l-.137.122a.102.102 0 0 1-.072.03h-1.051v1.346h1.322c.295 0 .576-.104.804-.298.077-.067.415-.36.816-.802a.094.094 0 0 1 .05-.03l3.65-1.057a.108.108 0 0 1 .138.103z';
-/** The Telegram paper plane, byte for byte as it stands on main: CR-87 leaves this drawing alone. */
+/** The Telegram paper plane, byte for byte as it stands on main: CR-87 and CR-88 leave this drawing alone. */
 const TELEGRAM_PATH = 'M22 2.6 2 10.8l6.6 2.6L9.8 21l3.5-5.4 5.3 5.2z';
 
-async function cr84cr87() {
+/** One element of a drawing: its tag and every attribute it carries but `class`. */
+type Shape = { tag: string; attrs: Record<string, string> };
+const shapesOf = (el: Element | null): Shape[] =>
+  el
+    ? [...el.children].map((c) => ({
+        tag: c.tagName.toLowerCase(),
+        attrs: Object.fromEntries([...c.attributes].filter((a) => a.name !== 'class').map((a) => [a.name, a.value])),
+      }))
+    : [];
+
+// GMGN's drawing, exactly as CR-88's task brief gives it: every element inside the clipped group,
+// with every attribute, and the clip path's own rect. Written out here so that a redrawn, re-spaced
+// or part-recoloured mark is caught; scripts/f9s-shots.mjs reads the same block out of the brief
+// itself and compares it with the built page, so neither copy can drift unnoticed.
+const GMGN_SHAPES: Shape[] = [
+  { tag: 'path', attrs: {d:'M8 30V32H30V30H28V26H26V24H28V22H30V20H32V12H30V4H28V2H22V4H20V8H18V4H16V2H10V4H8V12H4V10H0V20H2V22H8V24H12V26H10V30H8Z',fill:'#9ED455'} },
+  { tag: 'path', attrs: {'fill-rule':'evenodd','clip-rule':'evenodd',d:'M16 2H14V4H16V6V8V10H18H20H22V8V6V4L20 4V6V8H18V6V4H16V2ZM6 20H8V22H6H4H2L2 20H4H6ZM4 12H2L2 14L2 16V18L2 20H0V18V16V14V12V10H2H4V12ZM4 12V14H6H8V12H10V10V8V6V4L8 4V6V8V10V12H6H4ZM12 26V24H10H8V22H10H12H14V24V26H12ZM10 30V28V26H12V28V30H10ZM10 30V32H8V30H10ZM30 30H28V28V26H26V24H28V22H30V20H32V18V16V14V12H30V10V8V6V4H28V2H26V4H28V6V8V10V12H30V14V16V18V20H28V22H26H24V24V26H26V28V30H28V32H30V30Z',fill:'#457F2C'} },
+  { tag: 'rect', attrs: {x:'10',y:'6',width:'4',height:'6',fill:'white'} },
+  { tag: 'rect', attrs: {x:'10',y:'8',width:'2',height:'4',fill:'black'} },
+  { tag: 'rect', attrs: {x:'12',y:'18',width:'2',height:'6',transform:'rotate(90 12 18)',fill:'black'} },
+  { tag: 'path', attrs: {'fill-rule':'evenodd','clip-rule':'evenodd',d:'M14 4V6L10 6V4H14ZM4 14L4 12H2V14H4ZM4 14H10V16H4V14ZM26 6V4H22V6L26 6Z',fill:'#D5F86B'} },
+  { tag: 'rect', attrs: {x:'22',y:'30',width:'2',height:'10',transform:'rotate(90 22 30)',fill:'#D09C4F'} },
+  { tag: 'rect', attrs: {x:'22',y:'28',width:'2',height:'8',transform:'rotate(90 22 28)',fill:'#D09C4F'} },
+  { tag: 'rect', attrs: {x:'20',y:'26',width:'2',height:'6',transform:'rotate(90 20 26)',fill:'#D09C4F'} },
+  { tag: 'rect', attrs: {x:'20',y:'24',width:'2',height:'4',transform:'rotate(90 20 24)',fill:'#D09C4F'} },
+  { tag: 'path', attrs: {'fill-rule':'evenodd','clip-rule':'evenodd',d:'M28 12V6H26V12H28ZM10 14V12H8V14H10ZM6 18V20H2V18H6ZM30 20V18V14H28V18H26V20H22V22V24H20V26H22H24V30H26V32H28V30H26V26H24V22H28V20H30ZM14 20V22H8V20H14ZM14 26V22H16V26H14ZM12 30V26H14V30H12ZM12 30H10V32H12V30ZM22 10V12H20V10H22Z',fill:'#57A756'} },
+  { tag: 'rect', attrs: {x:'22',y:'6',width:'4',height:'6',fill:'white'} },
+  { tag: 'rect', attrs: {x:'22',y:'8',width:'2',height:'4',fill:'black'} },
+];
+const GMGN_CLIP_RECT: Shape = { tag: 'rect', attrs: {width:'32',height:'32',fill:'white'} };
+
+/** The colours the marks are painted, as the browser reports them. */
+const RGB = { black: 'rgb(0, 0, 0)', white: 'rgb(255, 255, 255)', telegram: 'rgb(38, 165, 228)', opensea: 'rgb(32, 129, 226)' };
+
+async function cr84cr87cr88() {
   const style = document.createElement('style');
   style.textContent = GLOBAL_CSS;
   document.head.append(style);
@@ -2546,9 +2595,12 @@ async function cr84cr87() {
       shapes: svg ? svg.querySelectorAll('path, rect, circle').length : 0,
       fromElsewhere: svg ? [...svg.querySelectorAll('*')].some((n) => /^(image|use)$/i.test(n.tagName)) : null,
       glyphOpacity: svg ? getComputedStyle(svg).opacity : null,
-      // CR-87: the drawing itself, its size, and how the mark is coloured and bordered.
       paths: svg ? [...svg.querySelectorAll('path')].map((p) => p.getAttribute('d')) : [],
       drawnAt: svg ? `${svg.getAttribute('width')}x${svg.getAttribute('height')}` : null,
+      rootFill: svg?.getAttribute('fill') ?? null,
+      // Every drawn shape's painted fill, in drawing order, as the browser resolves it. Shapes
+      // inside `defs` are left out: GMGN's clip path holds a rect that is never painted.
+      fills: svg ? [...svg.querySelectorAll('path, rect, circle')].filter((s) => !s.closest('defs')).map((s) => getComputedStyle(s).fill) : [],
       colour: m ? getComputedStyle(m).color : null,
       border: m ? getComputedStyle(m).borderTopStyle : null,
     };
@@ -2557,10 +2609,11 @@ async function cr84cr87() {
   const own = row();
   const order = [...own.querySelectorAll('li > *')].map((e) => (e as HTMLElement).dataset.place).join(',');
   check(
-    'CR-84 with the site’s own Ethereum address file (no TOWN address today) the row holds three marks in order: X, Telegram, OpenSea',
-    order === 'X,Telegram,OpenSea',
+    'CR-88 item 3: with the site’s own Ethereum address file (no TOWN address today) the row holds all four marks, in order: X, Telegram, GMGN, OpenSea',
+    order === 'X,Telegram,GMGN,OpenSea',
     order,
   );
+  check('CR-88 item 2: the heading reads "Official Links"', (own.querySelector('.footer-head') as HTMLElement).textContent === 'Official Links', `"${(own.querySelector('.footer-head') as HTMLElement).textContent}"`);
 
   const x = seen(own, 'X');
   const tg = seen(own, 'Telegram');
@@ -2578,35 +2631,37 @@ async function cr84cr87() {
       tg.target === '_blank' &&
       tg.rel === 'noopener noreferrer' &&
       tg.aria === 'UpTown on Telegram (opens in a new tab)',
-    `X ${JSON.stringify(x)} | Telegram ${JSON.stringify(tg)}`,
+    `X ${JSON.stringify({ ...x, fills: undefined, paths: undefined })} | Telegram ${JSON.stringify({ ...tg, fills: undefined, paths: undefined })}`,
   );
 
   const sea = seen(own, 'OpenSea');
   check(
-    'CR-84 OpenSea is not a link, leads nowhere, and says "soon" — for the eye and for a screen reader',
+    'CR-84, CR-87 OpenSea is unchanged: not a link, leads nowhere, and says "soon" — for the eye and for a screen reader',
     sea.tag === 'span' && sea.href === null && sea.word === 'soon' && sea.says === 'OpenSea: soon' && sea.title === 'OpenSea: soon' && sea.tabindex === '0',
-    JSON.stringify(sea),
+    JSON.stringify({ ...sea, fills: undefined, paths: undefined }),
   );
 
-  // No GMGN mark at all today: nothing in the page, nothing for a screen reader, no gmgn.ai address
-  // and no "at launch" anywhere.
+  // CR-88 item 3: GMGN is shown from today, with exactly OpenSea's treatment and its own word. This
+  // replaces F9q's hiding rule, so the row never has three marks again.
   const gm = seen(own, 'GMGN');
   check(
-    'CR-84 (owner, 11 Oct 2026) with no TOWN address on Ethereum there is no GMGN mark at all: nothing in the page, no gmgn.ai address, no "at launch"',
-    mark(own, 'GMGN') === null &&
-      gm.tag === null &&
+    'CR-88 item 3: with no TOWN address on Ethereum the GMGN mark is still shown — at full strength, not a link, with no href, saying "at launch" for the eye and for a screen reader',
+    gm.tag === 'span' &&
+      gm.href === null &&
+      gm.word === 'at launch' &&
+      gm.says === 'GMGN: at launch' &&
+      gm.title === 'GMGN: at launch' &&
+      gm.tabindex === '0' &&
+      Number(gm.glyphOpacity) === 1 &&
       own.querySelectorAll('[href*="gmgn"]').length === 0 &&
-      !own.innerHTML.includes('gmgn') &&
-      !own.innerText.includes('at launch') &&
-      !own.innerHTML.includes('at launch') &&
       mainnetTownAddress() === null,
-    `marks ${order}; mainnetTownAddress() ${mainnetTownAddress()}; the row says "${own.innerText.replace(/\s+/g, ' ').trim()}"`,
+    `${JSON.stringify({ ...gm, fills: undefined, paths: undefined })}; mainnetTownAddress() ${mainnetTownAddress()}`,
   );
-  // The build under test is the local chain's, which does have a deployment: the mark is still
-  // absent, because it follows the chain-1 file and not the chain this build is for.
+  // The build under test is the local chain's, which does have a deployment: GMGN still has no
+  // address, because it follows the chain-1 file and not the chain this build is for.
   check(
-    'CR-84 the GMGN mark follows the Ethereum address file whatever network the build is for (this build: chain 31337, contracts deployed, still no GMGN mark)',
-    NETWORK.chainId === 31337 && NETWORK.deployment !== null && mark(own, 'GMGN') === null,
+    'CR-84 the GMGN mark follows the Ethereum address file whatever network the build is for (this build: chain 31337, contracts deployed, GMGN still without a link)',
+    NETWORK.chainId === 31337 && NETWORK.deployment !== null && seen(own, 'GMGN').href === null,
     `build chain ${NETWORK.chainId}, deployed ${NETWORK.deployment !== null}`,
   );
 
@@ -2616,7 +2671,7 @@ async function cr84cr87() {
   const filledOrder = [...filled.querySelectorAll('li > *')].map((e) => (e as HTMLElement).dataset.place).join(',');
   const gmLive = seen(filled, 'GMGN');
   check(
-    'CR-84 with a TOWN address on Ethereum, GMGN appears third, as an ordinary link to gmgn.ai/eth/token/<address>, opening in a new tab and named',
+    'CR-84, CR-88 with a TOWN address on Ethereum, GMGN is third, an ordinary link to gmgn.ai/eth/token/<address>, opening in a new tab, named, with no word shown',
     filledOrder === 'X,Telegram,GMGN,OpenSea' &&
       gmLive.tag === 'a' &&
       gmLive.href === `https://gmgn.ai/eth/token/${TOWN}` &&
@@ -2625,14 +2680,15 @@ async function cr84cr87() {
       gmLive.rel === 'noopener noreferrer' &&
       gmLive.aria === 'TOWN on GMGN (opens in a new tab)' &&
       gmLive.word === null &&
+      gmLive.says === null &&
       Number(gmLive.glyphOpacity) === 1 &&
       gmgnUrl(null) === null,
-    `${filledOrder} | ${JSON.stringify(gmLive)}`,
+    `${filledOrder} | ${JSON.stringify({ ...gmLive, fills: undefined, paths: undefined })}`,
   );
   check(
     'CR-84 the other marks are unchanged when the address file is filled: X and Telegram still link, OpenSea still leads nowhere and says "soon"',
     seen(filled, 'X').href === X_URL && seen(filled, 'Telegram').href === TELEGRAM_URL && seen(filled, 'OpenSea').tag === 'span' && seen(filled, 'OpenSea').word === 'soon',
-    `OpenSea ${JSON.stringify(seen(filled, 'OpenSea'))}`,
+    `OpenSea ${JSON.stringify({ ...seen(filled, 'OpenSea'), fills: undefined, paths: undefined })}`,
   );
 
   // Every mark is drawn in the page: shapes, nothing fetched from another host, no <img> anywhere.
@@ -2644,10 +2700,10 @@ async function cr84cr87() {
     drawn.map((d, i) => `${names[i]}: ${d.shapes} shapes`).join(', '),
   );
 
-  // CR-87: the X and OpenSea drawings are the platforms' own marks, each one path, exactly as the
+  // CR-87: the X and OpenSea drawings are the platforms' own marks, each one path, exactly as that
   // task brief gives it; the Telegram paper plane is untouched, byte for byte as it is on main.
   check(
-    'CR-87 the X and OpenSea marks are the platforms’ own drawings, each a single path exactly as the brief gives it, and the Telegram drawing is unchanged',
+    'CR-87, CR-88 the X and OpenSea marks are still the platforms’ own drawings, each a single path exactly as the brief gives it, and the Telegram drawing is still unchanged',
     x.paths.length === 1 &&
       x.paths[0] === X_PATH &&
       sea.paths.length === 1 &&
@@ -2657,9 +2713,34 @@ async function cr84cr87() {
     `X: 1 path, the brief’s: ${x.paths[0] === X_PATH} (${x.paths[0]?.length} characters) | OpenSea: 1 path, the brief’s: ${sea.paths[0] === OPENSEA_PATH} (${sea.paths[0]?.length} characters) | Telegram: unchanged: ${tg.paths[0] === TELEGRAM_PATH} ("${tg.paths[0]}")`,
   );
 
-  // CR-87: nothing in the row is dimmed any more. Every drawing is at full opacity, every mark
-  // carries the same colour and a solid border, and the dimming F9q used is gone from the
-  // stylesheet: no `.place-off` rule, no 0.45 opacity on a drawing, no dashed border on a mark.
+  // CR-88 item 4: GMGN's drawing is GMGN's own file, used as it is — element for element, attribute
+  // for attribute — with only its clip-path id changed, and that id unique on the page.
+  {
+    const svg = mark(own, 'GMGN').querySelector('svg') as SVGSVGElement;
+    const g = svg.querySelector('g[clip-path]');
+    const clip = svg.querySelector('clipPath') as SVGClipPathElement;
+    const got = shapesOf(g);
+    const gotRect = shapesOf(clip)[0] ?? null;
+    const same = JSON.stringify(got) === JSON.stringify(GMGN_SHAPES);
+    const sameRect = JSON.stringify(gotRect) === JSON.stringify(GMGN_CLIP_RECT);
+    check(
+      'CR-88 item 4: GMGN’s mark is GMGN’s own drawing, used as it is — every element and every attribute exactly as the brief gives them, including the clip path’s rect',
+      same && sameRect && got.length === 13,
+      `${got.length} shapes (${got.map((s) => s.tag).join(', ')}); the brief’s, exactly: ${same}; clip rect the brief’s: ${sameRect}${same ? '' : ` — got ${JSON.stringify(got)}`}`,
+    );
+    const allIds = [...document.querySelectorAll('[id]')].map((e) => e.id);
+    check(
+      'CR-88 item 4: the drawing’s clip-path id is the site’s own, is unique on the page, and the file’s own id is nowhere in it',
+      clip.id === 'uptown-gmgn-clip' &&
+        g?.getAttribute('clip-path') === 'url(#uptown-gmgn-clip)' &&
+        allIds.filter((i) => i === clip.id).length === 1 &&
+        !document.documentElement.innerHTML.includes('clip0_468_9437'),
+      `id "${clip.id}", used as ${g?.getAttribute('clip-path')}; ${allIds.filter((i) => i === clip.id).length} element(s) on the page carry it; the file’s own id anywhere on the page: ${document.documentElement.innerHTML.includes('clip0_468_9437')}`,
+    );
+  }
+
+  // CR-87, CR-88: nothing in the row is dimmed. Every drawing is at full opacity, every mark has a
+  // solid border, and F9q's dimming is gone from the stylesheet: no `.place-off` rule anywhere.
   const cssRules = [...document.styleSheets].flatMap((s) => {
     try {
       return [...s.cssRules];
@@ -2670,65 +2751,116 @@ async function cr84cr87() {
   const oldDimming = cssRules.filter(
     (r) => r instanceof CSSStyleRule && /\.place-off/.test(r.selectorText) && (r.style.opacity === '0.45' || r.style.borderStyle === 'dashed' || r.style.opacity === '0.7'),
   ).length;
-  const gmFilled = seen(filled, 'GMGN');
   check(
-    'CR-87 no mark is dimmed: every drawing at full strength, the same colour and a solid border as the links, and F9q’s dimming gone from the stylesheet',
-    Number(sea.glyphOpacity) === 1 &&
-      Number(x.glyphOpacity) === 1 &&
-      Number(tg.glyphOpacity) === 1 &&
-      Number(gmFilled.glyphOpacity) === 1 &&
-      sea.colour === x.colour &&
-      sea.colour === tg.colour &&
-      sea.border === 'solid' &&
-      x.border === 'solid' &&
-      tg.border === 'solid' &&
-      oldDimming === 0 &&
-      !GLOBAL_CSS.includes('place-off'),
-    `opacity X ${x.glyphOpacity}, Telegram ${tg.glyphOpacity}, GMGN ${gmFilled.glyphOpacity}, OpenSea ${sea.glyphOpacity}; colour X ${x.colour}, OpenSea ${sea.colour}; border X ${x.border}, OpenSea ${sea.border}; dimming rules left in the stylesheet: ${oldDimming}, the text "place-off" anywhere in it: ${GLOBAL_CSS.includes('place-off')}`,
+    'CR-87 no mark is dimmed: every drawing at full strength, a solid border on each, and F9q’s dimming gone from the stylesheet',
+    [x, tg, gm, sea].every((k) => Number(k.glyphOpacity) === 1 && k.border === 'solid') && oldDimming === 0 && !GLOBAL_CSS.includes('place-off'),
+    `opacity X ${x.glyphOpacity}, Telegram ${tg.glyphOpacity}, GMGN ${gm.glyphOpacity}, OpenSea ${sea.glyphOpacity}; borders ${[x, tg, gm, sea].map((k) => k.border).join(', ')}; dimming rules left in the stylesheet: ${oldDimming}, the text "place-off" anywhere in it: ${GLOBAL_CSS.includes('place-off')}`,
   );
 
-  // The sizes: a filled disc reads heavier than an open shape, so OpenSea's mark is drawn smaller.
-  check(
-    'CR-87 the three marks are sized to sit together: the filled OpenSea disc smaller than the two open marks',
-    x.drawnAt === '18x18' && tg.drawnAt === '20x20' && sea.drawnAt === '16x16',
-    `X ${x.drawnAt}, Telegram ${tg.drawnAt}, OpenSea ${sea.drawnAt}`,
-  );
+  // CR-88 item 6: each mark in its platform's brand colour, X's two decided by the stylesheet's own
+  // light/dark cascade and nothing else. The theme is forced here the way the site's own switch
+  // forces it, `data-theme` on the root, and the painted fills are read back in both.
   {
-    const el = row();
-    const seaMark = mark(el, 'OpenSea');
-    const word = seaMark.querySelector('.place-word') as HTMLElement;
-    const before = getComputedStyle(word).opacity;
-    try {
-      window.focus();
-    } catch {
-      /* the test page cannot take the window's focus: handled below */
-    }
-    seaMark.focus();
-    const focused = document.activeElement === seaMark;
-    // A browser paints `:focus` only while the page itself holds the window's focus, which a
-    // headless test page does not always have. So the rule that shows the word is checked in the
-    // stylesheet as well, and the review driver photographs it with a real Tab in a focused page.
-    const docFocus = document.hasFocus();
-    const onFocus = getComputedStyle(word).opacity;
-    seaMark.blur();
-    const after = getComputedStyle(word).opacity;
-    const rule = [...document.styleSheets]
-      .flatMap((s) => {
-        try {
-          return [...s.cssRules];
-        } catch {
-          return [];
-        }
-      })
-      .some((r) => r instanceof CSSStyleRule && /\.place-soon:focus \.place-word/.test(r.selectorText) && r.style.opacity === '1');
+    const root = document.documentElement;
+    const savedTheme = root.getAttribute('data-theme');
+    const fillsIn = (theme: string) => {
+      root.setAttribute('data-theme', theme);
+      const el = row();
+      return { X: seen(el, 'X').fills, Telegram: seen(el, 'Telegram').fills, OpenSea: seen(el, 'OpenSea').fills, GMGN: seen(el, 'GMGN').fills };
+    };
+    const light = fillsIn('light');
+    const dark = fillsIn('dark');
+    if (savedTheme === null) root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', savedTheme);
+    // GMGN's own colours, from its file, in drawing order.
+    const gmgnOwn = GMGN_SHAPES.map((s) => {
+      const f = s.attrs.fill;
+      if (f === 'white') return RGB.white;
+      if (f === 'black') return RGB.black;
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(f.slice(i, i + 2), 16));
+      return `rgb(${r}, ${g}, ${b})`;
+    });
     check(
-      'CR-84, CR-87 a keyboard still reaches the mark that leads nowhere, its word is hidden until then, and the stylesheet shows it on focus',
-      before === '0' && focused && seaMark.tabIndex === 0 && rule && (docFocus ? onFocus === '1' : true) && after === '0',
-      `before ${before}, the keyboard reaches it: ${focused} (the page holds the window’s focus: ${docFocus}; the word then at ${onFocus}), after ${after}; the rule ".place-soon:focus .place-word { opacity: 1 }" is in the stylesheet: ${rule}`,
+      'CR-88 item 6: X is black on light and white on dark, through the stylesheet’s own light/dark cascade — no script decides it',
+      light.X.join() === RGB.black && dark.X.join() === RGB.white && /--mark-x:\s*#000000/.test(GLOBAL_CSS) && (GLOBAL_CSS.match(/--mark-x:\s*#ffffff/g) ?? []).length === 2,
+      `light ${light.X.join()}, dark ${dark.X.join()}; the token is set once on :root and once in each of the two dark blocks: ${(GLOBAL_CSS.match(/--mark-x:/g) ?? []).length} places`,
+    );
+    check(
+      'CR-88 item 6: Telegram is #26A5E4 and OpenSea #2081E2 over a white disc, the same in either theme, so the boat reads white on both',
+      light.Telegram.join() === RGB.telegram &&
+        dark.Telegram.join() === RGB.telegram &&
+        light.OpenSea.join() === `${RGB.white},${RGB.opensea}` &&
+        dark.OpenSea.join() === `${RGB.white},${RGB.opensea}`,
+      `Telegram light ${light.Telegram.join()} / dark ${dark.Telegram.join()}; OpenSea light ${light.OpenSea.join()} / dark ${dark.OpenSea.join()}`,
+    );
+    check(
+      'CR-88 items 4 and 6: GMGN keeps its own colours in both themes — thirteen shapes, each painted the colour its own file gives it, nothing forced to currentColor and no rule in the stylesheet painting it',
+      light.GMGN.join() === gmgnOwn.join() &&
+        dark.GMGN.join() === gmgnOwn.join() &&
+        gm.rootFill === 'none' &&
+        !(mark(own, 'GMGN').querySelector('svg') as SVGSVGElement).outerHTML.includes('currentColor') &&
+        !/\.mark-gmgn\s*\{[^}]*fill/.test(GLOBAL_CSS),
+      `${light.GMGN.length} shapes; its own colours in light: ${light.GMGN.join() === gmgnOwn.join()}, in dark: ${dark.GMGN.join() === gmgnOwn.join()}; root fill "${gm.rootFill}"; the stylesheet paints .mark-gmgn: ${/\.mark-gmgn\s*\{[^}]*fill/.test(GLOBAL_CSS)}`,
     );
   }
 
-  // The row as the whole site renders it: once, in the footer, with the same four marks.
+  // CR-88 item 7: the sizes. The boxes are all 32 px; what differs is the drawing inside each, and
+  // these four numbers are what make the visible drawings read as one set.
+  const sized = [seen(own, 'X'), seen(own, 'Telegram'), seen(own, 'GMGN'), seen(own, 'OpenSea')];
+  check(
+    'CR-88 item 7: the four are sized by what shows, not by their boxes — X 18, Telegram 22, GMGN 16, OpenSea 28, the disc larger than X’s box because its boat is only part of it',
+    sized[0].drawnAt === '18x18' && sized[1].drawnAt === '22x22' && sized[2].drawnAt === '16x16' && sized[3].drawnAt === '28x28',
+    `X ${sized[0].drawnAt}, Telegram ${sized[1].drawnAt}, GMGN ${sized[2].drawnAt}, OpenSea ${sized[3].drawnAt}`,
+  );
+  check(
+    'CR-88 item 7: GMGN’s size puts its 2-unit blocks on whole screen pixels — its drawing is a 32-unit grid, so 16 px is one screen pixel a block',
+    (() => {
+      const svg = mark(own, 'GMGN').querySelector('svg') as SVGSVGElement;
+      const side = Number(svg.getAttribute('width'));
+      return svg.getAttribute('viewBox') === '0 0 32 32' && Number.isInteger((side / 32) * 2) && side <= 30;
+    })(),
+    `viewBox "${(mark(own, 'GMGN').querySelector('svg') as SVGSVGElement).getAttribute('viewBox')}", drawn at ${sized[2].drawnAt} in a 32 px box with a 1 px border (30 px inside), so each 2-unit block is ${(16 / 32) * 2} screen pixel(s)`,
+  );
+
+  // Both marks that lead nowhere: a keyboard reaches each, and its word is hidden until then.
+  {
+    const el = row();
+    const found: string[] = [];
+    for (const [place, word] of [
+      ['OpenSea', 'soon'],
+      ['GMGN', 'at launch'],
+    ]) {
+      const m = mark(el, place);
+      const wordEl = m.querySelector('.place-word') as HTMLElement;
+      const before = getComputedStyle(wordEl).opacity;
+      try {
+        window.focus();
+      } catch {
+        /* the test page cannot take the window's focus: handled below */
+      }
+      m.focus();
+      const focused = document.activeElement === m;
+      // A browser paints `:focus` only while the page itself holds the window's focus, which a
+      // headless test page does not always have. So the rule that shows the word is checked in the
+      // stylesheet as well, and the review driver photographs it with a real Tab in a focused page.
+      const docFocus = document.hasFocus();
+      const onFocus = getComputedStyle(wordEl).opacity;
+      m.blur();
+      const after = getComputedStyle(wordEl).opacity;
+      if (!(before === '0' && focused && m.tabIndex === 0 && wordEl.textContent === word && (docFocus ? onFocus === '1' : true) && after === '0')) {
+        found.push(`${place}: before ${before}, reached ${focused}, word "${wordEl.textContent}", on focus ${onFocus}, after ${after}`);
+      }
+    }
+    const rule = cssRules.some((r) => r instanceof CSSStyleRule && /\.place-soon:focus \.place-word/.test(r.selectorText) && r.style.opacity === '1');
+    check(
+      'CR-84, CR-87, CR-88 a keyboard reaches both marks that lead nowhere, each word is hidden until then, and the stylesheet shows it on focus',
+      found.length === 0 && rule,
+      `the page holds the window’s focus: ${document.hasFocus()}; the rule ".place-soon:focus .place-word { opacity: 1 }" is in the stylesheet: ${rule}; anything wrong: ${found.join('; ') || 'nothing'}`,
+    );
+  }
+
+  // The row as the whole site renders it: once, in the footer, with the same four marks, in the
+  // brand block after the page links — and in its own third column where the stylesheet has room.
   {
     const whole = document.createElement('div');
     stage.append(whole);
@@ -2737,36 +2869,52 @@ async function cr84cr87() {
     const rows = whole.querySelectorAll('.footer-places');
     const inFooter = !!whole.querySelector('footer.site-footer .footer-places');
     const places = [...whole.querySelectorAll('footer.site-footer .place')].map((e) => (e as HTMLElement).dataset.place).join(',');
-    const noGmgn = !whole.innerHTML.includes('gmgn') && !whole.innerHTML.includes('at launch');
     const head = (whole.querySelector('.footer-places .footer-head') as HTMLElement | null)?.textContent ?? null;
-    // CR-87: the row sits on the right-hand side, with the contract addresses, and no longer under
-    // the page links. Everything else in the footer is unchanged.
-    const withContracts = !!whole.querySelector('footer.site-footer .footer-contracts .footer-places');
-    const underLinks = !!whole.querySelector('footer.site-footer .footer-brand .footer-places');
+    // CR-88 item 1: one block, written once, in the brand block after the page links. Where it is
+    // painted is the stylesheet's business (the media query below, and the review driver's
+    // photographs at four widths); what matters here is that there is exactly one of it.
+    const inBrand = !!whole.querySelector('footer.site-footer .footer-brand .footer-places');
+    const inContracts = !!whole.querySelector('footer.site-footer .footer-contracts .footer-places');
+    const afterLinks = !!whole.querySelector('footer.site-footer .footer-brand > nav + .footer-places, footer.site-footer .footer-brand > .footer-brand-main + .footer-places');
     const brand = (whole.querySelector('footer.site-footer .footer-brand p') as HTMLElement).textContent;
     const contracts = whole.querySelectorAll('footer.site-footer .footer-contracts > ul > li').length;
     const links = [...whole.querySelectorAll('footer.site-footer nav a')].map((a) => a.textContent).join(',');
     check(
-      'CR-84, CR-87 the whole site shows the row once, in the footer, beside the contract addresses, with no GMGN mark anywhere today, and the rest of the footer unchanged',
+      'CR-88 items 1, 2, 3: the whole site shows the row once, in the footer, in the brand block after the page links, headed "Official Links", with all four marks, and the rest of the footer unchanged',
       rows.length === 1 &&
         inFooter &&
-        withContracts &&
-        !underLinks &&
-        places === 'X,Telegram,OpenSea' &&
-        noGmgn &&
-        head === 'Find UpTown' &&
+        inBrand &&
+        !inContracts &&
+        afterLinks &&
+        places === 'X,Telegram,GMGN,OpenSea' &&
+        head === 'Official Links' &&
         brand === 'UpTown Token (TOWN), an experiment on Ethereum.' &&
         contracts === 7 &&
         links === 'Trade,Rewards,Stake,Stats,Docs',
-      `${rows.length} row(s), in the footer: ${inFooter}, with the contracts: ${withContracts}, under the page links: ${underLinks}, marks ${places}, no GMGN anywhere: ${noGmgn}, head "${head}", page links ${links}, ${contracts} contracts`,
+      `${rows.length} row(s), in the footer: ${inFooter}, in the brand block: ${inBrand} (right after its text: ${afterLinks}), in the contracts block: ${inContracts}, marks ${places}, head "${head}", page links ${links}, ${contracts} contracts`,
+    );
+    // The stylesheet, not the markup, makes the third column: at 1000 px and above the brand block
+    // stops being a box of its own and each part takes a column by name.
+    const column = cssRules.filter((r): r is CSSMediaRule => r instanceof CSSMediaRule && /min-width:\s*1000px/.test(r.conditionText)).flatMap((r) => [...r.cssRules]);
+    const ruleFor = (sel: string, prop: string) =>
+      column.find((r): r is CSSStyleRule => r instanceof CSSStyleRule && r.selectorText === sel)?.style.getPropertyValue(prop) ?? null;
+    check(
+      'CR-88 item 1: the third column is made by the stylesheet alone — at 1000 px and up the brand block is display:contents and the places take the third column, to the right of the contracts’ second',
+      ruleFor('.footer-brand', 'display') === 'contents' &&
+        ruleFor('.footer-brand-main', 'grid-column') === '1' &&
+        ruleFor('.footer-contracts', 'grid-column') === '2' &&
+        ruleFor('.footer-places', 'grid-column') === '3' &&
+        /^minmax\(0(?:px)?,\s*1fr\)\s+minmax\(0(?:px)?,\s*1\.4fr\)\s+auto$/.test(ruleFor('.footer-grid', 'grid-template-columns') ?? ''),
+      `brand display ${ruleFor('.footer-brand', 'display')}; columns brand ${ruleFor('.footer-brand-main', 'grid-column')}, contracts ${ruleFor('.footer-contracts', 'grid-column')}, places ${ruleFor('.footer-places', 'grid-column')}; track list "${ruleFor('.footer-grid', 'grid-template-columns')}"`,
     );
     render(null, whole);
     whole.remove();
   }
 
-  // CR-87: the font licence sentence is gone — from every page, not just the homepage. The licence
-  // files themselves stay in the published site (checked in the built site by scripts/f9r-shots.mjs
-  // and by the hosting test's own file list, not here: this page is not the built site).
+  // CR-87: the font licence sentence is gone — from every page, not just the homepage. CR-88: so is
+  // "Find UpTown". The licence files themselves stay in the published site (checked in the built
+  // site by scripts/f9s-shots.mjs and by the hosting test's own file list, not here: this page is
+  // not the built site).
   {
     const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     const savedTitle = document.title;
@@ -2781,16 +2929,18 @@ async function cr84cr87() {
       const el = !!whole.querySelector('.footer-fonts');
       const words = /SIL Open Font Licence/i.test(whole.innerHTML);
       const link = !!whole.querySelector('a[href*="OFL-"]');
-      if (el || words || link) found.push(`${p || 'home'} (element ${el}, words ${words}, link ${link})`);
+      const old = /Find UpTown/i.test(whole.innerHTML);
+      const head = (whole.querySelector('.footer-places .footer-head') as HTMLElement | null)?.textContent ?? null;
+      if (el || words || link || old || head !== 'Official Links') found.push(`${p || 'home'} (licence element ${el}, words ${words}, link ${link}, "Find UpTown" ${old}, heading "${head}")`);
     }
     render(null, whole);
     whole.remove();
     history.replaceState(null, '', location.pathname + location.search);
     document.title = savedTitle;
     check(
-      'CR-87 the font licence sentence is gone from every page: no sentence, no element and no link to a licence file',
+      'CR-87, CR-88 item 2: every page carries the heading "Official Links", and neither "Find UpTown" nor the font licence sentence is anywhere on any of them',
       found.length === 0,
-      `${pages.length} pages checked (home, trade, trade/sell, rewards, stake, stats, docs); pages that still carry it: ${found.join('; ') || 'none'}`,
+      `${pages.length} pages checked (home, trade, trade/sell, rewards, stake, stats, docs); pages that still carry something: ${found.join('; ') || 'none'}`,
     );
   }
 
@@ -2806,8 +2956,8 @@ async function cr84cr87() {
       stage.append(h, d);
       render(town === undefined ? <PlaceRow /> : <PlaceRow town={town} />, d);
     };
-    keep('cr84-today', 'CR-84: the footer row today, with no TOWN address on Ethereum (three marks)');
-    keep('cr84-filled', 'CR-84: the footer row with a TOWN address on Ethereum (four marks)', TOWN);
+    keep('cr84-today', 'CR-88: the footer row today, with no TOWN address on Ethereum (GMGN says "at launch")');
+    keep('cr84-filled', 'CR-88: the footer row with a TOWN address on Ethereum (GMGN is a link)', TOWN);
   }
 
   render(null, box);

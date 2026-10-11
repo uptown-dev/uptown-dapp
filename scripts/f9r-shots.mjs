@@ -1,3 +1,8 @@
+// SUPERSEDED by CR-88 (F9s): use scripts/f9s-shots.mjs. This driver expects three marks with no
+// GMGN, the heading "Find UpTown", the row inside the contracts block and every mark in the
+// footer's text colour, so run against today's site it reports all four as faults. It is kept only
+// as the record of what CR-87 was checked against.
+//
 // CR-87 (F9r) review driver: photographs the footer's row of platform marks on the build in dist/,
 // now that the marks are the platforms' own, OpenSea is no longer dimmed and the row sits on the
 // right-hand side with the contract addresses. It reads back what each mark is (a link, or the

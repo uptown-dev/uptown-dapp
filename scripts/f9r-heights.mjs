@@ -1,3 +1,8 @@
+// SUPERSEDED by CR-88 (F9s): use scripts/f9s-heights.mjs, which measures the same six figures and
+// then sweeps every width from 320 to 1440 px, because CR-88's third column can change the footer's
+// height at widths none of these six would show. This script still runs and still measures the
+// footer correctly; it only knows the two places the row could sit before CR-88.
+//
 // CR-87 (F9r) footer measure: the footer's own height on the build in dist/, at 1280, 390 and 360
 // px, in light and dark. Local review only; nothing here runs in the site. It also says whether the
 // footer still carries the row of platform marks and the font licence sentence, so the same script
