@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { getAddress } from 'viem';
 import { AppContext, Notice, PageHead, useApp, type AppState, type DataStatus } from './components/ui';
-import { CloseIcon, ExternalIcon, MenuIcon, DarkModeIcon, LightModeIcon, SkylineMark } from './components/icons';
+import { CloseIcon, ExternalIcon, GmgnMark, MenuIcon, DarkModeIcon, LightModeIcon, OpenSeaMark, SkylineMark, TelegramMark, XMark } from './components/icons';
 import { CONTRACT_NAMES, type Address, type ChainState, type OwnerState, type WalletState } from './data/types';
 import { NETWORK, contractUrl, type Network } from './lib/network';
+import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetTownAddress } from './lib/places';
 import { makeClient, readAll } from './lib/reads';
 import { activeProvider, chooseWallet, chosenWallet, rememberedWallet, switchWalletChain, watchWallets, type Eip1193, type WalletInfo } from './lib/wallet';
 import { explainError } from './lib/errors';
@@ -172,6 +173,98 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
       <button type="button" role="menuitem" class="btn btn-small btn-primary wallet-switch" onClick={onSwitch}>
         Switch to {network.name}
       </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PROJECT'S PLACES IN THE FOOTER (CR-84). One row of four marks, in this order: X, Telegram,
+// GMGN, OpenSea. Each is drawn in the page as an inline shape (`icons.tsx`), because the site's
+// security policy allows no picture from another host and a drawn mark follows the theme.
+//
+// X and Telegram are links: a new tab, `rel="noopener noreferrer"`, and an accessible name that
+// names the platform and says it opens in a new tab, exactly as the footer's contract links do.
+//
+// OpenSea is a dimmed mark, not a link: no href, so nothing to follow, and the short word "soon"
+// when the pointer rests on it or a keyboard reaches it. It is a focusable element (tabindex 0)
+// carrying both the word a sighted visitor sees (`.place-word`, shown by the stylesheet on hover
+// and on focus) and the same words for a screen reader ("OpenSea: soon"), because a `title` alone
+// never reaches a keyboard.
+//
+// GMGN is not shown at all until TOWN exists on Ethereum (the owner's decision of 11 October 2026,
+// replacing CR-84's dimmed mark): no mark, no word, nothing in the page and nothing for a screen
+// reader, so the row holds three marks today. Its address is never typed in: it is TOWN's address
+// on Ethereum from the site's own chain-1 address file (`lib/places.ts`), which is read whatever
+// network this build is for, so every build shows the same state. That file carries no address
+// today; the mainnet deployment at milestone 12 makes the mark appear, as an ordinary link like X
+// and Telegram, with no further change here.
+// ---------------------------------------------------------------------------------------------
+
+/** One mark: a link that opens in a new tab, or a dimmed mark that leads nowhere and shows `word`. */
+export function PlaceMark({
+  name,
+  what,
+  href,
+  word = '',
+  children,
+}: {
+  name: string;
+  what: string;
+  href: string | null;
+  word?: string;
+  children: preact.ComponentChildren;
+}) {
+  if (href) {
+    return (
+      <li>
+        <a class="place" href={href} target="_blank" rel="noopener noreferrer" data-place={name} title={what} aria-label={`${what} (opens in a new tab)`}>
+          {children}
+        </a>
+      </li>
+    );
+  }
+  return (
+    <li>
+      <span class="place place-off" data-place={name} tabIndex={0} role="note" title={`${name}: ${word}`}>
+        {children}
+        <span class="visually-hidden">
+          {name}: {word}
+        </span>
+        <span class="place-word" aria-hidden="true">
+          {word}
+        </span>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * The row: X, Telegram, then GMGN only once TOWN exists on Ethereum, then OpenSea. `town` is
+ * TOWN's address on Ethereum; it comes from the site's own chain-1 address file and is a prop only
+ * so a test can render the row with a stand-in address.
+ */
+export function PlaceRow({ town = mainnetTownAddress() }: { town?: Address | null }) {
+  const gmgn = gmgnUrl(town);
+  return (
+    <div class="footer-places">
+      <p class="footer-head">Find UpTown</p>
+      <ul class="place-row">
+        <PlaceMark name="X" what="UpTown on X" href={X_URL}>
+          <XMark />
+        </PlaceMark>
+        <PlaceMark name="Telegram" what="UpTown on Telegram" href={TELEGRAM_URL}>
+          <TelegramMark />
+        </PlaceMark>
+        {/* Nothing at all until the chain-1 address file names TOWN; then an ordinary link. */}
+        {gmgn !== null && (
+          <PlaceMark name="GMGN" what="TOWN on GMGN" href={gmgn}>
+            <GmgnMark />
+          </PlaceMark>
+        )}
+        <PlaceMark name="OpenSea" what="UpTown on OpenSea" href={null} word="soon">
+          <OpenSeaMark />
+        </PlaceMark>
+      </ul>
     </div>
   );
 }
@@ -626,6 +719,8 @@ export function App() {
                 </li>
               </ul>
             </nav>
+            {/* The project's places (CR-84), under the page links. */}
+            <PlaceRow />
           </div>
           <div class="footer-contracts">
             <p class="footer-head">Contracts{network.explorerName ? ` on ${network.explorerName}` : ''}</p>

@@ -236,6 +236,62 @@ export const FlameIcon = (p: IconProps) => (
 );
 
 // ---------------------------------------------------------------------------------------------
+// THE PLATFORM MARKS IN THE FOOTER (CR-84). The site's security policy allows no picture from
+// another host (`img-src 'self' data:`), so these are drawn in the page, like every other icon
+// here: one filled monochrome shape per platform, in a 24-unit box, taking its colour from the
+// text colour around it, so each follows the light and dark theme and stays sharp at any size.
+//
+// They are the site's own simple drawings, not copies of anyone's logo files: the X cross, the
+// Telegram paper plane, a pair of candlesticks for GMGN (a token-chart site) and a boat inside a
+// circle for OpenSea. Each mark carries its platform's name for a screen reader and in its
+// tooltip (see `PlaceMark` in app.tsx), so nothing depends on recognising the drawing alone.
+// ---------------------------------------------------------------------------------------------
+
+/** A filled mark, 20 units by default: one shape, or a few, in the surrounding text's colour. */
+function Mark({ size = 20, children }: IconProps & { children: preact.ComponentChildren }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true" class="icon mark">
+      {children}
+    </svg>
+  );
+}
+
+/** X: the two crossing bars of the X mark, with flat-cut ends. */
+export const XMark = (p: IconProps) => (
+  <Mark {...p}>
+    <path d="M2.3 3h3.4l16 18h-3.4z" />
+    <path d="M18.3 3h3.4l-16 18H2.3z" />
+  </Mark>
+);
+
+/** Telegram: the paper plane, one shape with the notch in its lower edge. */
+export const TelegramMark = (p: IconProps) => (
+  <Mark {...p}>
+    <path d="M22 2.6 2 10.8l6.6 2.6L9.8 21l3.5-5.4 5.3 5.2z" />
+  </Mark>
+);
+
+/** GMGN: two candlesticks, each a body with its wick, as a token chart draws them. */
+export const GmgnMark = (p: IconProps) => (
+  <Mark {...p}>
+    <rect x="6.3" y="3.4" width="1.5" height="17.2" />
+    <rect x="4" y="7.4" width="6.1" height="9.2" />
+    <rect x="16.2" y="5.4" width="1.5" height="13.2" />
+    <rect x="13.9" y="9.4" width="6.1" height="6.2" />
+  </Mark>
+);
+
+/** OpenSea: a boat with two sails inside a ring. */
+export const OpenSeaMark = (p: IconProps) => (
+  <Mark {...p}>
+    <circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" stroke-width="1.7" />
+    <path d="M11.4 5.6v8h-5z" />
+    <path d="M12.9 8.4v5.2h4.3z" />
+    <path d="M5.2 15.2h13.6l-2.3 3.1H7.5z" />
+  </Mark>
+);
+
+// ---------------------------------------------------------------------------------------------
 // The one flow graphic, shown in the home page's hero, with the hook at its top (CR-69: no "Buy
 // or sell TOWN" box or ETH in / TOWN out arrows above it): every trade passes through TownHook,
 // which sends 2% of a buy's ETH to the treasury and records the buy in the tally. The 2% of a
