@@ -20,86 +20,86 @@ export function SkylineMark() {
     <svg viewBox="10 73 492 367" class="skyline" aria-hidden="true">
       {/* Light theme: solid dark-indigo towers */}
       <g class="skyline-light" fill="#1E1B4B">
-        <path d="M24 420 L24 327.143 L40 315.714 L40 420 Z" />
-        <path d="M48 420 L48 310 L62 300 L100 327.143 L100 420 Z" />
-        <path d="M108 420 L108 233.5 L124 223.5 L124 420 Z" />
-        <path d="M132 420 L132 218.5 L152 206 L196 233.5 L196 420 Z" />
-        <path d="M204 420 L204 155.6 L220 146 L220 420 Z" />
-        <path d="M228 420 L228 141.2 L250 128 L296 155.6 L296 420 Z" />
-        <path d="M304 420 L304 233.391 L320 222.957 L320 420 Z" />
-        <path d="M328 420 L328 217.739 L346 206 L388 233.391 L388 420 Z" />
-        <path d="M396 420 L396 107.6 L412 98 L412 420 Z" />
-        <path d="M420 420 L420 93.2 L442 80 L488 107.6 L488 420 Z" />
+      <path d="M24 420 L24 327.143 L40 315.714 L40 420 Z" />
+      <path d="M48 420 L48 310 L62 300 L100 327.143 L100 420 Z" />
+      <path d="M108 420 L108 233.5 L124 223.5 L124 420 Z" />
+      <path d="M132 420 L132 218.5 L152 206 L196 233.5 L196 420 Z" />
+      <path d="M204 420 L204 155.6 L220 146 L220 420 Z" />
+      <path d="M228 420 L228 141.2 L250 128 L296 155.6 L296 420 Z" />
+      <path d="M304 420 L304 233.391 L320 222.957 L320 420 Z" />
+      <path d="M328 420 L328 217.739 L346 206 L388 233.391 L388 420 Z" />
+      <path d="M396 420 L396 107.6 L412 98 L412 420 Z" />
+      <path d="M420 420 L420 93.2 L442 80 L488 107.6 L488 420 Z" />
       </g>
       {/* Dark theme: the same skyline with a cream outline */}
       <g class="skyline-dark" fill="#141233" stroke="#F5EFE2" stroke-width="8" stroke-linejoin="miter">
-        <path d="M20 420 V330 L62 300 L104 330 V420 Z" />
-        <path d="M20 420 V330 L44 313 V420 Z" />
-        <path d="M104 420 V236 L152 206 L200 236 V420 Z" />
-        <path d="M104 420 V236 L128 221 V420 Z" />
-        <path d="M300 420 V236 L346 206 L392 236 V420 Z" />
-        <path d="M300 420 V236 L324 220 V420 Z" />
-        <path d="M392 420 V110 L442 80 L492 110 V420 Z" />
-        <path d="M392 420 V110 L416 96 V420 Z" />
-        <path d="M200 420 V158 L250 128 L300 158 V420 Z" />
-        <path d="M200 420 V158 L224 144 V420 Z" />
+      <path d="M20 420 V330 L62 300 L104 330 V420 Z" />
+      <path d="M20 420 V330 L44 313 V420 Z" />
+      <path d="M104 420 V236 L152 206 L200 236 V420 Z" />
+      <path d="M104 420 V236 L128 221 V420 Z" />
+      <path d="M300 420 V236 L346 206 L392 236 V420 Z" />
+      <path d="M300 420 V236 L324 220 V420 Z" />
+      <path d="M392 420 V110 L442 80 L492 110 V420 Z" />
+      <path d="M392 420 V110 L416 96 V420 Z" />
+      <path d="M200 420 V158 L250 128 L300 158 V420 Z" />
+      <path d="M200 420 V158 L224 144 V420 Z" />
       </g>
       {/* The lit windows, identical in both versions */}
       <g fill="#F2B544">
-        <rect x="54" y="348" width="16" height="20" />
-        <rect x="78" y="348" width="16" height="20" />
-        <rect x="54" y="380" width="16" height="20" />
-        <rect x="78" y="380" width="16" height="20" />
-        <rect x="138" y="254" width="16" height="20" />
-        <rect x="174" y="254" width="16" height="20" />
-        <rect x="138" y="286" width="16" height="20" />
-        <rect x="174" y="286" width="16" height="20" />
-        <rect x="138" y="318" width="16" height="20" />
-        <rect x="174" y="318" width="16" height="20" />
-        <rect x="138" y="350" width="16" height="20" />
-        <rect x="174" y="350" width="16" height="20" />
-        <rect x="138" y="382" width="16" height="20" />
-        <rect x="174" y="382" width="16" height="20" />
-        <rect x="234" y="176" width="16" height="20" />
-        <rect x="274" y="176" width="16" height="20" />
-        <rect x="234" y="208" width="16" height="20" />
-        <rect x="274" y="208" width="16" height="20" />
-        <rect x="234" y="240" width="16" height="20" />
-        <rect x="274" y="240" width="16" height="20" />
-        <rect x="234" y="272" width="16" height="20" />
-        <rect x="274" y="272" width="16" height="20" />
-        <rect x="234" y="304" width="16" height="20" />
-        <rect x="274" y="304" width="16" height="20" />
-        <rect x="234" y="336" width="16" height="20" />
-        <rect x="274" y="336" width="16" height="20" />
-        <rect x="234" y="368" width="16" height="20" />
-        <rect x="274" y="368" width="16" height="20" />
-        <rect x="334" y="254" width="16" height="20" />
-        <rect x="366" y="254" width="16" height="20" />
-        <rect x="334" y="286" width="16" height="20" />
-        <rect x="366" y="286" width="16" height="20" />
-        <rect x="334" y="318" width="16" height="20" />
-        <rect x="366" y="318" width="16" height="20" />
-        <rect x="334" y="350" width="16" height="20" />
-        <rect x="366" y="350" width="16" height="20" />
-        <rect x="334" y="382" width="16" height="20" />
-        <rect x="366" y="382" width="16" height="20" />
-        <rect x="426" y="128" width="16" height="20" />
-        <rect x="466" y="128" width="16" height="20" />
-        <rect x="426" y="160" width="16" height="20" />
-        <rect x="466" y="160" width="16" height="20" />
-        <rect x="426" y="192" width="16" height="20" />
-        <rect x="466" y="192" width="16" height="20" />
-        <rect x="426" y="224" width="16" height="20" />
-        <rect x="466" y="224" width="16" height="20" />
-        <rect x="426" y="256" width="16" height="20" />
-        <rect x="466" y="256" width="16" height="20" />
-        <rect x="426" y="288" width="16" height="20" />
-        <rect x="466" y="288" width="16" height="20" />
-        <rect x="426" y="320" width="16" height="20" />
-        <rect x="466" y="320" width="16" height="20" />
-        <rect x="426" y="352" width="16" height="20" />
-        <rect x="466" y="352" width="16" height="20" />
+      <rect x="54" y="348" width="16" height="20" />
+      <rect x="78" y="348" width="16" height="20" />
+      <rect x="54" y="380" width="16" height="20" />
+      <rect x="78" y="380" width="16" height="20" />
+      <rect x="138" y="254" width="16" height="20" />
+      <rect x="174" y="254" width="16" height="20" />
+      <rect x="138" y="286" width="16" height="20" />
+      <rect x="174" y="286" width="16" height="20" />
+      <rect x="138" y="318" width="16" height="20" />
+      <rect x="174" y="318" width="16" height="20" />
+      <rect x="138" y="350" width="16" height="20" />
+      <rect x="174" y="350" width="16" height="20" />
+      <rect x="138" y="382" width="16" height="20" />
+      <rect x="174" y="382" width="16" height="20" />
+      <rect x="234" y="176" width="16" height="20" />
+      <rect x="274" y="176" width="16" height="20" />
+      <rect x="234" y="208" width="16" height="20" />
+      <rect x="274" y="208" width="16" height="20" />
+      <rect x="234" y="240" width="16" height="20" />
+      <rect x="274" y="240" width="16" height="20" />
+      <rect x="234" y="272" width="16" height="20" />
+      <rect x="274" y="272" width="16" height="20" />
+      <rect x="234" y="304" width="16" height="20" />
+      <rect x="274" y="304" width="16" height="20" />
+      <rect x="234" y="336" width="16" height="20" />
+      <rect x="274" y="336" width="16" height="20" />
+      <rect x="234" y="368" width="16" height="20" />
+      <rect x="274" y="368" width="16" height="20" />
+      <rect x="334" y="254" width="16" height="20" />
+      <rect x="366" y="254" width="16" height="20" />
+      <rect x="334" y="286" width="16" height="20" />
+      <rect x="366" y="286" width="16" height="20" />
+      <rect x="334" y="318" width="16" height="20" />
+      <rect x="366" y="318" width="16" height="20" />
+      <rect x="334" y="350" width="16" height="20" />
+      <rect x="366" y="350" width="16" height="20" />
+      <rect x="334" y="382" width="16" height="20" />
+      <rect x="366" y="382" width="16" height="20" />
+      <rect x="426" y="128" width="16" height="20" />
+      <rect x="466" y="128" width="16" height="20" />
+      <rect x="426" y="160" width="16" height="20" />
+      <rect x="466" y="160" width="16" height="20" />
+      <rect x="426" y="192" width="16" height="20" />
+      <rect x="466" y="192" width="16" height="20" />
+      <rect x="426" y="224" width="16" height="20" />
+      <rect x="466" y="224" width="16" height="20" />
+      <rect x="426" y="256" width="16" height="20" />
+      <rect x="466" y="256" width="16" height="20" />
+      <rect x="426" y="288" width="16" height="20" />
+      <rect x="466" y="288" width="16" height="20" />
+      <rect x="426" y="320" width="16" height="20" />
+      <rect x="466" y="320" width="16" height="20" />
+      <rect x="426" y="352" width="16" height="20" />
+      <rect x="466" y="352" width="16" height="20" />
       </g>
       <path class="skyline-light" d="M12 412 H500 V438 H12 Z" fill="#1E1B4B" />
       <path class="skyline-dark" d="M12 412 H500 V438 H12 Z" fill="#F5EFE2" />
@@ -236,67 +236,114 @@ export const FlameIcon = (p: IconProps) => (
 );
 
 // ---------------------------------------------------------------------------------------------
-// THE PLATFORM MARKS IN THE FOOTER (CR-84, CR-87). The site's security policy allows no picture
-// from another host (`img-src 'self' data:`), so these are drawn in the page, like every other
-// icon here: one filled monochrome shape per platform, in a 24-unit box, taking its colour from
-// the text colour around it, so each follows the light and dark theme and stays sharp at any size.
+// THE PLATFORM MARKS IN THE FOOTER (CR-84, CR-87, CR-88). The site's security policy allows no
+// picture from another host (`img-src 'self' data:`), so every mark is drawn in the page, like
+// every other icon here: inline SVG, sharp at any size, and nothing fetched from anywhere.
 //
-// CR-87: the X and OpenSea marks are the platforms' own, each a single path on a 24-unit box,
-// copied exactly as the task brief gave them and drawn in `currentColor` rather than the brand
-// colour, so they follow the theme like the rest of the footer. Both come from Simple Icons, a
-// public collection of these marks; the drawings themselves carry no licence conditions. Each mark
-// remains its platform's trademark, drawn here only to point at the project's own account on that
-// platform. Nothing in either path is redrawn, re-spaced, cropped or part-recoloured.
+// Each mark is its platform's trademark, drawn here only to point at the project's own account or
+// token page on that platform, which is what the marks are for. The project claims nothing in any
+// of them. X's and OpenSea's glyphs come from Simple Icons, a public collection of these marks,
+// and the drawings themselves carry no licence conditions; GMGN's is GMGN's own, taken from
+// `gmgn.ai/static/logo_small2.svg`; the Telegram paper plane is the site's own drawing (the
+// owner's choice, CR-87). No path here is redrawn, re-spaced, cropped or part-recoloured.
 //
-// The Telegram paper plane is the site's own drawing and stays exactly as it was (the owner's
-// choice, CR-87); GMGN's candlesticks are the site's own too, and are not rendered until TOWN
-// exists on Ethereum. Each mark carries its platform's name for a screen reader and in its tooltip
-// (see `PlaceMark` in app.tsx), so nothing depends on recognising the drawing alone.
+// CR-88 item 6: **each mark now carries its platform's brand colour** instead of following the
+// footer's text colour.
+//   - X has no single colour: it is published black on light and white on dark. So its fill is the
+//     token `--mark-x`, which the stylesheet sets to #000000 on `:root` and to #ffffff in both dark
+//     blocks — the same three-block light/dark cascade the owner's skyline logo and every colour on
+//     the site already follow, decided by CSS alone with no JavaScript theme check anywhere.
+//   - Telegram is #26A5E4, OpenSea #2081E2, and both are the same in either theme, so they are
+//     plain tokens on `:root`.
+//   - OpenSea's glyph is a filled disc with the boat cut out of it as a hole, so a bare fill would
+//     let the footer show through the boat and the boat would turn dark on the dark footer. A white
+//     disc is drawn **behind** the glyph (`.mark-opensea-disc`) so the boat reads white in both
+//     themes, as the published mark does. The glyph path itself is untouched.
+//   - GMGN's mark is a full-colour pixel drawing with no one-colour form, so it keeps its own
+//     colours: its root carries `fill="none"` and every shape its own fill, and no rule in the
+//     stylesheet paints it.
 //
-// Sizes: OpenSea's mark is a filled disc and the other two are open shapes, so the disc is drawn a
-// little smaller to carry the same visual weight in the row (F9r, checked in the close-up photographs).
+// CR-88 item 7, the sizes: the boxes are not what the eye compares, the visible drawing is. X's
+// cross reaches the edges of its box and GMGN's frog fills its own, while Telegram's plane stops
+// well short of the edges and OpenSea's boat sits inside a disc and is only about three fifths of
+// it. So the four are scaled by what shows, not by their boxes, and the OpenSea disc ends up larger
+// than X's box rather than smaller (F9r had shrunk it to 16). Judged in the ordinary-resolution
+// photographs in both themes, not only in the enlarged ones.
+//
+// GMGN's size is also fixed by its drawing: a 32-unit grid of 2-unit blocks, so only 16 px (one
+// screen pixel per block) and 32 px (two) land on whole pixels, and 32 px does not fit the 32 px
+// mark box (30 px inside its border). Hence 16.
+//
+// Each mark carries its platform's name for a screen reader and in its tooltip (see `PlaceMark` in
+// app.tsx), so nothing depends on recognising a drawing alone.
 // ---------------------------------------------------------------------------------------------
 
-/** A filled mark, 20 units by default: one shape, or a few, in the surrounding text's colour. */
-function Mark({ size = 20, children }: IconProps & { children: preact.ComponentChildren }) {
+/** A platform mark in a 24-unit box; `cls` is the class the stylesheet paints it with. */
+function Mark({ size = 20, cls, children }: IconProps & { cls: string; children: preact.ComponentChildren }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true" class="icon mark">
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" class={`icon mark ${cls}`}>
       {children}
     </svg>
   );
 }
 
-/** X: the platform's own mark (Simple Icons), one path, exactly as given, in the surrounding colour. */
+/** X: the platform's own mark (Simple Icons), one path, exactly as given, black on light and white on dark. */
 export const XMark = (p: IconProps) => (
-  <Mark size={18} {...p}>
+  <Mark size={18} cls="mark-x" {...p}>
     <path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z" />
   </Mark>
 );
 
-/** Telegram: the paper plane, one shape with the notch in its lower edge. */
+/** Telegram: the site's own paper plane, shape untouched (the owner likes it), in Telegram's #26A5E4. */
 export const TelegramMark = (p: IconProps) => (
-  <Mark {...p}>
+  <Mark size={22} cls="mark-telegram" {...p}>
     <path d="M22 2.6 2 10.8l6.6 2.6L9.8 21l3.5-5.4 5.3 5.2z" />
   </Mark>
 );
 
-/** GMGN: two candlesticks, each a body with its wick, as a token chart draws them. */
-export const GmgnMark = (p: IconProps) => (
-  <Mark {...p}>
-    <rect x="6.3" y="3.4" width="1.5" height="17.2" />
-    <rect x="4" y="7.4" width="6.1" height="9.2" />
-    <rect x="16.2" y="5.4" width="1.5" height="13.2" />
-    <rect x="13.9" y="9.4" width="6.1" height="6.2" />
-  </Mark>
+/**
+ * GMGN: GMGN's own mark, the pixel-art frog from `gmgn.ai/static/logo_small2.svg`, used exactly as
+ * it is. It is a full-colour drawing with no one-colour form, so it keeps its own colours: nothing
+ * here is `currentColor` and no stylesheet rule paints it. The clip path's id is the site's own
+ * (`uptown-gmgn-clip` in place of the file's `clip0_468_9437`) so it cannot collide with anything
+ * else on the page, and the file's fixed `width="32" height="32"` is gone so the mark is sized the
+ * same way the other three are. 16 px: the drawing is a 32-unit grid of 2-unit blocks, so 16 px
+ * puts exactly one screen pixel on each block.
+ */
+export const GmgnMark = ({ size = 16 }: IconProps) => (
+  <svg viewBox="0 0 32 32" width={size} height={size} fill="none" aria-hidden="true" class="icon mark mark-gmgn">
+    <g clip-path="url(#uptown-gmgn-clip)">
+      <path d="M8 30V32H30V30H28V26H26V24H28V22H30V20H32V12H30V4H28V2H22V4H20V8H18V4H16V2H10V4H8V12H4V10H0V20H2V22H8V24H12V26H10V30H8Z" fill="#9ED455" />
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M16 2H14V4H16V6V8V10H18H20H22V8V6V4L20 4V6V8H18V6V4H16V2ZM6 20H8V22H6H4H2L2 20H4H6ZM4 12H2L2 14L2 16V18L2 20H0V18V16V14V12V10H2H4V12ZM4 12V14H6H8V12H10V10V8V6V4L8 4V6V8V10V12H6H4ZM12 26V24H10H8V22H10H12H14V24V26H12ZM10 30V28V26H12V28V30H10ZM10 30V32H8V30H10ZM30 30H28V28V26H26V24H28V22H30V20H32V18V16V14V12H30V10V8V6V4H28V2H26V4H28V6V8V10V12H30V14V16V18V20H28V22H26H24V24V26H26V28V30H28V32H30V30Z" fill="#457F2C" />
+      <rect x="10" y="6" width="4" height="6" fill="white" />
+      <rect x="10" y="8" width="2" height="4" fill="black" />
+      <rect x="12" y="18" width="2" height="6" transform="rotate(90 12 18)" fill="black" />
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M14 4V6L10 6V4H14ZM4 14L4 12H2V14H4ZM4 14H10V16H4V14ZM26 6V4H22V6L26 6Z" fill="#D5F86B" />
+      <rect x="22" y="30" width="2" height="10" transform="rotate(90 22 30)" fill="#D09C4F" />
+      <rect x="22" y="28" width="2" height="8" transform="rotate(90 22 28)" fill="#D09C4F" />
+      <rect x="20" y="26" width="2" height="6" transform="rotate(90 20 26)" fill="#D09C4F" />
+      <rect x="20" y="24" width="2" height="4" transform="rotate(90 20 24)" fill="#D09C4F" />
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M28 12V6H26V12H28ZM10 14V12H8V14H10ZM6 18V20H2V18H6ZM30 20V18V14H28V18H26V20H22V22V24H20V26H22H24V30H26V32H28V30H26V26H24V22H28V20H30ZM14 20V22H8V20H14ZM14 26V22H16V26H14ZM12 30V26H14V30H12ZM12 30H10V32H12V30ZM22 10V12H20V10H22Z" fill="#57A756" />
+      <rect x="22" y="6" width="4" height="6" fill="white" />
+      <rect x="22" y="8" width="2" height="4" fill="black" />
+    </g>
+    <defs>
+      <clipPath id="uptown-gmgn-clip">
+      <rect width="32" height="32" fill="white" />
+      </clipPath>
+    </defs>
+  </svg>
 );
 
 /**
- * OpenSea: the platform's own mark (Simple Icons), one path, exactly as given — the boat stays
- * inside its filled circle — in the surrounding colour. A filled disc reads heavier than the two
- * open marks beside it, so it is drawn at 16 units against X's 18 and Telegram's 20.
+ * OpenSea: the platform's own mark (Simple Icons), one path, exactly as given — the boat stays a
+ * hole inside the filled disc — in OpenSea's #2081E2, with a white disc behind it so the boat reads
+ * white in either theme (CR-88 item 6). 28 units, the largest of the four: the boat is only about
+ * three fifths of the disc, so at X's 18 the boat read far smaller than the X beside it.
  */
 export const OpenSeaMark = (p: IconProps) => (
-  <Mark size={16} {...p}>
+  <Mark size={28} cls="mark-opensea" {...p}>
+    <circle class="mark-opensea-disc" cx="12" cy="12" r="11.5" />
     <path d="M12 0C5.374 0 0 5.374 0 12s5.374 12 12 12 12-5.374 12-12S18.629 0 12 0ZM5.92 12.403l.051-.081 3.123-4.884a.107.107 0 0 1 .187.014c.52 1.169.972 2.623.76 3.528-.088.372-.335.876-.614 1.342a2.405 2.405 0 0 1-.117.199.106.106 0 0 1-.09.045H6.013a.106.106 0 0 1-.091-.163zm13.914 1.68a.109.109 0 0 1-.065.101c-.243.103-1.07.485-1.414.962-.878 1.222-1.548 2.97-3.048 2.97H9.053a4.019 4.019 0 0 1-4.013-4.028v-.072c0-.058.048-.106.108-.106h3.485c.07 0 .12.063.115.132-.026.226.017.459.125.67.206.42.636.682 1.099.682h1.726v-1.347H9.99a.11.11 0 0 1-.089-.173l.063-.09c.16-.231.391-.586.621-.992.156-.274.308-.566.43-.86.024-.052.043-.107.065-.16.033-.094.067-.182.091-.269a4.57 4.57 0 0 0 .065-.223c.057-.25.081-.514.081-.787 0-.108-.004-.221-.014-.327-.005-.117-.02-.235-.034-.352a3.415 3.415 0 0 0-.048-.312 6.494 6.494 0 0 0-.098-.468l-.014-.06c-.03-.108-.056-.21-.09-.317a11.824 11.824 0 0 0-.328-.972 5.212 5.212 0 0 0-.142-.355c-.072-.178-.146-.339-.213-.49a3.564 3.564 0 0 1-.094-.197 4.658 4.658 0 0 0-.103-.213c-.024-.053-.053-.104-.072-.152l-.211-.388c-.029-.053.019-.118.077-.101l1.32.357h.01l.173.05.192.054.07.019v-.783c0-.379.302-.686.679-.686a.66.66 0 0 1 .477.202.69.69 0 0 1 .2.484V6.65l.141.039c.01.005.022.01.031.017.034.024.084.062.147.11.05.038.103.086.165.137a10.351 10.351 0 0 1 .574.504c.214.199.454.432.684.691.065.074.127.146.192.226.062.079.132.156.19.232.079.104.16.212.235.324.033.053.074.108.105.161.096.142.178.288.257.435.034.067.067.141.096.213.089.197.159.396.202.598a.65.65 0 0 1 .029.132v.01c.014.057.019.12.024.184a2.057 2.057 0 0 1-.106.874c-.031.084-.06.17-.098.254-.075.17-.161.343-.264.502-.034.06-.075.122-.113.182-.043.063-.089.123-.127.18a3.89 3.89 0 0 1-.173.221c-.053.072-.106.144-.166.209-.081.098-.16.19-.245.278-.048.058-.1.118-.156.17-.052.06-.108.113-.156.161-.084.084-.15.147-.208.202l-.137.122a.102.102 0 0 1-.072.03h-1.051v1.346h1.322c.295 0 .576-.104.804-.298.077-.067.415-.36.816-.802a.094.094 0 0 1 .05-.03l3.65-1.057a.108.108 0 0 1 .138.103z" />
   </Mark>
 );

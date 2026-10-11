@@ -47,6 +47,19 @@
   --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mark: 'Cinzel', Georgia, serif;
   --mono: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  /* The footer's platform marks, each in its platform's own brand colour (CR-88 item 6). Telegram
+     and OpenSea publish one colour and keep it in either theme. X publishes no single colour: it is
+     black on a light background and white on a dark one, so `--mark-x` is redefined in both dark
+     blocks below — the same light/dark cascade every other colour here follows, and the one the
+     owner's skyline logo uses, decided by CSS alone. `--mark-opensea-hole` is the white disc drawn
+     behind the OpenSea glyph, whose boat is a hole in a filled disc: without it the footer would
+     show through the boat and the boat would go dark on the dark footer. GMGN's mark is a
+     full-colour pixel drawing and carries its own colours in the drawing itself, so it has no token
+     and no rule here. */
+  --mark-x: #000000;
+  --mark-telegram: #26a5e4;
+  --mark-opensea: #2081e2;
+  --mark-opensea-hole: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -73,6 +86,8 @@
     --ok: #4ade80;
     --focus: #f0c36a;
     --shadow: none;
+    /* X is published white on a dark background (CR-88 item 6). */
+    --mark-x: #ffffff;
   }
 }
 :root[data-theme='dark'] {
@@ -98,6 +113,8 @@
   --ok: #4ade80;
   --focus: #f0c36a;
   --shadow: none;
+  /* X is published white on a dark background (CR-88 item 6). */
+  --mark-x: #ffffff;
 }
 
 @media (min-width: 640px) {
@@ -1831,7 +1848,8 @@ main:focus {
 }
 /* 18 px between the stacked blocks on a narrow screen (22 px before CR-87): part of giving the
    footer its height back now that the row of platform marks sits in it. At 760 px and above the
-   blocks sit side by side and the gap is 32 px (the media query below). */
+   blocks sit side by side and the gap is 32 px, and at 1000 px and above there are three columns
+   (both media queries below). */
 .footer-grid {
   display: grid;
   gap: 18px;
@@ -1884,7 +1902,10 @@ main:focus {
   color: var(--text-3);
   font-size: 11.5px;
 }
-.footer-brand p {
+/* The brand sentence. Scoped to the brand block's own text, not to every `p` in `.footer-brand`:
+   since CR-88 that block also holds the places, whose heading is a `p` and must not take the
+   sentence's top margin or its 360 px limit. */
+.footer-brand-main p {
   margin-top: 8px;
   max-width: 360px;
 }
@@ -1909,11 +1930,15 @@ main:focus {
   font-weight: 600;
   text-decoration: underline;
 }
-/* The project's places (CR-84, CR-87): the drawn platform marks, on the right-hand side with the
-   contract addresses. Every mark is drawn at full strength (CR-87 took the dimming away); the one
-   that is not a link (OpenSea) differs only in its cursor and in the word it shows. The row is the
-   last thing in the footer, so the word, which appears just under its mark, falls inside the
-   footer's own bottom padding and needs no space reserved for it. */
+/* The project's places (CR-84, CR-87, CR-88): the drawn platform marks. Every mark is drawn at full
+   strength (CR-87 took the dimming away) and in its platform's own brand colour (CR-88 item 6); the
+   two that are not links (GMGN until TOWN exists on Ethereum, and OpenSea) differ only in their
+   cursor and in the word they show.
+
+   This is the narrow-screen shape, and the one the footer keeps wherever a third column does not
+   fit (CR-88 item 1): in the brand block under the page links, heading beside the marks on one
+   line, 10 px below the links — exactly where and how the row stood before F9r. The heading moves
+   above the marks only in the three-column layout, in the 1000 px media query below. */
 .footer-places {
   margin-top: 10px;
   display: flex;
@@ -1924,8 +1949,8 @@ main:focus {
 .footer-places .footer-head {
   margin-bottom: 0;
 }
-/* Scoped to the row's own block: the row now sits inside `.footer-contracts`, whose own `ul` rule
-   (a grid of address columns) would otherwise lay the marks out in one column. */
+/* Scoped to the row's own block, so that neither the contract list's `ul` rule (a grid of address
+   columns) nor the footer nav's can reach the marks wherever the block is placed. */
 .footer-places .place-row {
   list-style: none;
   margin: 0;
@@ -1934,9 +1959,13 @@ main:focus {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* `display: flex`, not `inline-flex`: an inline-level box whose own content is a block has its
+   baseline at its bottom edge, so the list item's line box added the surrounding font's descender
+   under it and the row measured 35.75 px instead of 32 px. A block-level flex box has no line box
+   and the row is exactly as tall as the marks. */
 .place {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
@@ -1950,8 +1979,26 @@ a.place:hover {
   border-color: var(--border-strong);
   background: var(--surface-2);
 }
-/* Not a link, and not dimmed either (CR-87): the same colour and weight as the two links, with no
-   pointer that suggests a link. The only sign is the word it shows. */
+/* Each mark in its platform's brand colour (CR-88 item 6). The marks no longer follow the footer's
+   text colour, so these are the only rules that paint them. GMGN has none: it is a full-colour
+   pixel drawing whose root carries `fill="none"` and whose every shape carries its own fill, and a
+   rule here would flatten it. */
+.mark-x {
+  fill: var(--mark-x);
+}
+.mark-telegram {
+  fill: var(--mark-telegram);
+}
+.mark-opensea {
+  fill: var(--mark-opensea);
+}
+/* The white disc behind the OpenSea glyph, so its boat — a hole in a filled disc — reads white in
+   either theme instead of letting the footer through. */
+.mark-opensea-disc {
+  fill: var(--mark-opensea-hole);
+}
+/* Not a link, and not dimmed either (CR-87): the same weight as the links, with no pointer that
+   suggests a link. The only sign is the word it shows ("soon", or "at launch" for GMGN). */
 .place-soon {
   cursor: default;
 }
@@ -1981,6 +2028,46 @@ a.place:hover {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
     gap: 32px;
     align-items: start;
+  }
+}
+/* The third column (CR-88 item 1): the marks in the empty space to the right of the contract
+   addresses, with the heading above them.
+
+   `.footer-brand` carries both the brand text and the places block, so that on a narrow screen the
+   places sit inside the brand block under the page links. Here it stops generating a box of its
+   own, which makes its two children grid items of `.footer-grid` directly, and each is then given
+   its column by name. Nothing is duplicated and nothing moves in the markup: one block, in one
+   place in the page, at every width.
+
+   1000 px, not 760 px: the places column takes about 152 px out of the row, and below 1000 px that
+   leaves the contract list too narrow for its two columns of addresses, which would push it to
+   seven rows and make the footer taller than it is today — which CR-88 forbids. Between 760 and
+   999 px the footer is two columns and the marks stay under the page links, which is the owner's
+   own instruction for the widths where a third column does not fit. Measured, not assumed:
+   `scripts/f9s-heights.mjs` sweeps every width from 320 to 1440 px. */
+@media (min-width: 1000px) {
+  .footer-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  }
+  .footer-brand {
+    display: contents;
+  }
+  .footer-brand-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .footer-contracts {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .footer-places {
+    grid-column: 3;
+    grid-row: 1;
+    margin-top: 0;
+    display: block;
+  }
+  .footer-places .footer-head {
+    margin-bottom: 8px;
   }
 }
 

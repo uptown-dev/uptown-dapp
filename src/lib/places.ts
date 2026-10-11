@@ -5,10 +5,10 @@
 // GMGN is different: its page is a token page on Ethereum mainnet, so its address is the TOWN
 // address from the site's own chain-1 address file, `src/addresses/1.json` — the same file the rest
 // of the site reads for mainnet, never typed in by hand. Today that file says "not deployed"
-// (`contracts: null`), so there is no address, no link, and the footer shows no GMGN mark at all
-// (the owner's decision of 11 October 2026, in place of CR-84's dimmed mark); when the mainnet
-// deployment fills that file at milestone 12 the mark appears as a working link, with no further
-// change here.
+// (`contracts: null`), so there is no address and no link: the mark is shown all the same (CR-88
+// item 3, which replaced the owner's earlier decision to hide it), at full strength, not a link,
+// and saying "at launch". When the mainnet deployment fills that file at milestone 12 the same mark
+// becomes a working link to the token's page there, with no further change here.
 //
 // The chain-1 file is imported straight, not through `virtual:uptown-site-chains` (which carries
 // only the chain the build is for, F9h/CL-53), so a Sepolia or local build shows exactly the same
@@ -43,7 +43,7 @@ export function mainnetTownAddress(): Address | null {
   }
 }
 
-/** GMGN's page for TOWN on Ethereum; `null` while the site has no mainnet TOWN address, and then no mark is shown. */
+/** GMGN's page for TOWN on Ethereum; `null` while the site has no mainnet TOWN address, and the mark then says "at launch". */
 export function gmgnUrl(town: Address | null): string | null {
   return town ? `https://gmgn.ai/eth/token/${town}` : null;
 }

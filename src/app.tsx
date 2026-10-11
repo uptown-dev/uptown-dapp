@@ -178,29 +178,46 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE PROJECT'S PLACES IN THE FOOTER (CR-84, moved and undimmed by CR-87). One row of four marks,
-// in this order: X, Telegram, GMGN, OpenSea. Each is drawn in the page as an inline shape
-// (`icons.tsx`), because the site's security policy allows no picture from another host and a drawn
-// mark follows the theme. CR-87 puts the row on the right-hand side of the footer, with the
-// contract addresses, instead of under the page links.
+// THE PROJECT'S PLACES IN THE FOOTER (CR-84, moved and undimmed by CR-87, given their own column
+// and renamed by CR-88). One row of four marks, in this order: X, Telegram, GMGN, OpenSea, under
+// the heading "Official Links" (CR-88 item 2; it was "Find UpTown"). Each mark is drawn in the page
+// as an inline shape (`icons.tsx`), because the site's security policy allows no picture from
+// another host; each now carries its platform's own brand colour (CR-88 item 6).
 //
-// X and Telegram are links: a new tab, `rel="noopener noreferrer"`, and an accessible name that
-// names the platform and says it opens in a new tab, exactly as the footer's contract links do.
+// WHERE THE ROW SITS (CR-88 item 1). The owner marked the empty space to the right of the contract
+// addresses and wants the marks there, as a third column with the heading above them. Where a third
+// column does not fit, they go back to where they were before F9r: under the page links, in the
+// brand block. So the block is written once, inside `.footer-brand` after the page links, and the
+// stylesheet decides:
+//   - narrow screens, where the footer is one column: it sits in the brand block, under the links,
+//     with the heading beside the marks, exactly as it did before F9r;
+//   - 760 px to 999 px, where the footer is two columns: the same place. A third column there would
+//     squeeze the contract list from two address columns into one and make the footer taller, which
+//     CR-88 forbids, so this is the owner's own fallback and not a compromise invented here;
+//   - 1000 px and up: `.footer-brand` becomes `display: contents`, so the brand block's own text
+//     and this block become separate grid items and the marks stand in their own third column, to
+//     the right of the addresses, with the heading above them.
+// One block in the page, in one place in the markup, at every width: nothing is duplicated and a
+// screen reader meets the row exactly once.
+//
+// X, Telegram and (once TOWN exists on Ethereum) GMGN are links: a new tab, `rel="noopener
+// noreferrer"`, and an accessible name that names the platform and says it opens in a new tab,
+// exactly as the footer's contract links do.
 //
 // OpenSea is not a link: no href, so nothing to follow, and the short word "soon" when the pointer
 // rests on it or a keyboard reaches it. CR-87 took its dimming away — no dashed border and no
-// reduced opacity, the same colour and weight as the two links — and left everything else as F9q
-// built it: a focusable element (tabindex 0) carrying both the word a sighted visitor sees
-// (`.place-word`, shown by the stylesheet on hover and on focus) and the same words for a screen
-// reader ("OpenSea: soon"), because a `title` alone never reaches a keyboard.
+// reduced opacity, the same weight as the two links — and left everything else as F9q built it: a
+// focusable element (tabindex 0) carrying both the word a sighted visitor sees (`.place-word`,
+// shown by the stylesheet on hover and on focus) and the same words for a screen reader
+// ("OpenSea: soon"), because a `title` alone never reaches a keyboard.
 //
-// GMGN is not shown at all until TOWN exists on Ethereum (the owner's decision of 11 October 2026,
-// replacing CR-84's dimmed mark): no mark, no word, nothing in the page and nothing for a screen
-// reader, so the row holds three marks today. Its address is never typed in: it is TOWN's address
-// on Ethereum from the site's own chain-1 address file (`lib/places.ts`), which is read whatever
-// network this build is for, so every build shows the same state. That file carries no address
-// today; the mainnet deployment at milestone 12 makes the mark appear, as an ordinary link like X
-// and Telegram, with no further change here.
+// GMGN is shown from today (CR-88 item 3), which replaces F9q's hiding rule — the owner withdrew it
+// after seeing the mark. With no TOWN address on Ethereum it gets exactly OpenSea's treatment with
+// its own word: full strength, not a link, no href, and "at launch" on hover and on keyboard focus.
+// Its address is never typed in: it is TOWN's address on Ethereum from the site's own chain-1
+// address file (`lib/places.ts`), which is read whatever network this build is for, so every build
+// shows the same state. The mainnet deployment at milestone 12 turns the mark into an ordinary link
+// to its TOWN page, with no word and no further change here.
 // ---------------------------------------------------------------------------------------------
 
 /** One mark: a link that opens in a new tab, or a mark that leads nowhere and shows `word` (CR-87: not dimmed). */
@@ -242,15 +259,16 @@ export function PlaceMark({
 }
 
 /**
- * The row: X, Telegram, then GMGN only once TOWN exists on Ethereum, then OpenSea. `town` is
- * TOWN's address on Ethereum; it comes from the site's own chain-1 address file and is a prop only
- * so a test can render the row with a stand-in address. It sits with the contract addresses (CR-87).
+ * The row: X, Telegram, GMGN, OpenSea, under the heading "Official Links" (CR-88). `town` is TOWN's
+ * address on Ethereum; it comes from the site's own chain-1 address file and is a prop only so a
+ * test can render the row with a stand-in address. The block is written once, inside the brand
+ * block after the page links; the stylesheet puts it in its own third column where there is room.
  */
 export function PlaceRow({ town = mainnetTownAddress() }: { town?: Address | null }) {
   const gmgn = gmgnUrl(town);
   return (
     <div class="footer-places">
-      <p class="footer-head">Find UpTown</p>
+      <p class="footer-head">Official Links</p>
       <ul class="place-row">
         <PlaceMark name="X" what="UpTown on X" href={X_URL}>
           <XMark />
@@ -258,12 +276,10 @@ export function PlaceRow({ town = mainnetTownAddress() }: { town?: Address | nul
         <PlaceMark name="Telegram" what="UpTown on Telegram" href={TELEGRAM_URL}>
           <TelegramMark />
         </PlaceMark>
-        {/* Nothing at all until the chain-1 address file names TOWN; then an ordinary link. */}
-        {gmgn !== null && (
-          <PlaceMark name="GMGN" what="TOWN on GMGN" href={gmgn}>
-            <GmgnMark />
-          </PlaceMark>
-        )}
+        {/* Always shown (CR-88 item 3): "at launch" until the chain-1 address file names TOWN, then a link. */}
+        <PlaceMark name="GMGN" what="TOWN on GMGN" href={gmgn} word="at launch">
+          <GmgnMark />
+        </PlaceMark>
         <PlaceMark name="OpenSea" what="UpTown on OpenSea" href={null} word="soon">
           <OpenSeaMark />
         </PlaceMark>
@@ -702,26 +718,34 @@ export function App() {
 
       <footer class="site-footer">
         <div class="wrap footer-grid">
+          {/* The brand block, and after its page links the project's places (CR-88 item 1). At 1000 px
+              and above this wrapper is `display: contents`, so the two inner blocks become grid items
+              of their own and the places stand in a third column to the right of the addresses; below
+              that they stay here, under the page links, which is where the owner asked for them when
+              a third column does not fit. */}
           <div class="footer-brand">
-            <a class="wordmark small" href="#/" aria-label="UpTown, home">
-              <SkylineMark />
-              <span>UpTown</span>
-            </a>
-            <p>UpTown Token (TOWN), an experiment on Ethereum.</p>
-            <nav aria-label="Footer">
-              <ul>
-                {NAV.slice(1, 5).map((n) => (
-                  <li key={n.page}>
-                    <a href={`#/${n.page}`}>{n.label}</a>
+            <div class="footer-brand-main">
+              <a class="wordmark small" href="#/" aria-label="UpTown, home">
+                <SkylineMark />
+                <span>UpTown</span>
+              </a>
+              <p>UpTown Token (TOWN), an experiment on Ethereum.</p>
+              <nav aria-label="Footer">
+                <ul>
+                  {NAV.slice(1, 5).map((n) => (
+                    <li key={n.page}>
+                      <a href={`#/${n.page}`}>{n.label}</a>
+                    </li>
+                  ))}
+                  <li>
+                    <a href="#/docs" class="footer-strong">
+                      Docs
+                    </a>
                   </li>
-                ))}
-                <li>
-                  <a href="#/docs" class="footer-strong">
-                    Docs
-                  </a>
-                </li>
-              </ul>
-            </nav>
+                </ul>
+              </nav>
+            </div>
+            <PlaceRow />
           </div>
           <div class="footer-contracts">
             <p class="footer-head">Contracts{network.explorerName ? ` on ${network.explorerName}` : ''}</p>
@@ -752,8 +776,6 @@ export function App() {
               <p class="footer-note">Not deployed on {network.name} yet: the addresses are published here once they are.</p>
             )}
             {network.deployment && !network.explorer && <p class="footer-note">No block explorer on the {network.name.toLowerCase()}, so these are not links.</p>}
-            {/* The project's places (CR-84), on the right-hand side with the contract addresses (CR-87). */}
-            <PlaceRow />
           </div>
           {/* CR-87 removed the visible font licence sentence. The licence files themselves are
               still published with the site, at licenses/OFL-Inter.txt and licenses/OFL-Cinzel.txt
