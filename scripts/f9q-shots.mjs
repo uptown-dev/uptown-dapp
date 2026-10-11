@@ -1,3 +1,7 @@
+// SUPERSEDED by scripts/f9r-shots.mjs (CR-87, F9r). This driver is kept as the record of F9q's own
+// review. It checks CR-84's dimmed OpenSea mark and the row under the page links, both of which
+// CR-87 reversed, so running it against today's site reports those two as faults. Use f9r-shots.mjs.
+//
 // CR-84 (F9q) review driver: photographs the footer's row of four platform marks on the build in
 // dist/, reads back what each mark is (link or dimmed mark, its address, its name for a screen
 // reader, its word), and measures every page's width at the three narrow widths. Local review

@@ -14,6 +14,9 @@
 //   with any value other than 1, 11155111 or 31337.
 // - dist/index.html, when a build exists: the strict policy for one chain's RPC origin and no other,
 //   and no referrer; also shown to fail on copies of the page naming two networks.
+// - The two font licence files (CR-87): in public/licenses/, carrying the licence text, and copied
+//   into dist/licenses/ by the build. The footer's visible licence sentence went with CR-87; the
+//   files must still be published, which is what the fonts' licence requires.
 //
 // Usage: node scripts/test-hosting.mjs   (also part of `npm test`)
 import { spawnSync } from 'node:child_process';
@@ -203,6 +206,19 @@ if (existsSync(built)) {
   }
 } else {
   check('dist/index.html (skipped: no build)', true);
+}
+
+// The two font licence files travel with the site (CR-87). The footer no longer carries the
+// sentence that pointed at them, so this is what keeps them from being dropped by accident: the
+// fonts' own licence requires the licence text to be published with the fonts. They are in
+// public/licenses/, which every build copies into dist/.
+for (const name of ['OFL-Inter.txt', 'OFL-Cinzel.txt']) {
+  const source = join(ROOT, 'public', 'licenses', name);
+  const text = existsSync(source) ? readFileSync(source, 'utf8') : '';
+  check(`public/licenses/${name} is published with the site and carries the SIL Open Font License`, /SIL Open Font License/i.test(text), existsSync(source) ? 'the file does not carry the licence text' : 'the file is missing');
+  const inDist = join(ROOT, 'dist', 'licenses', name);
+  if (existsSync(built)) check(`dist/licenses/${name} is in the built site`, existsSync(inDist), 'the build did not copy it');
+  else check(`dist/licenses/${name} (skipped: no build)`, true);
 }
 
 for (const t of results) console.log(`${t.ok ? 'PASS' : 'FAIL'}  ${t.name}${t.ok || !t.detail ? '' : `\n      ${t.detail.replace(/\n/g, '\n      ')}`}`);

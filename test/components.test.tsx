@@ -808,7 +808,7 @@ async function run() {
   await cr76();
   await cr77(base, wallet);
   await cr82(base, wallet);
-  await cr84();
+  await cr84cr87();
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -2492,13 +2492,29 @@ async function cr82(base: ChainState, wallet: WalletState) {
   }
 }
 
-// ---- F9q (CR-84): the project's places in the footer ---------------------------------------------
+// ---- F9q (CR-84) and F9r (CR-87): the project's places in the footer -----------------------------
 // The row is rendered on its own, with the site's own chain-1 address file (no TOWN address today,
 // so there is no GMGN mark at all) and with a stand-in address passed in its place (GMGN is then an
 // ordinary link). The stylesheet is loaded for as long as these checks run, because it is the
-// stylesheet that dims the OpenSea mark and that hides its word until the pointer or the keyboard
-// reaches it. Nothing in src/addresses/** is touched.
-async function cr84() {
+// stylesheet that hides the word until the pointer or the keyboard reaches it. Nothing in
+// src/addresses/** is touched.
+//
+// CR-87 added: the X and OpenSea drawings are the platforms' own marks, each a single path exactly
+// as the task brief gives it; the Telegram drawing is unchanged, path for path; no mark is dimmed
+// any more (no reduced opacity, no dashed border, the same colour as the two links); the row sits
+// with the contract addresses and not under the page links; and the font licence sentence is gone
+// from every page.
+
+/** The X mark's path, exactly as CR-87's task brief gives it (Simple Icons). */
+const X_PATH =
+  'M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z';
+/** The OpenSea mark's path, exactly as CR-87's task brief gives it (Simple Icons). */
+const OPENSEA_PATH =
+  'M12 0C5.374 0 0 5.374 0 12s5.374 12 12 12 12-5.374 12-12S18.629 0 12 0ZM5.92 12.403l.051-.081 3.123-4.884a.107.107 0 0 1 .187.014c.52 1.169.972 2.623.76 3.528-.088.372-.335.876-.614 1.342a2.405 2.405 0 0 1-.117.199.106.106 0 0 1-.09.045H6.013a.106.106 0 0 1-.091-.163zm13.914 1.68a.109.109 0 0 1-.065.101c-.243.103-1.07.485-1.414.962-.878 1.222-1.548 2.97-3.048 2.97H9.053a4.019 4.019 0 0 1-4.013-4.028v-.072c0-.058.048-.106.108-.106h3.485c.07 0 .12.063.115.132-.026.226.017.459.125.67.206.42.636.682 1.099.682h1.726v-1.347H9.99a.11.11 0 0 1-.089-.173l.063-.09c.16-.231.391-.586.621-.992.156-.274.308-.566.43-.86.024-.052.043-.107.065-.16.033-.094.067-.182.091-.269a4.57 4.57 0 0 0 .065-.223c.057-.25.081-.514.081-.787 0-.108-.004-.221-.014-.327-.005-.117-.02-.235-.034-.352a3.415 3.415 0 0 0-.048-.312 6.494 6.494 0 0 0-.098-.468l-.014-.06c-.03-.108-.056-.21-.09-.317a11.824 11.824 0 0 0-.328-.972 5.212 5.212 0 0 0-.142-.355c-.072-.178-.146-.339-.213-.49a3.564 3.564 0 0 1-.094-.197 4.658 4.658 0 0 0-.103-.213c-.024-.053-.053-.104-.072-.152l-.211-.388c-.029-.053.019-.118.077-.101l1.32.357h.01l.173.05.192.054.07.019v-.783c0-.379.302-.686.679-.686a.66.66 0 0 1 .477.202.69.69 0 0 1 .2.484V6.65l.141.039c.01.005.022.01.031.017.034.024.084.062.147.11.05.038.103.086.165.137a10.351 10.351 0 0 1 .574.504c.214.199.454.432.684.691.065.074.127.146.192.226.062.079.132.156.19.232.079.104.16.212.235.324.033.053.074.108.105.161.096.142.178.288.257.435.034.067.067.141.096.213.089.197.159.396.202.598a.65.65 0 0 1 .029.132v.01c.014.057.019.12.024.184a2.057 2.057 0 0 1-.106.874c-.031.084-.06.17-.098.254-.075.17-.161.343-.264.502-.034.06-.075.122-.113.182-.043.063-.089.123-.127.18a3.89 3.89 0 0 1-.173.221c-.053.072-.106.144-.166.209-.081.098-.16.19-.245.278-.048.058-.1.118-.156.17-.052.06-.108.113-.156.161-.084.084-.15.147-.208.202l-.137.122a.102.102 0 0 1-.072.03h-1.051v1.346h1.322c.295 0 .576-.104.804-.298.077-.067.415-.36.816-.802a.094.094 0 0 1 .05-.03l3.65-1.057a.108.108 0 0 1 .138.103z';
+/** The Telegram paper plane, byte for byte as it stands on main: CR-87 leaves this drawing alone. */
+const TELEGRAM_PATH = 'M22 2.6 2 10.8l6.6 2.6L9.8 21l3.5-5.4 5.3 5.2z';
+
+async function cr84cr87() {
   const style = document.createElement('style');
   style.textContent = GLOBAL_CSS;
   document.head.append(style);
@@ -2530,6 +2546,11 @@ async function cr84() {
       shapes: svg ? svg.querySelectorAll('path, rect, circle').length : 0,
       fromElsewhere: svg ? [...svg.querySelectorAll('*')].some((n) => /^(image|use)$/i.test(n.tagName)) : null,
       glyphOpacity: svg ? getComputedStyle(svg).opacity : null,
+      // CR-87: the drawing itself, its size, and how the mark is coloured and bordered.
+      paths: svg ? [...svg.querySelectorAll('path')].map((p) => p.getAttribute('d')) : [],
+      drawnAt: svg ? `${svg.getAttribute('width')}x${svg.getAttribute('height')}` : null,
+      colour: m ? getComputedStyle(m).color : null,
+      border: m ? getComputedStyle(m).borderTopStyle : null,
     };
   };
 
@@ -2609,7 +2630,7 @@ async function cr84() {
     `${filledOrder} | ${JSON.stringify(gmLive)}`,
   );
   check(
-    'CR-84 the other marks are unchanged when the address file is filled: X and Telegram still link, OpenSea is still dimmed and says "soon"',
+    'CR-84 the other marks are unchanged when the address file is filled: X and Telegram still link, OpenSea still leads nowhere and says "soon"',
     seen(filled, 'X').href === X_URL && seen(filled, 'Telegram').href === TELEGRAM_URL && seen(filled, 'OpenSea').tag === 'span' && seen(filled, 'OpenSea').word === 'soon',
     `OpenSea ${JSON.stringify(seen(filled, 'OpenSea'))}`,
   );
@@ -2623,11 +2644,54 @@ async function cr84() {
     drawn.map((d, i) => `${names[i]}: ${d.shapes} shapes`).join(', '),
   );
 
-  // Dimmed, and the word only when the pointer rests on the mark or the keyboard reaches it.
+  // CR-87: the X and OpenSea drawings are the platforms' own marks, each one path, exactly as the
+  // task brief gives it; the Telegram paper plane is untouched, byte for byte as it is on main.
   check(
-    'CR-84 the dimmed OpenSea mark is plainly less prominent than the live ones',
-    Number(sea.glyphOpacity) < 0.8 && Number(x.glyphOpacity) === 1 && Number(tg.glyphOpacity) === 1 && Number(seen(filled, 'GMGN').glyphOpacity) === 1,
-    `X ${x.glyphOpacity}, Telegram ${tg.glyphOpacity}, GMGN (filled) ${seen(filled, 'GMGN').glyphOpacity}, OpenSea ${sea.glyphOpacity}`,
+    'CR-87 the X and OpenSea marks are the platforms’ own drawings, each a single path exactly as the brief gives it, and the Telegram drawing is unchanged',
+    x.paths.length === 1 &&
+      x.paths[0] === X_PATH &&
+      sea.paths.length === 1 &&
+      sea.paths[0] === OPENSEA_PATH &&
+      tg.paths.length === 1 &&
+      tg.paths[0] === TELEGRAM_PATH,
+    `X: 1 path, the brief’s: ${x.paths[0] === X_PATH} (${x.paths[0]?.length} characters) | OpenSea: 1 path, the brief’s: ${sea.paths[0] === OPENSEA_PATH} (${sea.paths[0]?.length} characters) | Telegram: unchanged: ${tg.paths[0] === TELEGRAM_PATH} ("${tg.paths[0]}")`,
+  );
+
+  // CR-87: nothing in the row is dimmed any more. Every drawing is at full opacity, every mark
+  // carries the same colour and a solid border, and the dimming F9q used is gone from the
+  // stylesheet: no `.place-off` rule, no 0.45 opacity on a drawing, no dashed border on a mark.
+  const cssRules = [...document.styleSheets].flatMap((s) => {
+    try {
+      return [...s.cssRules];
+    } catch {
+      return [];
+    }
+  });
+  const oldDimming = cssRules.filter(
+    (r) => r instanceof CSSStyleRule && /\.place-off/.test(r.selectorText) && (r.style.opacity === '0.45' || r.style.borderStyle === 'dashed' || r.style.opacity === '0.7'),
+  ).length;
+  const gmFilled = seen(filled, 'GMGN');
+  check(
+    'CR-87 no mark is dimmed: every drawing at full strength, the same colour and a solid border as the links, and F9q’s dimming gone from the stylesheet',
+    Number(sea.glyphOpacity) === 1 &&
+      Number(x.glyphOpacity) === 1 &&
+      Number(tg.glyphOpacity) === 1 &&
+      Number(gmFilled.glyphOpacity) === 1 &&
+      sea.colour === x.colour &&
+      sea.colour === tg.colour &&
+      sea.border === 'solid' &&
+      x.border === 'solid' &&
+      tg.border === 'solid' &&
+      oldDimming === 0 &&
+      !GLOBAL_CSS.includes('place-off'),
+    `opacity X ${x.glyphOpacity}, Telegram ${tg.glyphOpacity}, GMGN ${gmFilled.glyphOpacity}, OpenSea ${sea.glyphOpacity}; colour X ${x.colour}, OpenSea ${sea.colour}; border X ${x.border}, OpenSea ${sea.border}; dimming rules left in the stylesheet: ${oldDimming}, the text "place-off" anywhere in it: ${GLOBAL_CSS.includes('place-off')}`,
+  );
+
+  // The sizes: a filled disc reads heavier than an open shape, so OpenSea's mark is drawn smaller.
+  check(
+    'CR-87 the three marks are sized to sit together: the filled OpenSea disc smaller than the two open marks',
+    x.drawnAt === '18x18' && tg.drawnAt === '20x20' && sea.drawnAt === '16x16',
+    `X ${x.drawnAt}, Telegram ${tg.drawnAt}, OpenSea ${sea.drawnAt}`,
   );
   {
     const el = row();
@@ -2656,11 +2720,11 @@ async function cr84() {
           return [];
         }
       })
-      .some((r) => r instanceof CSSStyleRule && /\.place-off:focus \.place-word/.test(r.selectorText) && r.style.opacity === '1');
+      .some((r) => r instanceof CSSStyleRule && /\.place-soon:focus \.place-word/.test(r.selectorText) && r.style.opacity === '1');
     check(
-      'CR-84 a keyboard reaches the dimmed mark, its word is hidden until then, and the stylesheet shows it on focus',
+      'CR-84, CR-87 a keyboard still reaches the mark that leads nowhere, its word is hidden until then, and the stylesheet shows it on focus',
       before === '0' && focused && seaMark.tabIndex === 0 && rule && (docFocus ? onFocus === '1' : true) && after === '0',
-      `before ${before}, the keyboard reaches it: ${focused} (the page holds the window’s focus: ${docFocus}; the word then at ${onFocus}), after ${after}; the rule ".place-off:focus .place-word { opacity: 1 }" is in the stylesheet: ${rule}`,
+      `before ${before}, the keyboard reaches it: ${focused} (the page holds the window’s focus: ${docFocus}; the word then at ${onFocus}), after ${after}; the rule ".place-soon:focus .place-word { opacity: 1 }" is in the stylesheet: ${rule}`,
     );
   }
 
@@ -2675,26 +2739,59 @@ async function cr84() {
     const places = [...whole.querySelectorAll('footer.site-footer .place')].map((e) => (e as HTMLElement).dataset.place).join(',');
     const noGmgn = !whole.innerHTML.includes('gmgn') && !whole.innerHTML.includes('at launch');
     const head = (whole.querySelector('.footer-places .footer-head') as HTMLElement | null)?.textContent ?? null;
-    // CR-84 changes nothing else in the footer.
+    // CR-87: the row sits on the right-hand side, with the contract addresses, and no longer under
+    // the page links. Everything else in the footer is unchanged.
+    const withContracts = !!whole.querySelector('footer.site-footer .footer-contracts .footer-places');
+    const underLinks = !!whole.querySelector('footer.site-footer .footer-brand .footer-places');
     const brand = (whole.querySelector('footer.site-footer .footer-brand p') as HTMLElement).textContent;
-    const fonts = !!whole.querySelector('footer.site-footer .footer-fonts');
-    const contracts = whole.querySelectorAll('footer.site-footer .footer-contracts li').length;
+    const contracts = whole.querySelectorAll('footer.site-footer .footer-contracts > ul > li').length;
     const links = [...whole.querySelectorAll('footer.site-footer nav a')].map((a) => a.textContent).join(',');
     check(
-      'CR-84 the whole site shows the row once, in the footer, with no GMGN mark anywhere in the page today, and the rest of the footer is unchanged',
+      'CR-84, CR-87 the whole site shows the row once, in the footer, beside the contract addresses, with no GMGN mark anywhere today, and the rest of the footer unchanged',
       rows.length === 1 &&
         inFooter &&
+        withContracts &&
+        !underLinks &&
         places === 'X,Telegram,OpenSea' &&
         noGmgn &&
         head === 'Find UpTown' &&
         brand === 'UpTown Token (TOWN), an experiment on Ethereum.' &&
-        fonts &&
         contracts === 7 &&
         links === 'Trade,Rewards,Stake,Stats,Docs',
-      `${rows.length} row(s), in the footer: ${inFooter}, marks ${places}, no GMGN anywhere: ${noGmgn}, head "${head}", page links ${links}, ${contracts} contracts, font notice ${fonts}`,
+      `${rows.length} row(s), in the footer: ${inFooter}, with the contracts: ${withContracts}, under the page links: ${underLinks}, marks ${places}, no GMGN anywhere: ${noGmgn}, head "${head}", page links ${links}, ${contracts} contracts`,
     );
     render(null, whole);
     whole.remove();
+  }
+
+  // CR-87: the font licence sentence is gone — from every page, not just the homepage. The licence
+  // files themselves stay in the published site (checked in the built site by scripts/f9r-shots.mjs
+  // and by the hosting test's own file list, not here: this page is not the built site).
+  {
+    const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+    const savedTitle = document.title;
+    const pages = ['', 'trade', 'trade/sell', 'rewards', 'stake', 'stats', 'docs'];
+    const found: string[] = [];
+    const whole = document.createElement('div');
+    stage.append(whole);
+    for (const p of pages) {
+      location.hash = `#/${p}`;
+      render(<App />, whole);
+      await settle();
+      const el = !!whole.querySelector('.footer-fonts');
+      const words = /SIL Open Font Licence/i.test(whole.innerHTML);
+      const link = !!whole.querySelector('a[href*="OFL-"]');
+      if (el || words || link) found.push(`${p || 'home'} (element ${el}, words ${words}, link ${link})`);
+    }
+    render(null, whole);
+    whole.remove();
+    history.replaceState(null, '', location.pathname + location.search);
+    document.title = savedTitle;
+    check(
+      'CR-87 the font licence sentence is gone from every page: no sentence, no element and no link to a licence file',
+      found.length === 0,
+      `${pages.length} pages checked (home, trade, trade/sell, rewards, stake, stats, docs); pages that still carry it: ${found.join('; ') || 'none'}`,
+    );
   }
 
   // The gallery keeps both states, each named and findable by the review driver.
