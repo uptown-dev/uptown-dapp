@@ -99,3 +99,23 @@ export const THINGS_TO_KNOW: { title: string; body: string }[] = [
   },
   { title: 'Buy on this site', body: 'A buy here names your wallet, so the rebate is credited to you; through other apps it may be credited to someone else.' },
 ];
+
+/**
+ * For whoever routes buys for other people (CR-92 part 1), shown right after "Buy on this site". The
+ * rule is the spec's "TownHook → Buy tally" attribution order and CL-28, word for word in substance:
+ * `hookData` of exactly 32 bytes holding a non-zero word whose upper 96 bits are zero names the buyer,
+ * whatever its code; else the router's `msgSender()` answer when it has no code or is an EIP-7702
+ * delegation; else `tx.origin`. BuyerRewards pays a claim to its caller ("claim(cycles[])"), so the
+ * address named claims for itself. Words between backticks are shown as code. The example's
+ * `hookData` is not written here: the page encodes `exampleBuyer` with the site's own
+ * `buyerHookData`, the function its buy form uses.
+ */
+export const ROUTING_NOTE = {
+  title: 'For wallets, aggregators and bots',
+  body:
+    'If you route TOWN buys for other people, pass the buyer’s address as the swap’s `hookData`, exactly 32 bytes: the address left-padded with zeros, as `abi.encode(buyer)` gives it. ' +
+    'TownHook then credits the buy, and its rebate, to that address, whatever its code; that address claims the rebate itself. ' +
+    'Any other `hookData` (another length, a zero address, anything in the first 12 bytes) is ignored. ' +
+    'Without a valid one, the hook credits the router’s `msgSender()` when that is an ordinary wallet (no code, or an EIP-7702 delegation), else the transaction’s sender (`tx.origin`), so for a solver, a bundler or a contract wallet the rebate goes to the wrong place.',
+  exampleBuyer: '0x1234567890AbcdEF1234567890aBcdef12345678' as `0x${string}`,
+};

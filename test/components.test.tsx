@@ -50,6 +50,9 @@
 //   amounts: the site's own forms run against a stand-in wallet and a stand-in chain (no transaction
 //   reaches the local node); the order of every rehearsal, request and confirmation; the stops; the
 //   unlimited sell approvals; the 25/50/75/100% buttons on both sides.
+// - CR-92 part 1 (F9t), the Docs item for whoever routes buys for others: its place after "Buy on
+//   this site", its text character for character (the 32-byte rule), its code words, and its example
+//   `hookData` against the bytes the site's own buy form puts in its swap.
 // Nothing here sends a transaction to any chain: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 // The site's own stylesheet and the owner's own logo files, read as text (CR-75): the checks
@@ -66,7 +69,7 @@ import { ContractFunctionRevertedError, decodeAbiParameters, decodeFunctionData,
 import { Owner, OwnerPage } from '../src/pages/Owner';
 import { networkLabel, pageAccess, showsOwnerLink } from '../src/lib/owner';
 import { UNLISTED_STAKING, listedStaking, replacedStaking } from '../src/lib/network';
-import { MAX_UINT160, MAX_UINT256, UnlistedStakingError, addStakeTx, approvePermit2Tx, approveTx, claimWethTx, openVaultTx, ownerTx, unstakeTx, upgradeTx, withMargin } from '../src/lib/actions';
+import { MAX_UINT160, MAX_UINT256, UnlistedStakingError, addStakeTx, buyTx, approvePermit2Tx, approveTx, claimWethTx, openVaultTx, ownerTx, unstakeTx, upgradeTx, withMargin } from '../src/lib/actions';
 import { BUY_GAS_ALLOWANCE, buyGasReserve } from '../src/lib/quick';
 import {
   UnknownTargetError,
@@ -89,7 +92,7 @@ import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
 import { Home } from '../src/pages/Home';
 import { Docs } from '../src/pages/Docs';
-import { OWNER_POWERS } from '../src/content/docs';
+import { OWNER_POWERS, ROUTING_NOTE, THINGS_TO_KNOW } from '../src/content/docs';
 import { App, Freshness, NetworkTag, PlaceRow, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
 import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetTownAddress } from '../src/lib/places';
 import type { ChainId, Network } from '../src/lib/network';
@@ -809,6 +812,7 @@ async function run() {
   await cr77(base, wallet);
   await cr82(base, wallet);
   await cr84cr87cr88();
+  await cr92(base, wallet);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -2962,6 +2966,94 @@ async function cr84cr87cr88() {
 
   render(null, box);
   box.remove();
+  style.remove();
+}
+
+// ---- F9t (CR-92 part 1): how a router names the buyer, on the Docs page -------------------------
+// The item's text is written out here in full, by hand from the spec's "TownHook → Buy tally" and
+// CL-28, and compared character for character with what the page shows; the example's 32 bytes are
+// written out too, and compared with the `hookData` inside the transaction the site's own buy form
+// builds for the same buyer.
+async function cr92(base: ChainState, wallet: WalletState) {
+  const style = document.createElement('style');
+  style.textContent = GLOBAL_CSS;
+  document.head.append(style);
+
+  const docs = await mount(<Docs />, base, wallet, 'CR-92: the Docs page, "Things to know"');
+  const know = docs.querySelector('#docs-know') as HTMLElement;
+  const items = [...know.querySelectorAll(':scope ul.doc-list > li')] as HTMLElement[];
+  const item = know.querySelector('li[data-item="routing"]') as HTMLElement | null;
+  const at = item ? items.indexOf(item) : -1;
+  const before = at > 0 ? items[at - 1].textContent : null;
+
+  const BUYER = '0x1234567890AbcdEF1234567890aBcdef12345678';
+  const WORD = '0x000000000000000000000000' + '1234567890abcdef1234567890abcdef12345678';
+  const WANT =
+    'For wallets, aggregators and bots. ' +
+    'If you route TOWN buys for other people, pass the buyer’s address as the swap’s hookData, exactly 32 bytes: the address left-padded with zeros, as abi.encode(buyer) gives it. ' +
+    'TownHook then credits the buy, and its rebate, to that address, whatever its code; that address claims the rebate itself. ' +
+    'Any other hookData (another length, a zero address, anything in the first 12 bytes) is ignored. ' +
+    'Without a valid one, the hook credits the router’s msgSender() when that is an ordinary wallet (no code, or an EIP-7702 delegation), else the transaction’s sender (tx.origin), so for a solver, a bundler or a contract wallet the rebate goes to the wrong place. ' +
+    `For example, the buyer ${BUYER} is hookData ${WORD}.`;
+  const got = item?.textContent ?? '';
+
+  check(
+    'CR-92 part 1: the Docs page’s "Things to know" carries the item for whoever routes buys for others, right after "Buy on this site", as the last item',
+    !!item && at === items.length - 1 && !!before?.startsWith('Buy on this site.') && item.querySelector('strong')?.textContent === 'For wallets, aggregators and bots.',
+    `the item found: ${!!item}; its place ${at + 1} of ${items.length}; the item before it: "${before?.slice(0, 40)}…"`,
+  );
+  check(
+    'CR-92 part 1: the item’s text, character for character, states the spec’s rule — exactly 32 bytes, the address left-padded with zeros, credited whatever its code, any other hookData ignored, then msgSender() for a wallet with no code or an EIP-7702 delegation, then tx.origin',
+    got === WANT,
+    got === WANT ? `${got.length} characters, identical` : `got: ${got}`,
+  );
+  const codes = item ? [...item.querySelectorAll('code')].map((c) => c.textContent) : [];
+  check(
+    'CR-92 part 1: every code word is in code style, the two long hex strings may break anywhere so they fit a phone',
+    JSON.stringify(codes) === JSON.stringify(['hookData', 'abi.encode(buyer)', 'hookData', 'msgSender()', 'tx.origin', BUYER, 'hookData', WORD]) &&
+      [...(item?.querySelectorAll('code.break') ?? [])].map((c) => c.textContent).join(' ') === `${BUYER} ${WORD}`,
+    codes.join(' | '),
+  );
+
+  // The example is 32 bytes holding the buyer in its low 20 and zeros in its upper 12, and is exactly
+  // the hookData the site's own buy form puts in its swap for that buyer.
+  const tx = buyTx(NETWORK, BUYER, 1n, 1n, 0n);
+  const [, params] = decodeAbiParameters([{ type: 'bytes' }, { type: 'bytes[]' }], (tx.args as readonly [unknown, readonly `0x${string}`[]])[1][0]);
+  const [swap] = decodeAbiParameters(
+    [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'poolKey', type: 'tuple', components: [{ type: 'address' }, { type: 'address' }, { type: 'uint24' }, { type: 'int24' }, { type: 'address' }] },
+          { name: 'zeroForOne', type: 'bool' },
+          { name: 'amountIn', type: 'uint128' },
+          { name: 'amountOutMinimum', type: 'uint128' },
+          { name: 'minHopPriceX36', type: 'uint256' },
+          { name: 'hookData', type: 'bytes' },
+        ],
+      },
+    ],
+    params[0],
+  );
+  const sent = (swap as { hookData: string }).hookData;
+  check(
+    'CR-92 part 1: the example’s hookData is 32 bytes, the upper 12 zero and the low 20 the buyer, and is byte for byte what the site’s buy form sends for that buyer',
+    WORD.length === 2 + 64 && /^0x0{24}[0-9a-f]{40}$/.test(WORD) && getAddress('0x' + WORD.slice(26)) === BUYER && sent === WORD && codes[7] === sent,
+    `the page: ${codes[7]}; the buy form's swap: ${sent}; ${(WORD.length - 2) / 2} bytes`,
+  );
+
+  // Nothing else in the section changed: the nine earlier items are the content module's, in order.
+  const rest = items.filter((li) => li !== item).map((li) => li.textContent);
+  check(
+    'CR-92 part 1: the rest of "Things to know" is unchanged — the nine items of the content module, in order, then this one',
+    JSON.stringify(rest) === JSON.stringify(THINGS_TO_KNOW.map((r) => `${r.title}. ${r.body}`)) && rest.length === 9 && ROUTING_NOTE.exampleBuyer === BUYER,
+    `${rest.length} other items, identical: ${JSON.stringify(rest) === JSON.stringify(THINGS_TO_KNOW.map((r) => `${r.title}. ${r.body}`))}`,
+  );
+
+  if (!GALLERY) {
+    render(null, docs);
+    docs.remove();
+  }
   style.remove();
 }
 

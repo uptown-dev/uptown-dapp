@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useApp, Details, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
-import { OWNER_CANNOT, OWNER_POWERS, THINGS_TO_KNOW } from '../content/docs';
+import { OWNER_CANNOT, OWNER_POWERS, ROUTING_NOTE, THINGS_TO_KNOW } from '../content/docs';
+import { buyerHookData } from '../lib/reads';
 import { PriceSource } from '../data/types';
 import { afterFeeBps, burnFloor, claimFeeBps, fallbackExpiresAt, pausePending, rateRange, stakingChange, stakingReplaced } from '../lib/derive';
 import { fmtBps, fmtDate, fmtDateTime, fmtTown, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
@@ -206,12 +207,23 @@ export function Docs() {
                   <strong>{r.title}.</strong> {r.body}
                 </li>
               ))}
+              {/* CR-92 part 1: how a router names the buyer, beside "Buy on this site". */}
+              <li data-item="routing">
+                <strong>{ROUTING_NOTE.title}.</strong> {codeWords(ROUTING_NOTE.body)} For example, the buyer{' '}
+                <code class="break">{ROUTING_NOTE.exampleBuyer}</code> is <code>hookData</code>{' '}
+                <code class="break">{buyerHookData(ROUTING_NOTE.exampleBuyer)}</code>.
+              </li>
             </ul>
           </Section>
         </div>
       </div>
     </div>
   );
+}
+
+/** Text with its code words between backticks, each shown in code style. */
+function codeWords(s: string) {
+  return s.split('`').map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part));
 }
 
 /** One documentation section: a card with its heading, reachable as #/docs/<id>. */
