@@ -1,14 +1,75 @@
 // Figures the site works out from contract views. Every input is a field of ChainState or
 // WalletState (read by src/lib/reads.ts); nothing here invents a number.
-import { PriceSource, type ChainState, type Tier, type WalletState } from '../data/types';
+import { PriceSource, type ChainState, type SellFeeShares, type Tier, type WalletState } from '../data/types';
 
 const BPS = 10_000n;
 
 // --- time ---------------------------------------------------------------------------------
 
-/** The emission epoch (0 to 6) for a cycle: 100-cycle epochs, the last cap from cycle 600 on. */
+/**
+ * The row of the daily-limit schedule a cycle is in (0 to 7): seven 100-cycle epochs, whose limit
+ * halves each time (2,500,000 down to 39,062.5 TOWN for cycles 600 to 699), then the 25,000 TOWN
+ * tail from cycle 700 on (spec "Emission schedule", CR-93 amended 2026-10-14).
+ */
 export function epochIndex(cycle: number): number {
-  return Math.min(6, Math.floor(cycle / 100));
+  return Math.min(7, Math.floor(cycle / 100));
+}
+
+/** One day in seconds: the contracts' cycle length (86,400). */
+export const DAY = 86_400;
+
+/**
+ * When the next day begins, in seconds: the next midnight UTC as the contracts define it,
+ * `(launchTime / 86400 + currentCycle + 1) × 86400` (spec "Ground rules -> Shared clock", CR-94: cycle
+ * `c = timestamp / 86400 - launchTime / 86400`, so cycle c ends at that midnight). The header's
+ * countdown and the Stats page's "keep counting until" both use it.
+ */
+export function nextDayStart(launchTime: number, cycle: number): number {
+  return (Math.floor(launchTime / DAY) + cycle + 1) * DAY;
+}
+
+/** When a day began: the launch moment for the launch day (cycle 0), else midnight UTC (CR-94). */
+export function dayStartTime(launchTime: number, cycle: number): number {
+  return cycle === 0 ? launchTime : (Math.floor(launchTime / DAY) + cycle) * DAY;
+}
+
+/**
+ * The page's "now" for the header countdown (CR-95 item 1), in whole seconds: the RPC's latest block
+ * time, the clock the rest of the site uses, stepped forward by the seconds since it was read. A new
+ * read never moves it backwards by a few seconds (a block's time lags the moment it is read by up to
+ * a block's interval, so restarting from each block would make the countdown jump back on every
+ * read): the clock keeps the later of the new block's time and its own stepped time, unless the two
+ * are more than a minute apart, when it takes the block's time (a tab woken from sleep, a local chain
+ * whose clock was moved).
+ */
+export interface ChainClock {
+  /** The chain time, in seconds, at `atMs`. */
+  ts: number;
+  /** The visitor's clock, in milliseconds, when `ts` was taken. */
+  atMs: number;
+}
+
+/** The clock's time at the visitor's moment `nowMs`. */
+export function clockNow(clock: ChainClock, nowMs: number): number {
+  return Math.floor(clock.ts + Math.max(0, (nowMs - clock.atMs) / 1000));
+}
+
+/** The clock after a new read of a block with time `blockTs` made at `readAtMs`. */
+export function stepClock(prev: ChainClock | null, blockTs: number, readAtMs: number): ChainClock {
+  if (!prev) return { ts: blockTs, atMs: readAtMs };
+  const stepped = prev.ts + (readAtMs - prev.atMs) / 1000;
+  if (Math.abs(stepped - blockTs) > 60) return { ts: blockTs, atMs: readAtMs };
+  return stepped > blockTs ? { ts: stepped, atMs: readAtMs } : { ts: blockTs, atMs: readAtMs };
+}
+
+/**
+ * The header's day and countdown (CR-95 item 1): the day the figures were read in (`currentCycle`)
+ * and the seconds left until the next day begins, never below 0. At the boundary the countdown rests
+ * at 0 until the next read brings the next day, which then counts down from its own midnight.
+ */
+export function dayCountdown(launchTime: number, cycle: number, now: number): { cycle: number; target: number; left: number } {
+  const target = nextDayStart(launchTime, cycle);
+  return { cycle, target, left: Math.max(0, target - now) };
 }
 
 /** Seconds left in the anti-snipe window, 0 once it has ended. */
@@ -22,10 +83,6 @@ export function antiSnipeActive(chain: ChainState): boolean {
   return chain.hook.currentBuyFeeBps > chain.hook.BUY_FEE_BPS;
 }
 
-/** The start time of a cycle. */
-export function cycleStartTime(chain: ChainState, cycle: number): number {
-  return chain.hook.launchTime + cycle * 86_400;
-}
 
 // --- buying -------------------------------------------------------------------------------
 
@@ -91,21 +148,41 @@ export function leftToBurn(chain: ChainState): bigint {
   return totalSupply > floor ? totalSupply - floor : 0n;
 }
 
-// --- the sell fee's currency (CR-56, CR-57) -------------------------------------------------
+// --- the sell fee (CR-56, CR-57, CR-93) -----------------------------------------------------
 
-/** Why today's sell fee is in the currency it is in. */
+/**
+ * The four ways the next sell's 2% can divide, from TownHook.sellFeeShares() (CR-93; spec "TownHook
+ * -> Fees"):
+ * - `burn` (200, 0, 0): 2% of the TOWN sold, burned (TOWN mode before day 401);
+ * - `burn-reserve` (100, 100, 0): 2% of the TOWN sold, half burned and half to the rebate reserve
+ *   (TOWN mode from day 401, cycle RESERVE_FEE_START = 400);
+ * - `eth` (0, 0, 200): 2% of the ETH the sale brings in, to the treasury (ETH mode, CR-57);
+ * - `split` (0, 100, 100): at or below the burn floor, 1% of the TOWN sold to the rebate reserve and
+ *   1% of the ETH to the treasury.
+ */
+export type SellFeeState = 'burn' | 'burn-reserve' | 'eth' | 'split';
+
+/** The state named by the three figures of TownHook.sellFeeShares(). */
+export function sellFeeState(s: SellFeeShares): SellFeeState {
+  if (s.ethBps > 0) return s.reserveBps > 0 ? 'split' : 'eth';
+  return s.reserveBps > 0 ? 'burn-reserve' : 'burn';
+}
+
+/** Why today's sell fee is charged the way it is. */
 export type SellFeeReason =
-  /** The supply is at or below the burn floor: every sell pays in ETH (CR-56). */
+  /** The supply is at or below the burn floor: every sell pays 1% in TOWN to the reserve and 1% in ETH (CR-93). */
   | 'floor'
-  /** The rebate reserve is spent: the fee is burned until the floor (CR-57). */
+  /** Nothing is available in the rebate reserve: the fee is in TOWN (CR-57). */
   | 'reserve'
-  /** Day 0 has no day before it: the fee is burned. */
+  /** Day 1 has no day before it: the fee is in TOWN. */
   | 'first-day'
   /** Yesterday's burn against yesterday's rebate pot: ETH only when the burn was larger. */
   | 'compare';
 
 export interface SellFeeMode {
-  /** TownHook.sellFeeInEth(): true for 2% of the ETH a sale brings in, to the Treasury; false for 2% of the TOWN sold, burned. */
+  /** The state, from TownHook.sellFeeShares() (CR-93). */
+  state: SellFeeState;
+  /** The fee is all in ETH today (state `eth`). */
   inEth: boolean;
   reason: SellFeeReason;
   /** Yesterday's index; null on day 0. */
@@ -117,51 +194,86 @@ export interface SellFeeMode {
 }
 
 /**
- * Today's sell-fee currency, from TownHook.sellFeeInEth() (the mode the hook uses, stored at the
- * day's first sell), with the reason the spec's rule gives for it: at or below the floor always ETH;
- * once the reserve is spent always TOWN; day 0 TOWN; otherwise ETH only when yesterday's
- * `burned` was larger than yesterday's `emissionEstimate` (spec "TownHook -> Sell fee currency").
+ * Today's sell fee, from TownHook.sellFeeShares() (the state the next sell is charged in; CR-93),
+ * with the reason the spec's rule gives for it: at or below the floor, split; while nothing is
+ * available in the reserve, TOWN; day 1 TOWN; otherwise ETH only when yesterday's `burned` was larger
+ * than yesterday's `emissionEstimate` (spec "TownHook -> Sell fee currency"). TOWN mode burns 2%
+ * before day 401 and 1%, with 1% to the reserve, from day 401.
  */
 export function sellFeeMode(chain: ChainState): SellFeeMode {
   const c = chain.hook.currentCycle;
-  const inEth = chain.hook.sellFeeInEth;
+  const state = sellFeeState(chain.hook.sellFeeShares);
+  const inEth = state === 'eth';
   const yesterday = c >= 1 ? c - 1 : null;
   const burnedYesterday = yesterday !== null ? (chain.hook.burned[yesterday] ?? null) : null;
   const rebatesYesterday = yesterday !== null ? (chain.rewards.emissionEstimate[yesterday] ?? null) : null;
-  const atFloor = chain.token.totalSupply <= chain.hook.BURN_FLOOR;
   const reason: SellFeeReason =
-    inEth && atFloor ? 'floor' : !inEth && chain.rewards.reserveExhausted ? 'reserve' : yesterday === null ? 'first-day' : 'compare';
-  return { inEth, reason, yesterday, burnedYesterday, rebatesYesterday };
+    state === 'split' ? 'floor' : !inEth && chain.rewards.reserveExhausted ? 'reserve' : yesterday === null ? 'first-day' : 'compare';
+  return { state, inEth, reason, yesterday, burnedYesterday, rebatesYesterday };
+}
+
+/** The pool's trading fee in pips: 0.5% (`fee = 5000`, spec "Fixed parameters"). */
+export const POOL_FEE_PIPS = 5000n;
+
+/** Where an exact-input sell's fees go, by amount (CR-93; spec "TownHook -> Fees"). Every figure is 0 where the state charges nothing. */
+export interface SellFees {
+  /** The TOWN the hook takes before the swap: 2% of the TOWN sold in TOWN mode, 1% in split mode, 0 in ETH mode. */
+  townFee: bigint;
+  /** The part of `townFee` burned: all of it before day 401, half from day 401 (rounded down), 0 in split mode; never below the floor. */
+  burned: bigint;
+  /** The part of `townFee` sent to the rebate reserve: the rest of it. */
+  toReserve: bigint;
+  /** This sell reaches the burn floor: only `totalSupply - BURN_FLOOR` is burned and the rest of its 2% goes to the reserve. */
+  reachesFloor: boolean;
+  /** The ETH taken to the treasury, worked back from the ETH the seller receives: 2% in ETH mode, 1% in split mode, else 0; null without an estimate. */
+  ethFee: bigint | null;
+  /** The pool's 0.5% fee, in TOWN, on what the pool swaps (the TOWN sold less `townFee`). */
+  poolFee: bigint;
 }
 
 /**
- * The sell fee of an exact-input sell of `amountIn` TOWN, in TOWN mode: 2% of the TOWN sold, never
- * taking the supply below the burn floor (spec "TownHook -> Fees": `townSpecified * 200 / 10000`,
- * capped by `totalSupply - BURN_FLOOR`).
+ * The fees of an exact-input sell of `amountIn` TOWN in today's state (spec "TownHook -> Fees", the
+ * exact-input rows; CR-93), given `received`, the ETH the seller receives by the quoter's estimate.
+ * The quoter runs the swap through TownHook, so `received` already has every fee off; this only says
+ * where the fees go.
+ * - TOWN modes: `fee = amountIn × 200 / 10000`, taken in full; its burn part is `fee` before day 401
+ *   and `fee / 2` from day 401; the hook burns `min(burn part, totalSupply − BURN_FLOOR)` and sends
+ *   the rest of `fee` to the reserve (so the sell that reaches the floor pays its whole 2% in TOWN).
+ * - ETH mode: `ethSwapped × 200 / 10000`; the seller receives `ethSwapped − fee`, so the fee is
+ *   `received × 200 / 9800`.
+ * - Split mode: `amountIn × 100 / 10000` of TOWN to the reserve, and `ethSwapped × 100 / 10000` of ETH,
+ *   that is `received × 100 / 9900`.
  */
-export function townSellFee(chain: ChainState, amountIn: bigint): bigint {
-  const fee = (amountIn * BigInt(chain.hook.currentSellFeeBps)) / BPS;
+export function sellFees(chain: ChainState, amountIn: bigint, received: bigint | null): SellFees {
+  const s = chain.hook.sellFeeShares;
+  const state = sellFeeState(s);
+  const total = BigInt(chain.hook.currentSellFeeBps); // 200
+  let townFee = 0n;
+  let burnedPart = 0n;
+  let ethBps = 0n;
+  if (state === 'burn' || state === 'burn-reserve') {
+    townFee = (amountIn * total) / BPS;
+    burnedPart = state === 'burn' ? townFee : townFee / 2n;
+  } else if (state === 'split') {
+    townFee = (amountIn * BigInt(s.reserveBps)) / BPS;
+    ethBps = BigInt(s.ethBps);
+  } else {
+    ethBps = total;
+  }
   const room = leftToBurn(chain);
-  return fee < room ? fee : room;
-}
-
-/**
- * The sell fee of an exact-input sell in ETH mode, from the ETH the seller receives (the quoter's
- * estimate, which TownHook has already reduced): the fee is `ethSwapped * 200 / 10000` and the
- * seller receives `ethSwapped - fee`, so the fee is about `received * 200 / 9800` (spec "TownHook ->
- * Fees", the ETH-mode exact-input row).
- */
-export function ethSellFee(chain: ChainState, received: bigint): bigint {
-  const bps = BigInt(chain.hook.currentSellFeeBps);
-  return (received * bps) / (BPS - bps);
+  const burnedAmt = burnedPart < room ? burnedPart : room;
+  return {
+    townFee,
+    burned: burnedAmt,
+    toReserve: townFee - burnedAmt,
+    reachesFloor: burnedPart > room,
+    ethFee: ethBps === 0n ? 0n : received === null ? null : (received * ethBps) / (BPS - ethBps),
+    poolFee: ((amountIn - townFee) * POOL_FEE_PIPS) / 1_000_000n,
+  };
 }
 
 // --- rebates ----------------------------------------------------------------------------
 
-/** TOWN not yet scheduled for any cycle: RESERVE - totalEmitted. */
-export function reserveUnscheduled(chain: ChainState): bigint {
-  return chain.rewards.RESERVE - chain.rewards.totalEmitted;
-}
 
 /** The sum of the caps of the current cycle and the nine after it. */
 export function nextTenCaps(chain: ChainState): bigint {
@@ -171,10 +283,32 @@ export function nextTenCaps(chain: ChainState): bigint {
   return sum;
 }
 
-/** CR-36: true when less than ten days of caps remain in the reserve. */
+/**
+ * CR-36, CR-93: true when less than ten days of caps are available in the reserve
+ * (BuyerRewards.available()), but some TOWN is; an empty reserve has its own notice.
+ */
 export function reserveNearlySpent(chain: ChainState): boolean {
-  return reserveUnscheduled(chain) < nextTenCaps(chain);
+  const a = chain.rewards.available;
+  return a > 0n && a < nextTenCaps(chain);
 }
+
+/**
+ * The cycle from which a TOWN-mode sell sends half its fee to the reserve: TownHook.RESERVE_FEE_START()
+ * when the figures have been read; the spec's 400 (day 401; CR-93) only where the contracts are not
+ * deployed on this network yet.
+ */
+export function reserveFeeStart(chain: ChainState | null): number {
+  return chain ? chain.hook.RESERVE_FEE_START : SPEC_RESERVE_FEE_START;
+}
+const SPEC_RESERVE_FEE_START = 400;
+
+/** CR-93: nothing is available in the reserve (BuyerRewards.available() is 0): rebates pause until TOWN arrives. */
+export function reserveEmpty(chain: ChainState): boolean {
+  return chain.rewards.available === 0n;
+}
+
+/** The 500,000,000 TOWN the Launcher funds the reserve with at launch (spec "Fixed parameters"): the schedule's shares are of this figure (CR-93). */
+export const LAUNCH_FUNDING = 500_000_000n * 10n ** 18n;
 
 /** The spec's rebate rates (CR-47), used only where the contracts are not deployed on this network yet: 5% balanced, 5.25% after only buys, 5.5% after only sells. */
 export const SPEC_RATE = { base: 500, buySpan: 25, sellSpan: 50 } as const;

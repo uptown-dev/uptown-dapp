@@ -123,11 +123,14 @@ export const HOOK_ABI = parseAbi([
   // The sell fee's currency (CR-56, CR-57): this cycle's mode, and the TOWN the sell fees burned in a cycle.
   'function sellFeeInEth() view returns (bool)',
   'function burned(uint256 cycle) view returns (uint256)',
+  // How the next sell's 2% divides (CR-93): burned, to the rebate reserve, in ETH, in basis points; and
+  // the cycle from which a TOWN-mode sell sends half its fee to the reserve (400, day 401).
+  'function sellFeeShares() view returns (uint256 burnedBps, uint256 reserveBps, uint256 ethBps)',
+  'function RESERVE_FEE_START() view returns (uint256)',
 ]);
 
 export const REWARDS_ABI = parseAbi([
   'function CLAIM_FEE_BPS() view returns (uint256)',
-  'function RESERVE() view returns (uint256)',
   'function launchTime() view returns (uint256)',
   'function totalEmitted() view returns (uint256)',
   'function totalClaimedGross() view returns (uint256)',
@@ -149,6 +152,9 @@ export const REWARDS_ABI = parseAbi([
   // For the sell fee's currency (CR-57): a cycle's rebate pot, and whether the reserve is spent.
   'function emissionEstimate(uint256 c) view returns (uint256)',
   'function reserveExhausted() view returns (bool)',
+  // The reserve available to the next finalisation (CR-93): what BuyerRewards holds less what
+  // finished days promised and buyers have not claimed. It replaces RESERVE - totalEmitted.
+  'function available() view returns (uint256)',
   ...UPTOWN_ERRORS,
   ...OTHER_ERRORS,
 ]);

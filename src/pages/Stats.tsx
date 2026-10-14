@@ -8,8 +8,8 @@ import {
   forStakers,
   hookFeesReceived,
   leftToBurn,
+  nextDayStart,
   pausePending,
-  reserveUnscheduled,
   sellFeeMode,
   stakingChange,
   stakingPaidSince,
@@ -340,7 +340,8 @@ export function TradingVolume() {
   const h = chain.hook;
   const c = chain.rewards.currentCycle;
   const y = c >= 1 ? c - 1 : null;
-  const endsAt = h.launchTime + (c + 1) * 86_400;
+  // The next midnight UTC (CR-94): days are calendar days in UTC.
+  const endsAt = nextDayStart(h.launchTime, c);
   const past = (what: 'cycleTotal' | 'sold', label: string) => (
     <Fig
       label={label}
@@ -426,7 +427,7 @@ function TownTotals() {
         <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="TOWN" amount={chain.token.totalSupply} view="UpTownToken.totalSupply" />
         <Fig label="Burned" value={fmtTown(burned(chain))} unit="TOWN" amount={burned(chain)} view="1,000,000,000 - totalSupply" />
         <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="TOWN" amount={leftToBurn(chain)} view="totalSupply - TownHook.BURN_FLOOR" />
-        <Fig label="Sell fee today" value={words.mode} view="TownHook.sellFeeInEth" note={words.reason} accent />
+        <Fig label="Sell fee today" value={words.mode} view="TownHook.sellFeeShares" note={words.reason} accent />
         <Fig
           label="TOWN burned yesterday"
           value={m.burnedYesterday !== null ? fmtTown(m.burnedYesterday) : '—'}
@@ -444,13 +445,20 @@ function TownTotals() {
           note={y !== null ? `${dayName(y)}’s rebate pot; the fee is in ETH today only if the burn was larger` : undefined}
         />
         <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="TOWN" amount={r.totalEmitted} view="BuyerRewards.totalEmitted" />
-        <Fig label="Rebate reserve remaining" value={fmtTown(reserveUnscheduled(chain))} unit="TOWN" amount={reserveUnscheduled(chain)} view="RESERVE - totalEmitted" />
+        <Fig
+          label="Rebate reserve available"
+          value={fmtTown(r.available)}
+          unit="TOWN"
+          amount={r.available}
+          view="BuyerRewards.available"
+          note="what the reserve holds, less rebates settled and not yet claimed"
+        />
         <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="TOWN" amount={r.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" accent />
         <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" amount={r.totalFeesToTreasury} view="BuyerRewards.totalFeesToTreasury" />
       </Figures>
       <p class="small faint card-foot">
         Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> TOWN of supply;
-        from there every sell pays its 2% in ETH to the treasury.
+        from there every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.
       </p>
       <Verify
         links={[

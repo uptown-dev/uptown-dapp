@@ -109,6 +109,34 @@ export function fmtDelay(seconds: number): string {
   return seconds % 86_400 === 0 ? `${seconds / 86_400}-day` : fmtDuration(seconds);
 }
 
+/**
+ * The header's countdown to the next day (CR-95 item 1): hours, then minutes and seconds with two
+ * digits each, so the figure keeps one width as it ticks: 83,292 -> "23h 08m 12s", 59 -> "0h 00m 59s",
+ * a whole day -> "24h 00m 00s". With units, not "23:08:12", so it reads as time left and not as a
+ * time of day.
+ */
+export function fmtCountdown(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const p = (x: number) => String(x).padStart(2, '0');
+  return `${Math.floor(s / 3600)}h ${p(Math.floor((s % 3600) / 60))}m ${p(s % 60)}s`;
+}
+
+/** The same time left in words, for screen readers, to the minute: "23 hours 8 minutes", "1 hour", "less than a minute". */
+export function fmtCountdownWords(seconds: number): string {
+  const m = Math.floor(Math.max(0, seconds) / 60);
+  if (m === 0) return 'less than a minute';
+  const h = Math.floor(m / 60);
+  const parts: string[] = [];
+  if (h) parts.push(`${h} ${h === 1 ? 'hour' : 'hours'}`);
+  if (m % 60) parts.push(`${m % 60} ${m % 60 === 1 ? 'minute' : 'minutes'}`);
+  return parts.join(' ');
+}
+
+/** A daily limit in TOWN, keeping the half TOWN of days 601 to 700 (CR-93): "39,062.5", "2,500,000". */
+export function fmtCap(value: bigint): string {
+  return fmtUnits(value, 18, 2);
+}
+
 /** Minutes and seconds: 540 -> "9:00". */
 export function fmtClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -120,14 +148,24 @@ export function shortAddress(a: string): string {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-/** "Day 42", with thousands separators for later days. A day is the 24-hour cycle counted from launch. */
-export function dayName(c: number): string {
-  return `Day ${fmtInt(c)}`;
+/**
+ * The day number the site shows for cycle `c`: `c + 1`, so the launch day (cycle 0) is day 1 (spec
+ * "Ground rules -> Shared clock", CR-94). A day is a calendar day in UTC: it runs from midnight to
+ * midnight UTC, except day 1, which starts at launch and so is shorter. Contract calls and their
+ * `data-view` labels keep the cycle index itself.
+ */
+export function dayNumber(c: number): number {
+  return c + 1;
 }
 
-/** "days 37, 38 and 40" style list of day numbers. */
+/** "Day 42" for cycle 41, with thousands separators for later days (CR-94: cycle c is day c + 1). */
+export function dayName(c: number): string {
+  return `Day ${fmtInt(dayNumber(c))}`;
+}
+
+/** "days 37, 38 and 40" style list of the day numbers of the given cycles. */
 export function listDays(cycles: number[]): string {
-  const names = cycles.map((c) => fmtInt(c));
+  const names = cycles.map((c) => fmtInt(dayNumber(c)));
   if (names.length <= 1) return names.join('');
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }

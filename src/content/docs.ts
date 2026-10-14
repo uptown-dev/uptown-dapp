@@ -80,7 +80,7 @@ export const THINGS_TO_KNOW: { title: string; body: string }[] = [
   },
   {
     title: 'Rebates are a ceiling',
-    body: 'The day’s rate, 4.9% to 5.39% of what you buy after the claim fee, is the most you get; less on busy days, and less or nothing near the end of the reserve.',
+    body: 'The day’s rate, 4.9% to 5.39% of what you buy after the claim fee, is the most you get; less on busy days, and less or nothing while the reserve is low or empty.',
   },
   { title: 'Gas costs real money', body: 'Every buy, claim and vault action costs Ethereum gas, which can be more than a small reward.' },
   { title: 'The vault price is paid once', body: 'It goes to the treasury and is not refunded when you unstake; unstaking gives back your TOWN.' },

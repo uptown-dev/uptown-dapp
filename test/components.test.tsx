@@ -68,15 +68,17 @@ import LOGO_ON_LIGHT from '../logo/uptown-lamplight-on-light.svg?raw';
 import LOGO_ON_DARK from '../logo/uptown-lamplight-on-dark.svg?raw';
 import { AppContext, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
-import { makeClient, poolId, quoteBuy, readAll, readVaults, replacedRecords, verifyCandidate } from '../src/lib/reads';
+import { makeClient, poolId, poolKey, quoteBuy, quoteSell, readAll, readVaults, replacedRecords, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
-import { ERRORS_ABI, HOOK_ABI, PERMIT2_ABI, ROUTER_ABI, STAKING_ABI, STATEVIEW_ABI, TOKEN_ABI, TREASURY_ABI } from '../src/lib/abi';
+import { ERRORS_ABI, HOOK_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, ROUTER_ABI, STAKING_ABI, STATEVIEW_ABI, TOKEN_ABI, TREASURY_ABI } from '../src/lib/abi';
 // CR-95: the files that build and send transactions, read as text, to show no dollar figure reaches them.
 import ACTIONS_SRC from '../src/lib/actions.ts?raw';
 import WALLET_SRC from '../src/lib/wallet.ts?raw';
 import QUICK_SRC from '../src/lib/quick.ts?raw';
 import AMOUNT_SRC from '../src/lib/amount.ts?raw';
-import { ContractFunctionRevertedError, decodeAbiParameters, decodeFunctionData, encodeErrorResult, encodeFunctionData, formatUnits, getAddress, type PublicClient } from 'viem';
+// F9u: every source file of the site, read as text, for the searches of item 6 (no RESERVE(), 78,125, "24-hour" or "counted from launch").
+const SITE_SOURCES = import.meta.glob(['../src/**/*.ts', '../src/**/*.tsx', '../src/**/*.css'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+import { ContractFunctionRevertedError, decodeAbiParameters, decodeFunctionData, decodeFunctionResult, encodeErrorResult, encodeFunctionData, formatUnits, getAddress, pad, toHex, type PublicClient } from 'viem';
 import { Owner, OwnerPage } from '../src/pages/Owner';
 import { networkLabel, pageAccess, showsOwnerLink } from '../src/lib/owner';
 import { UNLISTED_STAKING, listedStaking, replacedStaking } from '../src/lib/network';
@@ -95,17 +97,17 @@ import {
   type WalletInfo,
 } from '../src/lib/wallet';
 import { COMMA_MESSAGE, amountError, parseAmount } from '../src/lib/amount';
-import { ONE_TOWN, afterFeeBps, dayRateBps, minCheck, rateRange, rpcBehind, townPriceWei, usdOf } from '../src/lib/derive';
-import { dayName, fmtBps, fmtDateTime, fmtEth, fmtRate, fmtTown, fmtUsd, fmtUsd8, shortAddress } from '../src/lib/format';
+import { ONE_TOWN, afterFeeBps, clockNow, dayRateBps, dayStartTime, minCheck, nextDayStart, rateRange, rpcBehind, sellFeeState, sellFees, stepClock, townPriceWei, usdOf, type ChainClock } from '../src/lib/derive';
+import { dayName, dayNumber, fmtBps, fmtCountdown, fmtCountdownWords, fmtDateTime, fmtEth, fmtRate, fmtTown, fmtUsd, fmtUsd8, listDays, shortAddress } from '../src/lib/format';
 import { PriceSource } from '../src/data/types';
 import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
-import { Trade } from '../src/pages/Trade';
+import { SELL_FEE_HEADLINE, Trade, reserveShareSentence } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
 import { Rewards } from '../src/pages/Rewards';
 import { Home } from '../src/pages/Home';
 import { Docs } from '../src/pages/Docs';
 import { OWNER_POWERS, ROUTING_NOTE, THINGS_TO_KNOW } from '../src/content/docs';
-import { App, Freshness, NetworkTag, PlaceRow, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
+import { App, DayClock, Freshness, NetworkTag, PlaceRow, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
 import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetTownAddress } from '../src/lib/places';
 import type { ChainId, Network } from '../src/lib/network';
 import type { Address, CandidateCheck, ChainState, OwnerState, ReplacedStaking, StakingControls, WalletState } from '../src/data/types';
@@ -350,7 +352,7 @@ async function run() {
     );
     const el = await mount(<Trade sell />, base, wallet, `Trade page, Sell, live (${dayName(c)})`);
     const line = text(el.querySelector('.sell-mode') as HTMLElement);
-    const mode = base.hook.sellFeeInEth ? '2% in ETH, to the treasury' : '2% in TOWN, burned';
+    const mode = SELL_FEE_HEADLINE[sellFeeState(base.hook.sellFeeShares)]; // F9u: the state from sellFeeShares() (CR-93)
     check(
       'CR-57 Trade (live): the mode line names today’s mode and yesterday’s two figures from the chain',
       line.startsWith(`Today’s sell fee: ${mode}`) && line.includes(`burned ${fmtTown(b)} TOWN and paid ${fmtTown(p)} TOWN in rebates`),
@@ -373,7 +375,8 @@ async function run() {
     const pot = 600_000n * 10n ** 18n;
     const chain: ChainState = {
       ...base,
-      hook: { ...base.hook, sellFeeInEth: true, burned: { ...base.hook.burned, [y]: 750_000n * 10n ** 18n } },
+      // F9u: the state comes from sellFeeShares() (CR-93); ETH mode is (0, 0, 200).
+      hook: { ...base.hook, sellFeeInEth: true, sellFeeShares: { burnedBps: 0, reserveBps: 0, ethBps: 200 }, burned: { ...base.hook.burned, [y]: 750_000n * 10n ** 18n } },
       rewards: { ...base.rewards, emissionEstimate: { [y]: pot }, reserveExhausted: false },
     };
     const el = await mount(<Trade sell />, chain, wallet, 'Trade page, Sell, ETH mode (fixture: burned 750,000 > pot 600,000)');
@@ -390,13 +393,18 @@ async function run() {
     check('CR-57 ETH mode (fixture): Stats "Sell fee today 2% in ETH, to the treasury"', text(st).includes('Sell fee today 2% in ETH, to the treasury'));
   }
   {
-    // At the floor: always ETH.
-    const chain: ChainState = { ...base, token: { ...base.token, totalSupply: base.hook.BURN_FLOOR }, hook: { ...base.hook, sellFeeInEth: true } };
+    // At the floor (F9u: CR-93 replaced CR-56's "always ETH" with the split state, (0, 100, 100), whatever sellFeeInEth() says).
+    const chain: ChainState = {
+      ...base,
+      token: { ...base.token, totalSupply: base.hook.BURN_FLOOR },
+      hook: { ...base.hook, sellFeeInEth: false, sellFeeShares: { burnedBps: 0, reserveBps: 100, ethBps: 100 } },
+    };
     const el = await mount(<Trade sell />, chain, wallet, 'Trade page, Sell, at the burn floor (fixture)');
     const line = text(el.querySelector('.sell-mode') as HTMLElement);
     check(
-      'CR-56 at the floor (fixture): ETH, "the burn floor is reached" with 100,000,000',
-      line.startsWith('Today’s sell fee: 2% in ETH, to the treasury') && line.includes('The burn floor is reached: the supply is at 100,000,000 TOWN'),
+      'CR-93 at the floor (fixture): split, "the burn floor is reached" with 100,000,000, 1% in TOWN to the reserve and 1% in ETH',
+      line.startsWith('Today’s sell fee: 1% in TOWN to the rebate reserve, 1% in ETH to the treasury') &&
+        line.includes('The burn floor is reached: the supply is at 100,000,000 TOWN, so nothing more is burned'),
       line,
     );
   }
@@ -423,9 +431,10 @@ async function run() {
       hook: { ...base.hook, currentCycle: 0, sellFeeInEth: false, burned: { 0: 0n } },
       rewards: { ...base.rewards, currentCycle: 0, emissionEstimate: {} },
     };
-    const st = await mount(<Stats />, chain, wallet, 'Stats page, day 0 (fixture)');
+    const st = await mount(<Stats />, chain, wallet, 'Stats page, day 1 (fixture)');
     const t = text(st);
-    check('CR-57 day 0 (fixture): TOWN, "Day 0 has no day before it"; yesterday’s figures "—"', t.includes('Sell fee today 2% in TOWN, burned') && t.includes('Day 0 has no day before it') && t.includes('TOWN burned yesterday —'), t.match(/Sell fee today.*?Rebates emitted/)?.[0] ?? '');
+    // F9u (CR-94): cycle 0, the launch day, is shown as Day 1.
+    check('CR-57 the launch day (fixture): TOWN, "Day 1 has no day before it"; yesterday’s figures "—"', t.includes('Sell fee today 2% in TOWN, burned') && t.includes('Day 1 has no day before it') && t.includes('TOWN burned yesterday —'), t.match(/Sell fee today.*?Rebates emitted/)?.[0] ?? '');
   }
 
   // ---- CR-80: the owner’s words on a burning day, and the tie -------------------------------
@@ -466,7 +475,7 @@ async function run() {
     );
     const ethChain: ChainState = {
       ...base,
-      hook: { ...base.hook, sellFeeInEth: true, burned: { ...base.hook.burned, [y]: 750_000n * TOWN } },
+      hook: { ...base.hook, sellFeeInEth: true, sellFeeShares: { burnedBps: 0, reserveBps: 0, ethBps: 200 }, burned: { ...base.hook.burned, [y]: 750_000n * TOWN } },
       rewards: { ...base.rewards, emissionEstimate: { [y]: 600_000n * TOWN }, reserveExhausted: false },
     };
     const eth = await sellMode(ethChain, 'Trade page, Sell, ETH mode (fixture: burned 750,000 > pot 600,000)');
@@ -527,14 +536,14 @@ async function run() {
       hook: { ...base.hook, currentCycle: 0, cycleTotal: { 0: 5n * 10n ** 24n }, sold: { 0: 10n ** 24n } },
       rewards: { ...base.rewards, currentCycle: 0 },
     };
-    const el = await mount(<TradingVolume />, chain, wallet, 'Stats trading volume on day 0 (fixture)');
+    const el = await mount(<TradingVolume />, chain, wallet, 'Stats trading volume on day 1 (fixture)');
     const t = plain(() => text(el)).replace(/(\d)TOWN/g, '$1 TOWN');
     check(
-      'CR-61 day 0 (fixture): yesterday reads "None yet"; today 5,000,000 bought and 1,000,000 sold, still counting',
-      t.includes('Bought yesterday None yet Day 0 has no day before it') &&
-        t.includes('Sold yesterday None yet Day 0 has no day before it') &&
-        t.includes('Bought today so far 5,000,000 TOWN Day 0, still counting') &&
-        t.includes('Sold today so far 1,000,000 TOWN Day 0, still counting'),
+      'CR-61 the launch day, Day 1 since CR-94 (fixture): yesterday reads "None yet"; today 5,000,000 bought and 1,000,000 sold, still counting',
+      t.includes('Bought yesterday None yet Day 1 has no day before it') &&
+        t.includes('Sold yesterday None yet Day 1 has no day before it') &&
+        t.includes('Bought today so far 5,000,000 TOWN Day 1, still counting') &&
+        t.includes('Sold today so far 1,000,000 TOWN Day 1, still counting'),
       t,
     );
   }
@@ -841,6 +850,7 @@ async function run() {
   await cr84cr87cr88();
   await cr92(base, wallet);
   await cr95(base, wallet);
+  await f9u(base, wallet);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -3307,6 +3317,492 @@ async function cr95(base: ChainState, wallet: WalletState) {
   if (!GALLERY) stage.replaceChildren();
   style.remove();
 }
+
+// ---- F9u (CR-93, CR-94, CR-95 item 1): the four sell-fee states, the reserve, calendar days and the countdown ----
+async function f9u(base: ChainState, wallet: WalletState) {
+  const style = document.createElement('style');
+  style.textContent = GLOBAL_CSS;
+  document.head.append(style);
+  const E18 = 10n ** 18n;
+  const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+  const c = base.hook.currentCycle;
+  /** Text without its spaces: with the stylesheet on, a figure's label, value and note are separate blocks. */
+  const squash = (x: string) => x.replace(/\s+/g, '');
+  const y = c - 1;
+
+  // ---- 1. The countdown's target: the next midnight UTC, from launchTime and currentCycle ----
+  {
+    const L = 1_800_000_000; // 15 Jan 2027, 08:00 UTC
+    const cases = [
+      { cycle: 0, want: 1_800_057_600, words: '16 Jan 2027, 00:00 UTC' }, // the launch day lasts 16 hours
+      { cycle: 3, want: 1_800_316_800, words: '19 Jan 2027, 00:00 UTC' },
+    ];
+    const got = cases.map((k) => ({ ...k, at: nextDayStart(L, k.cycle) }));
+    check(
+      'CR-94 target arithmetic: launchTime 1,800,000,000 (15 Jan 2027, 08:00 UTC) gives (launchTime / 86400 + currentCycle + 1) × 86400: the launch day ends at 16 Jan 00:00 UTC (16 hours), Day 4 at 19 Jan 00:00 UTC',
+      got.every((k) => k.at === k.want && fmtDateTime(k.at) === k.words) && dayStartTime(L, 0) === L && dayStartTime(L, 3) === 1_800_230_400,
+      got.map((k) => `cycle ${k.cycle}: ${k.at} (${fmtDateTime(k.at)})`).join('; ') + `; day starts ${dayStartTime(L, 0)}, ${dayStartTime(L, 3)}`,
+    );
+    // Live: the hook's own launchTime and currentCycle, against the Treasury's view (the next midnight once the day has rolled) and the block's own midnight.
+    const t = base.treasury;
+    const target = nextDayStart(base.hook.launchTime, c);
+    const midnight = (Math.floor(base.blockTimestamp / 86_400) + 1) * 86_400;
+    const rolled = t.nextDistributionTime > base.blockTimestamp;
+    check(
+      'CR-94 target (live): the next midnight from TownHook.launchTime() and currentCycle() equals the block’s next midnight and, the day having rolled, Treasury.nextDistributionTime()',
+      target === midnight && (!rolled || t.nextDistributionTime === target) && fmtDateTime(target).endsWith('00:00 UTC'),
+      `launchTime ${base.hook.launchTime}, currentCycle ${c} (${dayName(c)}): ${target} = ${fmtDateTime(target)}; block ${base.blockTimestamp}; nextDistributionTime ${t.nextDistributionTime}${rolled ? '' : ' (not rolled yet)'}`,
+    );
+    check(
+      'CR-95 countdown format: "23h 08m 12s", fixed width, units so it reads as time left; screen-reader words to the minute',
+      fmtCountdown(83_292) === '23h 08m 12s' &&
+        fmtCountdown(59) === '0h 00m 59s' &&
+        fmtCountdown(86_400) === '24h 00m 00s' &&
+        fmtCountdown(-5) === '0h 00m 00s' &&
+        fmtCountdownWords(83_292) === '23 hours 8 minutes' &&
+        fmtCountdownWords(3_600) === '1 hour' &&
+        fmtCountdownWords(59) === 'less than a minute',
+      [83_292, 59, 86_400, -5].map(fmtCountdown).join(' | ') + ' || ' + [83_292, 3_600, 59].map(fmtCountdownWords).join(' | '),
+    );
+    check(
+      'CR-94 the site calls cycle c "Day c + 1": cycle 0 is Day 1, cycle 400 is Day 401; lists and tables use the same numbers',
+      dayName(0) === 'Day 1' && dayName(400) === 'Day 401' && dayName(1_233) === 'Day 1,234' && dayNumber(c) === c + 1 && listDays([0, 1, 3]) === '1, 2 and 4',
+      `${dayName(0)}, ${dayName(400)}, ${dayName(1_233)}; ${listDays([0, 1, 3])}`,
+    );
+  }
+
+  // ---- 2. The clock: the latest block's time, stepped forward; never back by a block's lag ----
+  {
+    const a = stepClock(null, 1_000, 0);
+    const b = stepClock(a, 1_005, 12_000); // the new block is 7 s older than the clock's own time: keep the clock
+    const c2 = stepClock(b, 1_015, 13_000); // the new block is ahead: take it
+    const d = stepClock(c2, 5_000, 14_000); // more than a minute apart: take the block (a woken tab, a moved local clock)
+    check(
+      'CR-95 the page’s clock: starts at the block’s time, steps each second, keeps the later of its own time and a new block’s, resyncs when they are a minute apart',
+      clockNow(a, 2_500) === 1_002 && clockNow(b, 12_000) === 1_012 && clockNow(c2, 13_000) === 1_015 && clockNow(d, 14_000) === 5_000 && clockNow(d, 13_000) === 5_000,
+      `${clockNow(a, 2_500)}, ${clockNow(b, 12_000)}, ${clockNow(c2, 13_000)}, ${clockNow(d, 14_000)}`,
+    );
+  }
+
+  // ---- 3. The header, live: the day and the countdown beside it, ticking ----
+  {
+    const site = document.createElement('div');
+    stage.append(site);
+    render(<App />, site);
+    const header = () => site.querySelector('header.site-header') as HTMLElement;
+    for (let i = 0; i < 100 && !header()?.querySelector('.day-chip'); i++) await settle(100);
+    const chip = header().querySelector('.header-tools .day-chip') as HTMLElement;
+    const line = header().querySelector('.brand .day-line') as HTMLElement;
+    const shown = (el: HTMLElement) => (el.querySelector('[aria-hidden="true"]') as HTMLElement).textContent!.replace(/\s+/g, ' ').trim();
+    const t1 = shown(chip);
+    const left1 = Number(chip.dataset.target) - 0;
+    await settle(2_100);
+    const t2 = shown(chip);
+    const secs = (s: string) => {
+      const m = s.match(/(\d+)h (\d\d)m (\d\d)s$/);
+      return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : NaN;
+    };
+    const target = nextDayStart(base.hook.launchTime, c);
+    const sr = (chip.querySelector('.visually-hidden') as HTMLElement).textContent!;
+    check(
+      'CR-95 the header (live): "Day N · Hh MMm SSs" beside the day number, N = currentCycle + 1, counting down to the next midnight UTC from TownHook’s launchTime and currentCycle',
+      new RegExp(`^${dayName(c)} · \\d+h \\d\\dm \\d\\ds$`).test(t1) && Number(chip.dataset.target) === target && Number(chip.dataset.cycle) === c && left1 === target,
+      `"${t1}"; target ${chip.dataset.target} (${fmtDateTime(target)})`,
+    );
+    const drop = secs(t1) - secs(t2);
+    check('CR-95 the countdown ticks each second in the page (two seconds later it reads about two seconds less)', drop >= 1 && drop <= 3, `"${t1}" then "${t2}": ${drop} s less`);
+    check(
+      'CR-95 screen readers: the ticking figure is hidden from them; they read the day and the time left in words, and nothing is announced as it ticks',
+      chip.querySelector('[aria-hidden="true"]') !== null &&
+        sr.startsWith(`${dayName(c)}. ${dayName(c + 1)} begins at midnight UTC, in `) &&
+        !site.querySelector('header [aria-live]') &&
+        (chip.title ?? '').includes(`${dayName(c)} ends at midnight UTC (${fmtDateTime(target)}), when ${dayName(c + 1)} begins.`),
+      `"${sr}" || title "${chip.title}"`,
+    );
+    check(
+      'CR-95 one form at every width: the chip in the header’s tools and the line under the wordmark show the same day and countdown',
+      !!line && shown(line).replace(/\d\dm \d\ds$/, '') === shown(chip).replace(/\d\dm \d\ds$/, '') && line.dataset.target === chip.dataset.target,
+      `chip "${shown(chip)}", line "${line ? shown(line) : 'none'}"`,
+    );
+
+    // The narrow-screen form: the header as rendered, in frames 1280, 390 and 360 px wide with the site's stylesheet.
+    const html = header().outerHTML;
+    const frameAt = async (width: number, theme: 'light' | 'dark') => {
+      const f = document.createElement('iframe');
+      f.style.cssText = `width:${width}px;height:120px;border:0;position:absolute;left:-5000px;top:0`;
+      document.body.append(f);
+      f.srcdoc = `<!doctype html><html data-theme="${theme}"><head><style>${GLOBAL_CSS}</style></head><body style="margin:0">${html}</body></html>`;
+      await new Promise((r) => f.addEventListener('load', r, { once: true }));
+      await settle(50);
+      const doc = f.contentDocument!;
+      const vis = (sel: string) => {
+        const el = doc.querySelector(sel) as HTMLElement | null;
+        return !!el && f.contentWindow!.getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0;
+      };
+      const row = doc.querySelector('.header-row') as HTMLElement;
+      const dl = doc.querySelector('.day-line') as HTMLElement;
+      const mark = doc.querySelector('a.wordmark') as HTMLElement;
+      const out = {
+        width,
+        theme,
+        chip: vis('.day-chip'),
+        line: vis('.day-line'),
+        tag: vis('.net-tag'),
+        sideways: doc.documentElement.scrollWidth > width,
+        rowHeight: Math.round(row.getBoundingClientRect().height),
+        lineInsideRow: dl ? dl.getBoundingClientRect().bottom <= row.getBoundingClientRect().bottom + 0.5 : false,
+        lineWithinMark: dl ? dl.getBoundingClientRect().width <= mark.getBoundingClientRect().width + 0.5 : false,
+        colour: dl ? f.contentWindow!.getComputedStyle(dl).color : '',
+      };
+      f.remove();
+      return out;
+    };
+    const wide = await frameAt(1280, 'light');
+    const narrow = await frameAt(390, 'light');
+    const narrowDark = await frameAt(390, 'dark');
+    const tiny = await frameAt(360, 'light');
+    check(
+      'CR-95 narrow screens (CR-77): at 390 and 360 px, where the network tag is hidden, the day and countdown sit under the wordmark, inside the 60 px row, no wider than the wordmark, with no sideways scroll; at 1280 px they are in the tools',
+      wide.chip && !wide.line && narrow.line && !narrow.chip && !narrow.tag && tiny.line && !tiny.sideways && !narrow.sideways && narrow.rowHeight === 60 && narrow.lineInsideRow && narrow.lineWithinMark && narrowDark.line && narrowDark.colour !== narrow.colour,
+      JSON.stringify([wide, narrow, narrowDark, tiny]),
+    );
+    render(null, site);
+    site.remove();
+  }
+
+  // ---- 4. At the boundary: the countdown rests at 0 until a read brings the next day ----
+  {
+    const target = nextDayStart(base.hook.launchTime, c);
+    const now = Date.now();
+    const read = async (cycle: number, clock: ChainClock, label: string) => {
+      const el = await mount(<DayClock place="tools" launchTime={base.hook.launchTime} cycle={cycle} clock={clock} />, base, wallet, label);
+      return (el.querySelector('[aria-hidden="true"]') as HTMLElement).textContent!.replace(/\s+/g, ' ').trim();
+    };
+    const before = await read(c, { ts: target - 2, atMs: now }, 'DayClock two seconds before midnight');
+    const at = await read(c, { ts: target - 2, atMs: now - 2_500 }, 'DayClock at midnight, before the next read');
+    const later = await read(c, { ts: target - 2, atMs: now - 30_000 }, 'DayClock 28 s after midnight, before the next read');
+    const next = await read(c + 1, { ts: target, atMs: now }, 'DayClock after the read that brings the next day');
+    const next2 = await read(c + 1, { ts: target + 1, atMs: now }, 'DayClock one second into the next day');
+    check(
+      'CR-95 the display at a boundary: "0h 00m 02s" before midnight; at midnight "0h 00m 00s", same day, until the next read; then the next day counts down from its own midnight (24h 00m 00s, 23h 59m 59s)',
+      before === `${dayName(c)} · 0h 00m 02s` &&
+        at === `${dayName(c)} · 0h 00m 00s` &&
+        later === `${dayName(c)} · 0h 00m 00s` &&
+        next === `${dayName(c + 1)} · 24h 00m 00s` &&
+        next2 === `${dayName(c + 1)} · 23h 59m 59s`,
+      [before, at, later, next, next2].join(' | '),
+    );
+  }
+
+  // ---- 5. Trade: the sell-fee message in each of the four states of sellFeeShares() ----
+  const S = {
+    burn: { burnedBps: 200, reserveBps: 0, ethBps: 0 },
+    half: { burnedBps: 100, reserveBps: 100, ethBps: 0 },
+    eth: { burnedBps: 0, reserveBps: 0, ethBps: 200 },
+    split: { burnedBps: 0, reserveBps: 100, ethBps: 100 },
+  };
+  const D = 450; // a day after 401: cycle 450 is Day 451
+  /** The live figures with the sell fee's state set by hand, and yesterday's two figures. */
+  const state = (shares: typeof S.burn, o: { cycle?: number; burned?: bigint; pot?: bigint; exhausted?: boolean; supply?: bigint } = {}): ChainState => {
+    const cy = o.cycle ?? c;
+    return {
+      ...base,
+      token: { ...base.token, totalSupply: o.supply ?? base.token.totalSupply },
+      hook: { ...base.hook, currentCycle: cy, sellFeeShares: shares, sellFeeInEth: shares.ethBps === 200, burned: { [cy - 1]: o.burned ?? 0n, [cy]: 0n } },
+      rewards: { ...base.rewards, currentCycle: cy, emissionEstimate: { [cy - 1]: o.pot ?? 667_925n * E18 }, reserveExhausted: o.exhausted ?? false },
+    };
+  };
+  const sellLine = async (chain: ChainState, label: string) => {
+    const el = await mount(<Trade sell />, chain, wallet, label);
+    const box = el.querySelector('.sell-mode') as HTMLElement;
+    return { line: text(box), state: box.dataset.state, view: box.dataset.view };
+  };
+  const S1 = 'From Day 401 half of the fee is burned and the other half refills the rebate reserve, which pays the buyers’ rebates.';
+  const S2 = 'The burn floor is reached: the supply is at 100,000,000 TOWN, so nothing more is burned and every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.';
+  {
+    const a = await sellLine(state(S.burn), 'Trade, Sell: (200, 0, 0), burned (fixture)');
+    const b = await sellLine(state(S.half, { cycle: D }), 'Trade, Sell: (100, 100, 0), from Day 401 (fixture: Day 451)');
+    const e = await sellLine(state(S.eth, { burned: 750_000n * E18, pot: 600_000n * E18 }), 'Trade, Sell: (0, 0, 200), in ETH (fixture)');
+    const f = await sellLine(state(S.split, { supply: base.hook.BURN_FLOOR }), 'Trade, Sell: (0, 100, 100), at the burn floor (fixture)');
+    check(
+      'CR-93 Trade, (200, 0, 0): "2% in TOWN, burned" and the owner’s CR-80 sentence, word for word, with no day-401 sentence',
+      a.state === 'burn' &&
+        a.line === `Today’s sell fee: 2% in TOWN, burned Yesterday (${dayName(y)}) burned 0 TOWN and paid 667,925 TOWN in rebates: inflation exceeded deflation, so today the fee is burned.`,
+      a.line,
+    );
+    check(
+      'CR-93 Trade, (100, 100, 0) from Day 401: "2% in TOWN: half burned, half to the rebate reserve", the CR-80 figures, "so today the fee is in TOWN", and the new day-401 sentence',
+      b.state === 'burn-reserve' &&
+        b.line ===
+          `Today’s sell fee: 2% in TOWN: half burned, half to the rebate reserve Yesterday (Day 450) burned 0 TOWN and paid 667,925 TOWN in rebates: inflation exceeded deflation, so today the fee is in TOWN. ${S1}` &&
+        reserveShareSentence(state(S.half, { cycle: D })) === S1,
+      b.line,
+    );
+    check(
+      'CR-93 Trade, (0, 0, 200): "2% in ETH, to the treasury" and the CR-80 ETH sentence, word for word',
+      e.state === 'eth' &&
+        e.line === `Today’s sell fee: 2% in ETH, to the treasury Yesterday (${dayName(y)}) burned 750,000 TOWN and paid 600,000 TOWN in rebates: it burned more than it paid, so today the fee is in ETH.`,
+      e.line,
+    );
+    check(
+      'CR-93 Trade, (0, 100, 100) at the floor: "1% in TOWN to the rebate reserve, 1% in ETH to the treasury" and the new floor sentence; the message reads sellFeeShares()',
+      f.state === 'split' && f.line === `Today’s sell fee: 1% in TOWN to the rebate reserve, 1% in ETH to the treasury ${S2}` && (f.view ?? '').startsWith('TownHook.sellFeeShares;'),
+      `${f.line} || data-view ${f.view}`,
+    );
+    // The split state comes from sellFeeShares(), not from sellFeeInEth(), which is no longer true at the floor (CR-93).
+    const g = await sellLine({ ...state(S.split, { supply: base.hook.BURN_FLOOR }), hook: { ...state(S.split, { supply: base.hook.BURN_FLOOR }).hook, sellFeeInEth: false } }, 'split, sellFeeInEth false');
+    const h = await sellLine({ ...state(S.burn), hook: { ...state(S.burn).hook, sellFeeInEth: true } }, '(200, 0, 0) with sellFeeInEth true');
+    check('CR-93 the state is read from sellFeeShares() alone: split with sellFeeInEth() false; "burned" whatever sellFeeInEth() says', g.state === 'split' && h.state === 'burn', `${g.state}, ${h.state}`);
+    const r1 = await sellLine(state(S.burn, { burned: 10n ** 30n, exhausted: true }), 'reserve spent, before Day 401');
+    const r2 = await sellLine(state(S.half, { cycle: D, burned: 10n ** 30n, exhausted: true }), 'reserve spent, from Day 401');
+    check(
+      'CR-93 the reserve-spent case: before Day 401 the CR-80 sentence word for word; from Day 401 "the fee is in TOWN" and the day-401 sentence',
+      r1.line.endsWith('The rebate reserve is spent, so the fee is burned until the supply reaches 100,000,000 TOWN.') &&
+        r2.line.endsWith(`The rebate reserve is spent, so the fee is in TOWN until the supply reaches 100,000,000 TOWN. ${S1}`),
+      `${r1.line} || ${r2.line}`,
+    );
+    const first = await sellLine({ ...state(S.burn, { cycle: 0 }), hook: { ...state(S.burn, { cycle: 0 }).hook, burned: { 0: 0n } }, rewards: { ...state(S.burn, { cycle: 0 }).rewards, emissionEstimate: {} } }, 'the launch day');
+    check('CR-93 the first-day case, word for word: "Day 1 has no day before it, so the fee is burned."', first.line === 'Today’s sell fee: 2% in TOWN, burned Day 1 has no day before it, so the fee is burned.', first.line);
+    const st = await mount(<Stats />, state(S.split, { supply: base.hook.BURN_FLOOR }), wallet, 'Stats, at the floor (fixture)');
+    const st2 = await mount(<Stats />, state(S.half, { cycle: D }), wallet, 'Stats, from Day 401 (fixture)');
+    check(
+      'CR-93 Stats "Sell fee today": the same headline and sentence (one function), from TownHook.sellFeeShares',
+      squash(text(st)).includes(squash(`Sell fee today 1% in TOWN to the rebate reserve, 1% in ETH to the treasury ${S2}`)) &&
+        squash(text(st2)).includes(squash(`Sell fee today 2% in TOWN: half burned, half to the rebate reserve`)) &&
+        text(st2).includes(S1) &&
+        !!st.querySelector('[data-view="TownHook.sellFeeShares"]'),
+      text(st).match(/Sell fee today.*?treasury\./)?.[0] ?? '',
+    );
+  }
+
+  // ---- 6. The sell form's fee rows and the estimate, in each state ----
+  {
+    const amount = 1_000_000n * E18;
+    const q = await quoteSell(client, NETWORK, amount);
+    const typeIn = (el: HTMLElement, sel: string, v: string) => {
+      const input = el.querySelector(sel) as HTMLInputElement;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, v);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const rowsFor = async (chain: ChainState, label: string) => {
+      const el = await mount(<Trade sell />, chain, wallet, label);
+      typeIn(el, '#sell-town', '1000000');
+      for (let i = 0; i < 60; i++) {
+        await settle(100);
+        const out = (el.querySelector('#trade-panel-sell .swap-output') as HTMLElement).textContent!.trim();
+        if (out !== '…' && out !== '0') break;
+      }
+      return { rows: plain(() => text(el.querySelector('#trade-panel-sell .swap-rows') as HTMLElement)), out: (el.querySelector('#trade-panel-sell .swap-output') as HTMLElement).textContent!.trim() };
+    };
+    const a = await rowsFor(state(S.burn), 'sell 1,000,000 TOWN, (200, 0, 0)');
+    const b = await rowsFor(state(S.half, { cycle: D }), 'sell 1,000,000 TOWN, (100, 100, 0)');
+    const e = await rowsFor(state(S.eth), 'sell 1,000,000 TOWN, (0, 0, 200)');
+    const f = await rowsFor(state(S.split, { supply: base.hook.BURN_FLOOR }), 'sell 1,000,000 TOWN, (0, 100, 100)');
+    const ethFee2 = fmtEth((q * 200n) / 9_800n, 6);
+    const ethFee1 = fmtEth((q * 100n) / 9_900n, 6);
+    check(
+      'CR-93 the fee rows follow the state (1,000,000 TOWN sold): 20,000 TOWN burned; 20,000 TOWN, 10,000 burned and 10,000 to the reserve; ≈ 2% of the ETH; 10,000 TOWN to the reserve and ≈ 1% of the ETH. Pool fee on what the pool swaps: 4,900, 4,900, 5,000, 4,950 TOWN',
+      a.rows.includes('Sell fee (2%, burned) 20,000 TOWN Pool fee (0.5%, to the locked liquidity) 4,900 TOWN') &&
+        b.rows.includes('Sell fee (2%: half burned, half to the rebate reserve) 20,000 TOWN 10,000 burned, 10,000 to the reserve Pool fee (0.5%, to the locked liquidity) 4,900 TOWN') &&
+        e.rows.includes(`Sell fee (2% of the ETH, to the treasury) ≈ ${ethFee2} ETH Pool fee (0.5%, to the locked liquidity) 5,000 TOWN`) &&
+        f.rows.includes(`Sell fee in TOWN (1%, to the rebate reserve) 10,000 TOWN Sell fee in ETH (1% of the ETH, to the treasury) ≈ ${ethFee1} ETH Pool fee (0.5%, to the locked liquidity) 4,950 TOWN`) &&
+        !/burned/.test(e.rows + f.rows),
+      [a.rows, b.rows, e.rows, f.rows].map((r) => r.replace(/ Minimum received.*$/, '')).join(' || '),
+    );
+    // The arithmetic on its own, including the sell that reaches the floor (its whole 2% in TOWN: room burned, the rest to the reserve) and an odd fee.
+    const nearFloor = (shares: typeof S.burn) => state(shares, { supply: base.hook.BURN_FLOOR + 5_000n * E18, cycle: shares === S.half ? D : c });
+    const x1 = sellFees(nearFloor(S.burn), amount, null);
+    const x2 = sellFees(nearFloor(S.half), amount, null);
+    const odd = sellFees(state(S.half, { cycle: D }), 150n, null); // fee 3 units: 1 burned, 2 to the reserve (the last unit goes to the reserve)
+    const sp = sellFees(state(S.split, { supply: base.hook.BURN_FLOOR }), amount, 990_000n);
+    const et = sellFees(state(S.eth), amount, 980_000n);
+    check(
+      'CR-93 sellFees(): the sell that reaches the floor pays its whole 2% in TOWN (5,000 burned, 15,000 to the reserve, before and from Day 401); an odd fee sends its last unit to the reserve; split 1% + 1% (received 990,000 → 10,000 of ETH); ETH 2% (received 980,000 → 20,000)',
+      x1.townFee === 20_000n * E18 && x1.burned === 5_000n * E18 && x1.toReserve === 15_000n * E18 && x1.reachesFloor && x1.ethFee === 0n &&
+        x2.townFee === 20_000n * E18 && x2.burned === 5_000n * E18 && x2.toReserve === 15_000n * E18 && x2.reachesFloor &&
+        odd.townFee === 3n && odd.burned === 1n && odd.toReserve === 2n &&
+        sp.townFee === 10_000n * E18 && sp.burned === 0n && sp.toReserve === 10_000n * E18 && sp.ethFee === 10_000n && sp.poolFee === 4_950n * E18 &&
+        et.townFee === 0n && et.ethFee === 20_000n && et.poolFee === 5_000n * E18,
+      JSON.stringify({ x1, x2, odd, sp, et }, (_, v) => (typeof v === 'bigint' ? v.toString() : v)),
+    );
+    const cross = await rowsFor(nearFloor(S.burn), 'sell 1,000,000 TOWN with 5,000 TOWN left above the floor');
+    check(
+      'CR-93 the sell that reaches the floor is shown: "Sell fee (2%, in TOWN) 20,000 TOWN 5,000 burned, 15,000 to the reserve: this sale reaches the burn floor"',
+      cross.rows.includes('Sell fee (2%, in TOWN) 20,000 TOWN 5,000 burned, 15,000 to the reserve: this sale reaches the burn floor'),
+      cross.rows.replace(/ Minimum received.*$/, ''),
+    );
+
+    // The estimate itself comes from Uniswap's quoter, which runs the swap through TownHook, so it has
+    // every fee off in every state. Shown on the real contracts with read-only eth_call overrides (no
+    // transaction): the supply set at the floor (UpTownToken's total-supply slot, checked first), and
+    // the block's time moved 400 days on.
+    const TOWN_ADDR = k.UpTownToken;
+    const slot2 = await client.getStorageAt({ address: TOWN_ADDR, slot: pad(toHex(2)) });
+    const supplyAtSlot = BigInt(slot2 ?? '0x0') === base.token.totalSupply;
+    const atFloor = [{ address: TOWN_ADDR, stateDiff: [{ slot: pad(toHex(2)), value: pad(toHex(base.hook.BURN_FLOOR)) }] }];
+    const block = await client.getBlock();
+    const later = { time: block.timestamp + 400n * 86_400n };
+    const quoteWith = async (amt: bigint, floor: boolean, after: boolean) => {
+      const data = encodeFunctionData({ abi: QUOTER_ABI, functionName: 'quoteExactInputSingle', args: [{ poolKey: poolKey(NETWORK), zeroForOne: false, exactAmount: amt, hookData: '0x' }] });
+      const r = await client.call({ to: NETWORK.uniswap!.v4Quoter, data, stateOverride: floor ? atFloor : undefined, blockOverrides: after ? later : undefined });
+      return (decodeFunctionResult({ abi: QUOTER_ABI, functionName: 'quoteExactInputSingle', data: r.data! }) as readonly [bigint, bigint])[0];
+    };
+    const sharesWith = async (floor: boolean, after: boolean) => {
+      const r = await client.call({ to: k.TownHook, data: encodeFunctionData({ abi: HOOK_ABI, functionName: 'sellFeeShares' }), stateOverride: floor ? atFloor : undefined, blockOverrides: after ? later : undefined });
+      return (decodeFunctionResult({ abi: HOOK_ABI, functionName: 'sellFeeShares', data: r.data! }) as readonly bigint[]).join(',');
+    };
+    // 990,000 TOWN before Day 401 and 980,000 at the floor both leave the pool 970,200 TOWN to swap, so the pool pays out the same ETH.
+    const burnQ = await quoteWith(990_000n * E18, false, false);
+    const splitQ = await quoteWith(980_000n * E18, true, false);
+    const laterQ = await quoteWith(990_000n * E18, false, true);
+    const sh = [await sharesWith(false, false), await sharesWith(false, true), await sharesWith(true, false)];
+    check(
+      'CR-93 the estimate is right in every state (read-only overrides on the real contracts): at the floor sellFeeShares() is (0, 100, 100) and the quoter takes 1% of the ETH off; 400 days on it is (100, 100, 0) and the estimate is the same as before Day 401',
+      supplyAtSlot && sh[0] === '200,0,0' && sh[1] === '100,100,0' && sh[2] === '0,100,100' && splitQ === burnQ - (burnQ * 100n) / 10_000n && laterQ === burnQ,
+      `slot 2 holds totalSupply: ${supplyAtSlot}; shares now ${sh[0]}, +400 days ${sh[1]}, at the floor ${sh[2]}; 990,000 TOWN now ${burnQ} wei; 980,000 TOWN at the floor ${splitQ} wei (want ${burnQ - (burnQ * 100n) / 10_000n}); 990,000 TOWN +400 days ${laterQ} wei`,
+    );
+  }
+
+  // ---- 7. Rewards: the reserve available, the empty notice, the schedule ----
+  {
+    const r = base.rewards;
+    const liveAvail = (await client.readContract({ address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'available', blockNumber: base.blockNumber })) as bigint;
+    const live = await mount(<Rewards />, base, wallet, 'Rewards (live)');
+    const lt = text(live);
+    check(
+      'CR-93 Rewards (live): BuyerRewards.available() is read with the other figures; with ' + fmtTown(liveAvail) + ' TOWN available neither reserve notice shows',
+      r.available === liveAvail && !lt.includes('The rebate reserve is nearly spent') && !lt.includes('The rebate reserve is empty'),
+      `available ${r.available} (read again: ${liveAvail}); reserveExhausted ${r.reserveExhausted}`,
+    );
+    const low = await mount(<Rewards />, { ...base, rewards: { ...r, available: 1_000_000n * E18 } }, wallet, 'Rewards, 1,000,000 TOWN available (fixture)');
+    const lowT = plain(() => text(low));
+    check(
+      'CR-93 low reserve (fixture): "nearly spent" with the TOWN available() reports',
+      lowT.includes('The rebate reserve is nearly spent 1,000,000 TOWN remain, less than the next ten days’ limits') && !!low.querySelector('.notice [data-view="BuyerRewards.available"]'),
+      lowT.match(/The rebate reserve is nearly spent.*?first\./)?.[0] ?? lowT.slice(0, 200),
+    );
+    const empty = await mount(<Rewards />, { ...base, rewards: { ...r, available: 0n, reserveExhausted: true } }, wallet, 'Rewards, the reserve empty (fixture)');
+    const et = text(empty);
+    check(
+      'CR-93 empty reserve (fixture): its own notice — rebates pause until TOWN arrives; a day settled while it is empty gets nothing; no "nearly spent"',
+      et.includes('The rebate reserve is empty') &&
+        et.includes('so rebates pause until TOWN arrives') &&
+        et.includes('A day settled while the reserve is empty gets nothing, even if TOWN arrives later') &&
+        !et.includes('nearly spent'),
+      et.match(/The rebate reserve is empty.*?full\./)?.[0] ?? et.slice(0, 300),
+    );
+    const det = live.querySelector('details') as HTMLDetailsElement;
+    det.open = true;
+    await settle();
+    const rows = [...live.querySelectorAll('.details-body table tbody tr')].map((tr) => [...tr.children].map((td) => (td as HTMLElement).innerText.replace(/\s+/g, ' ').trim()));
+    const want = [
+      ['1–100', '2,500,000', '50%'],
+      ['101–200', '1,250,000', '75%'],
+      ['201–300', '625,000', '87.5%'],
+      ['301–400', '312,500', '93.75%'],
+      ['401–500', '156,250', '96.88%'],
+      ['501–600', '78,125', '98.44%'],
+      ['601–700', '39,062.5', '99.22%'],
+      ['701 on', '25,000', 'the rest, then what arrives'],
+    ];
+    const body = plain(() => text(live.querySelector('.details-body') as HTMLElement));
+    check(
+      'CR-93 the schedule: eight rows on calendar day numbers, the limits read from BuyerRewards.cap() (39,062.5 for days 601–700, 25,000 from day 701), the shares of the 500,000,000 launch funding',
+      JSON.stringify(rows.map((x) => [x[0].replace(/\s*Now$/, ''), x[1], x[2]])) === JSON.stringify(want) && rows[epochIndexOf(c)][0].endsWith('Now'),
+      JSON.stringify(rows),
+    );
+    check(
+      'CR-93 the schedule’s heading and notes: "halves every 100 days, then 25,000 TOWN a day", the launch funding, and that the reserve can be topped up',
+      body.includes('Daily limit: halves every 100 days, then 25,000 TOWN a day') &&
+        body.includes('Half the 500,000,000 TOWN the reserve was funded with at launch is scheduled for the first 100 days.') &&
+        body.includes('Launch funding used by the end') &&
+        body.includes('The reserve can be topped up: from Day 401 half of every sell fee paid in TOWN goes to it, at the burn floor 1% of every sell does, and anyone can send it TOWN.'),
+      body.slice(body.indexOf('Daily limit'), body.indexOf('Daily limit') + 420),
+    );
+    check(
+      'CR-94 Rewards on calendar days: "Today, Day N", rebates open on Day N + 1 "from midnight UTC"; the rule names calendar days and the shorter launch day',
+      lt.includes(`Today, ${dayName(c)}`) &&
+        lt.includes(`Today’s rebates open on ${dayName(c + 1)} From midnight UTC, when the next day begins.`) &&
+        (live.textContent ?? '').includes('Days are calendar days in UTC, from midnight to midnight; Day 1, the launch day, began at launch and was shorter.'),
+      lt.match(/Today’s rebates open on.*?begins\./)?.[0] ?? '',
+    );
+  }
+
+  // ---- 8. Stats: the reserve available, the next payout at a midnight, the day's end ----
+  {
+    const st = await mount(<Stats />, base, wallet, 'Stats (live)');
+    const t = plain(() => text(st)).replace(/(\d)TOWN/g, '$1 TOWN');
+    const avail = figText(st, 'BuyerRewards.available');
+    check(
+      'CR-93 Stats: "Rebate reserve available" is BuyerRewards.available(); "Rebates emitted" stays; the floor note names the split',
+      avail === fmtTown(base.rewards.available) &&
+        t.includes('Rebate reserve available') &&
+        !t.includes('Rebate reserve remaining') &&
+        figText(st, 'BuyerRewards.totalEmitted') === fmtTown(base.rewards.totalEmitted) &&
+        t.includes('from there every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.'),
+      `available ${avail}`,
+    );
+    const target = nextDayStart(base.hook.launchTime, c);
+    check(
+      'CR-94 Stats: "Next payout" shows a midnight UTC (Treasury.nextDistributionTime) and today’s figures keep counting until the same midnight',
+      (base.treasury.nextDistributionTime <= base.blockTimestamp || t.includes(`${fmtDateTime(base.treasury.nextDistributionTime)}, the start of ${dayName(c + 1)}`)) &&
+        t.includes(`Today’s figures keep counting until ${dayName(c)} ends on ${fmtDateTime(target)}.`) &&
+        t.includes('Trigger today’s payout'),
+      t.match(/Next payout.*?Day \d+/)?.[0] ?? '',
+    );
+  }
+
+  // ---- 9. Docs: the rebates and the burn ----
+  {
+    const el = await mount(<Docs />, base, wallet, 'Docs (live)');
+    const item = (id: string) => text(el.querySelector(`[data-item="${id}"]`) as HTMLElement);
+    check(
+      'CR-93, CR-94 Docs, rebates: the reserve and its top-ups, calendar days with a shorter launch day, the 39,062.5 and 25,000 limits, the empty reserve',
+      item('reserve').includes('500,000,000 TOWN at launch') &&
+        item('reserve').includes('from Day 401 half of every sell fee paid in TOWN, at the burn floor 1% of every sell, and any TOWN anyone sends it') &&
+        item('days').startsWith('Days are calendar days in UTC: each runs from midnight to midnight UTC. Day 1, the launch day, began at launch, so it was shorter than 24 hours.') &&
+        item('limit').includes('halving every 100 days down to 39,062.5 for days 601 to 700, then 25,000 TOWN a day from day 701') &&
+        item('empty').includes('a day settled while it is empty gets nothing'),
+      ['reserve', 'days', 'limit', 'empty'].map(item).join(' || '),
+    );
+    check(
+      'CR-93 Docs, the sell fee: burned; from Day 401 half to the reserve; the ETH day; the floor (the sell that reaches it, then 1% + 1%)',
+      item('sell-fee') === 'Every sell pays a 2% fee, in TOWN, and it is burned. From Day 401 half of it is burned and the other half goes to the rebate reserve, so sells help pay later rebates.' &&
+        item('eth-day').startsWith('On a day after one that burned more TOWN than it paid out in rebates, the whole 2% goes to the treasury in ETH instead') &&
+        item('floor').includes('The sell that reaches the floor pays its whole 2% in TOWN: what fits above the floor is burned and the rest goes to the rebate reserve. From then on every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.'),
+      ['sell-fee', 'eth-day', 'floor'].map(item).join(' || '),
+    );
+  }
+
+  // ---- 10. Item 6: no file reads RESERVE() or says 78,125, "24-hour" or "counted from launch" ----
+  {
+    const hits: string[] = [];
+    for (const [f, src] of Object.entries(SITE_SOURCES)) {
+      for (const [name, re] of [
+        ['RESERVE()', /\bRESERVE\(\)|\bRESERVE'\)|rewards\.RESERVE\b/],
+        ['78,125', /78,125|78125/],
+        ['24-hour', /24-hour/i],
+        ['counted from launch', /counted from launch/i],
+      ] as [string, RegExp][])
+        if (re.test(src)) hits.push(`${f}: ${name}`);
+    }
+    check(
+      'CR-93, CR-94 the site’s source: no file reads RESERVE() or says 78,125, "24-hour" or "counted from launch"; the ABI has sellFeeShares, RESERVE_FEE_START and available',
+      hits.length === 0 &&
+        HOOK_ABI.some((x) => x.type === 'function' && x.name === 'sellFeeShares') &&
+        HOOK_ABI.some((x) => x.type === 'function' && x.name === 'RESERVE_FEE_START') &&
+        REWARDS_ABI.some((x) => x.type === 'function' && x.name === 'available') &&
+        !REWARDS_ABI.some((x) => x.type === 'function' && (x.name as string) === 'RESERVE'),
+      hits.length ? hits.join('; ') : `${Object.keys(SITE_SOURCES).length} files searched; none`,
+    );
+  }
+
+  if (!GALLERY) stage.replaceChildren();
+  style.remove();
+}
+
+/** The schedule row a cycle is in (0 to 7). */
+const epochIndexOf = (cycle: number) => Math.min(7, Math.floor(cycle / 100));
 
 run()
   .catch((e) => check('the tests ran to the end', false, String(e?.stack ?? e)))

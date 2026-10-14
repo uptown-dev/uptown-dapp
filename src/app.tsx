@@ -8,8 +8,8 @@ import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetTownAddress } from './lib/places';
 import { makeClient, readAll } from './lib/reads';
 import { activeProvider, chooseWallet, chosenWallet, rememberedWallet, switchWalletChain, watchWallets, type Eip1193, type WalletInfo } from './lib/wallet';
 import { explainError } from './lib/errors';
-import { dayName, fmtDuration, shortAddress } from './lib/format';
-import { rpcBehind } from './lib/derive';
+import { dayName, fmtCountdown, fmtCountdownWords, fmtDateTime, fmtDuration, shortAddress } from './lib/format';
+import { clockNow, dayCountdown, rpcBehind, stepClock, type ChainClock } from './lib/derive';
 import { chooseTheme, currentTheme, storedTheme, type Theme } from './lib/theme';
 import { Home } from './pages/Home';
 import { Trade } from './pages/Trade';
@@ -33,6 +33,42 @@ const NAV: { page: string; label: string; title: string }[] = [
   // Shown in the navigation only to the owner wallet (CR-64); anyone else who opens it sees a notice.
   { page: 'owner', label: 'Owner', title: 'Owner · UpTown' },
 ];
+
+// ---- the day and the countdown to the next one (CR-95 item 1) -----------------------------------
+// Beside the day number, the time left until the next day begins: the next midnight UTC as the
+// contracts define it, `(launchTime / 86400 + currentCycle + 1) × 86400` (CR-94), from TownHook's
+// launchTime() and currentCycle(), not from the Treasury's nextDistributionTime() (which is "now"
+// before the day's first payout trigger and 0 while payouts are paused). "Now" is the RPC's latest
+// block time, the clock the rest of the site uses, stepped forward each second in the page
+// (`stepClock`, `clockNow` in derive.ts); on the local chain, whose clock runs ahead of the
+// visitor's, it counts down to the chain's own next midnight. At the boundary the countdown rests at
+// 0h 00m 00s until the next read of the figures (every 15 seconds) brings the new day, which then
+// counts down from its own midnight. The form, "Day 4 · 23h 08m 12s", is the same at every width:
+// in the header's tools from 960 px, and under the wordmark below that, where the row has no room
+// (CR-77). The visible figure is hidden from screen readers, which read a sentence to the minute
+// instead; nothing announces the ticking.
+
+/** The header's day and countdown, in the tools (`tools`, 960 px and wider) or under the wordmark (`brand`, narrower). */
+export function DayClock({ launchTime, cycle, clock, place }: { launchTime: number; cycle: number; clock: ChainClock; place: 'tools' | 'brand' }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const { target, left } = dayCountdown(launchTime, cycle, clockNow(clock, nowMs));
+  const next = dayName(cycle + 1);
+  const title = `${dayName(cycle)} ends at midnight UTC (${fmtDateTime(target)}), when ${next} begins. Days are calendar days in UTC; ${dayName(0)}, the launch day, ${
+    cycle === 0 ? 'began at launch and is' : 'began at launch and was'
+  } shorter.`;
+  return (
+    <span class={place === 'tools' ? 'day-chip' : 'day-line'} title={title} data-target={target} data-cycle={cycle}>
+      <span aria-hidden="true">
+        {dayName(cycle)} · <span class="day-left">{fmtCountdown(left)}</span>
+      </span>
+      <span class="visually-hidden">{`${dayName(cycle)}. ${next} begins at midnight UTC, in ${fmtCountdownWords(left)}.`}</span>
+    </span>
+  );
+}
 
 /** The navigation bar's items, in order: every page but the homepage (CR-71); Owner only for the owner wallet (CR-64). */
 export function navItems(ownerLink: boolean) {
@@ -340,6 +376,8 @@ export function App() {
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [owner, setOwner] = useState<OwnerState | null>(null);
   const [data, setData] = useState<DataStatus>({ state: network.deployment ? 'loading' : 'not-deployed', error: null, readAt: null });
+  // The chain's clock for the header countdown (CR-95 item 1): the latest block's time, stepped forward in the page.
+  const [clock, setClock] = useState<ChainClock | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const firstRender = useRef(true);
   const accountRef = useRef(account);
@@ -361,10 +399,13 @@ export function App() {
       try {
         const r = await readAll(client, network, who);
         if (accountRef.current !== who) return; // the wallet changed meanwhile: a new read follows
+        const readAt = Date.now();
         setChain(r.chain);
         setWallet(r.wallet);
         setOwner(r.owner);
-        setData({ state: r.chain ? 'ready' : 'not-launched', error: null, readAt: Date.now() });
+        const block = r.chain?.blockTimestamp;
+        if (block !== undefined) setClock((prev) => stepClock(prev, block, readAt));
+        setData({ state: r.chain ? 'ready' : 'not-launched', error: null, readAt });
       } catch (e) {
         setData((d) => ({ ...d, state: d.readAt ? 'ready' : 'error', error: explainError(e).message }));
       }
@@ -588,8 +629,9 @@ export function App() {
     }
   })();
 
-  const c = chain?.hook.currentCycle ?? null;
   const nextTheme: Theme = theme === 'dark' ? 'light' : 'dark';
+  const dayClock = (place: 'tools' | 'brand') =>
+    chain && clock ? <DayClock place={place} launchTime={chain.hook.launchTime} cycle={chain.hook.currentCycle} clock={clock} /> : null;
 
   return (
     <AppContext.Provider value={state}>
@@ -607,10 +649,14 @@ export function App() {
       <header class="site-header">
         <div class="wrap header-row">
           {/* The homepage's link on every screen size (CR-71); it also closes the narrow-screen menu. */}
-          <a class="wordmark" href="#/" aria-label="UpTown, home" onClick={() => setNavOpen(false)}>
-            <SkylineMark />
-            <span>UpTown</span>
-          </a>
+          <div class="brand">
+            <a class="wordmark" href="#/" aria-label="UpTown, home" onClick={() => setNavOpen(false)}>
+              <SkylineMark />
+              <span>UpTown</span>
+            </a>
+            {/* The day and its countdown under the wordmark, below 960 px, where the row has no room (CR-95 item 1). */}
+            {dayClock('brand')}
+          </div>
           <nav class={`site-nav${navOpen ? ' open' : ''}`} id="site-nav" aria-label="Main">
             <ul>
               {navItems(ownerLink).map((n) => (
@@ -623,11 +669,7 @@ export function App() {
             </ul>
           </nav>
           <div class="header-tools">
-            {c !== null && (
-              <span class="day-chip" title={`${dayName(c)}: the 24-hour day that began ${c} days after launch`}>
-                {dayName(c)}
-              </span>
-            )}
+            {dayClock('tools')}
             <button
               type="button"
               class="icon-btn"

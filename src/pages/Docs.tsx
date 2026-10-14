@@ -3,8 +3,8 @@ import { useApp, Details, Fig, Figures, Notice, PageHead, Verify } from '../comp
 import { OWNER_CANNOT, OWNER_POWERS, ROUTING_NOTE, THINGS_TO_KNOW } from '../content/docs';
 import { buyerHookData } from '../lib/reads';
 import { PriceSource } from '../data/types';
-import { afterFeeBps, burnFloor, claimFeeBps, fallbackExpiresAt, pausePending, rateRange, stakingChange, stakingReplaced } from '../lib/derive';
-import { fmtBps, fmtDate, fmtDateTime, fmtTown, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
+import { afterFeeBps, burnFloor, claimFeeBps, fallbackExpiresAt, pausePending, rateRange, reserveFeeStart, stakingChange, stakingReplaced } from '../lib/derive';
+import { dayName, fmtBps, fmtDate, fmtDateTime, fmtTown, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
 import { addressUrl, contractUrl, positionUrl, readUrl, tokenUrl } from '../lib/network';
 
 /** The table of contents, in order (CR-40). Each section is reachable as #/docs/<id>. */
@@ -26,6 +26,9 @@ export function Docs() {
   const { network, chain } = useApp();
   const town = network.deployment?.contracts.UpTownToken;
   const r = rateRange(chain);
+  // From this day a TOWN sell fee is half burned and half sent to the rebate reserve (CR-93): day 401.
+  const fromDay = dayName(reserveFeeStart(chain));
+  const floor = fmtTown(burnFloor(chain));
   return (
     <div class="wrap page docs">
       <PageHead title="Docs" lead="How UpTown works, part by part, and what the owner can do. UpTown is an experiment on Ethereum." />
@@ -61,7 +64,8 @@ export function Docs() {
                 this record.
               </li>
               <li>
-                <strong>On a sell</strong> it takes 2%: burned in TOWN, or sent to the treasury in ETH, as <a href="#/docs/burn">The burn</a> explains.
+                <strong>On a sell</strong> it takes 2%: burned in TOWN, partly sent to the rebate reserve in TOWN, or sent to the treasury in ETH, as{' '}
+                <a href="#/docs/burn">The burn</a> explains.
               </li>
               <li>
                 <strong>In the first 15 minutes after launch</strong> the buy fee starts at 90% and falls in a straight line to 2%, to discourage bots.
@@ -72,8 +76,10 @@ export function Docs() {
 
           <Section id="rebates">
             <ul class="doc-list">
-              <li>
-                BuyerRewards holds the rebate reserve: 500,000,000 TOWN, half the supply. TOWN leaves it only through claims.{' '}
+              <li data-item="reserve">
+                BuyerRewards holds the rebate reserve: 500,000,000 TOWN at launch, half the supply. It counts what it holds, so TOWN that reaches it later
+                adds to it: from {fromDay} half of every sell fee paid in TOWN, at the burn floor 1% of every sell, and any TOWN anyone sends it. TOWN leaves
+                it only through claims.{' '}
                 <Verify
                   inline
                   links={[
@@ -81,6 +87,10 @@ export function Docs() {
                     { label: 'running totals', what: 'BuyerRewards’ running totals', href: contractUrl(network, 'BuyerRewards', 'read') },
                   ]}
                 />
+              </li>
+              <li data-item="days">
+                Days are calendar days in UTC: each runs from midnight to midnight UTC. Day 1, the launch day, began at launch, so it was shorter than 24
+                hours. The header shows today’s day and the time left until the next one begins.
               </li>
               <li>For each day you buy, you can claim the day’s rate of the TOWN you bought, from the next day. Rebates never expire.</li>
               <li>
@@ -92,9 +102,13 @@ export function Docs() {
                 {fmtBps(claimFeeBps(chain))} of every claim goes to the treasury for the owner, so {fmtRate(afterFeeBps(chain, r.low))} to {fmtRate(afterFeeBps(chain, r.high))}{' '}
                 reaches you.
               </li>
-              <li>
-                Each day has a limit: 2,500,000 TOWN a day for the first 100 days, halving every 100 days down to 78,125. On a busy day everyone’s rate falls
-                in proportion.
+              <li data-item="limit">
+                Each day has a limit: 2,500,000 TOWN a day for the first 100 days, halving every 100 days down to 39,062.5 for days 601 to 700, then
+                25,000 TOWN a day from day 701 for as long as the reserve has TOWN. On a busy day everyone’s rate falls in proportion.
+              </li>
+              <li data-item="empty">
+                A day’s rebates are settled when the day is first claimed. When the reserve runs low, days are paid in the order they are settled. If it is
+                empty, rebates pause until TOWN arrives, and a day settled while it is empty gets nothing, even if TOWN arrives later.
               </li>
             </ul>
           </Section>
@@ -117,8 +131,8 @@ export function Docs() {
           <Section id="treasury">
             <ul class="doc-list">
               <li>
-                The treasury receives TownHook’s 2% buy fee, its 2% sell fee on the days it is charged in ETH, and the vault prices in ETH, and the claim
-                fees in TOWN.{' '}
+                The treasury receives TownHook’s 2% buy fee, its 2% sell fee on the days it is charged in ETH and 1% of every sell at the burn floor, and the
+                vault prices in ETH, and the claim fees in TOWN.{' '}
                 <Verify
                   inline
                   links={[
@@ -142,14 +156,22 @@ export function Docs() {
                 1,000,000,000 TOWN were minted once; no one can mint more.{' '}
                 <Verify inline links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, town) }]} />
               </li>
-              <li>
-                Every sell pays a 2% fee, and it is burned in TOWN, unless the day before burned more TOWN than it paid out in rebates: then that day’s fee
-                goes to the treasury in ETH instead. Once the rebate reserve is spent, the fee is burned until the supply reaches the floor of{' '}
-                {fmtTown(burnFloor(chain))} TOWN. At the floor the fee is always ETH, sent to the treasury.
+              <li data-item="sell-fee">
+                Every sell pays a 2% fee, in TOWN, and it is burned. From {fromDay} half of it is burned and the other half goes to the rebate reserve, so
+                sells help pay later rebates.
+              </li>
+              <li data-item="eth-day">
+                On a day after one that burned more TOWN than it paid out in rebates, the whole 2% goes to the treasury in ETH instead, and nothing is burned
+                or sent to the reserve. While the rebate reserve is empty, the fee is in TOWN.
+              </li>
+              <li data-item="floor">
+                The burn stops at the floor of {floor} TOWN of supply. The sell that reaches the floor pays its whole 2% in TOWN: what fits above the
+                floor is burned and the rest goes to the rebate reserve. From then on every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the
+                treasury.
               </li>
               <li>
-                The mode is fixed for the whole day. The <a href="#/trade/sell">Trade page</a> and the <a href="#/stats">Stats page</a> show today’s mode
-                and yesterday’s two figures behind it.{' '}
+                Above the floor the mode is fixed for the whole day. The <a href="#/trade/sell">Trade page</a> and the <a href="#/stats">Stats page</a> show
+                how today’s 2% divides and yesterday’s two figures behind it.{' '}
                 <Verify inline links={[{ what: 'TownHook’s sell-fee mode and burn per day', href: contractUrl(network, 'TownHook', 'read') }]} />
               </li>
             </ul>

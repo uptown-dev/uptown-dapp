@@ -45,8 +45,8 @@ const MULTICALL3_ABI = [
 const INITIAL_SUPPLY = 1_000_000_000n * 10n ** 18n;
 /** type(uint256).max: Treasury.lastDistributedCycle() before the first distribution (CL-27). */
 const MAX_UINT = 2n ** 256n - 1n;
-/** The first cycle of each 100-day epoch, for the halving schedule. */
-const EPOCH_FIRSTS = [0, 100, 200, 300, 400, 500, 600];
+/** The first cycle of each 100-day epoch and of the 25,000 TOWN tail (cycle 700), for the schedule (CR-93). */
+const EPOCH_FIRSTS = [0, 100, 200, 300, 400, 500, 600, 700];
 /** The bytes an EIP-7702 delegated wallet's code begins with (CR-49). */
 const DELEGATION_PREFIX = '0xef0100';
 /**
@@ -278,8 +278,10 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     ANTI_SNIPE_DURATION: H('ANTI_SNIPE_DURATION'),
     BURN_FLOOR: H('BURN_FLOOR'),
     sellFeeInEth: H('sellFeeInEth'),
-    RESERVE: R('RESERVE'),
+    sellFeeShares: H('sellFeeShares'),
+    RESERVE_FEE_START: H('RESERVE_FEE_START'),
     reserveExhausted: R('reserveExhausted'),
+    available: R('available'),
     CLAIM_FEE_BPS: R('CLAIM_FEE_BPS'),
     RATE_BASE_BPS: R('RATE_BASE_BPS'),
     RATE_BUY_SPAN_BPS: R('RATE_BUY_SPAN_BPS'),
@@ -632,6 +634,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
   const ps = r2.get<readonly [bigint, number, bigint]>(si.priceStatus);
   const pendingFeed = r2.get<Address>(si.pendingFeed);
   const ldc = r1.get<bigint>(i.lastDistributedCycle);
+  const shares = r1.get<readonly [bigint, bigint, bigint]>(i.sellFeeShares);
 
   const chain: ChainState = {
     blockTimestamp: Number(block.timestamp),
@@ -649,10 +652,11 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       cycleTotal: { ...leanTotals, [current]: r2.get<bigint>(todayTotalIdx) },
       sold: { ...leanSold, [current]: r2.get<bigint>(todaySoldIdx) },
       sellFeeInEth: r1.get<boolean>(i.sellFeeInEth),
+      sellFeeShares: { burnedBps: Number(shares[0]), reserveBps: Number(shares[1]), ethBps: Number(shares[2]) },
+      RESERVE_FEE_START: num(r1.get(i.RESERVE_FEE_START)),
       burned: burnedByDay,
     },
     rewards: {
-      RESERVE: r1.get(i.RESERVE),
       CLAIM_FEE_BPS: num(r1.get(i.CLAIM_FEE_BPS)),
       currentCycle: current,
       cap,
@@ -669,6 +673,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       lean: { [current]: r2.get<bigint>(leanIdx) },
       emissionEstimate,
       reserveExhausted: r1.get<boolean>(i.reserveExhausted),
+      available: r1.get(i.available),
     },
     treasury: {
       balance: r1.get(i.treasuryBalance),

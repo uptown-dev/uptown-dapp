@@ -31,6 +31,16 @@ export interface StreamInfo {
   rewardPerTokenStored: bigint;
 }
 
+/** TownHook.sellFeeShares(): the next sell's 2% (200 basis points) in three parts (CR-93). */
+export interface SellFeeShares {
+  /** Burned, of the TOWN sold: 200, 100 or 0. */
+  burnedBps: number;
+  /** Sent to the rebate reserve (BuyerRewards) in TOWN, of the TOWN sold: 0 or 100. */
+  reserveBps: number;
+  /** Charged in ETH to the Treasury, of the ETH the sale brings in: 0, 100 or 200. */
+  ethBps: number;
+}
+
 /** BuyerRewards.cycleInfo(c). */
 export interface CycleInfo {
   /** TOWN bought by everyone in the cycle (read live from TownHook.cycleTotal). */
@@ -85,18 +95,26 @@ export interface ChainState {
      */
     sold: Record<number, bigint>;
     /**
-     * TownHook.sellFeeInEth(): this cycle's sell-fee currency (CR-56, CR-57). True: 2% of the ETH a
-     * sale brings in, to the Treasury; false: 2% of the TOWN sold, burned (capped by the burn floor).
+     * TownHook.sellFeeInEth(): this cycle's mode, ETH or TOWN (CR-56, CR-57). True: 2% of the ETH a
+     * sale brings in, to the Treasury; false: 2% of the TOWN sold, burned, and from cycle 400 half
+     * burned and half to BuyerRewards. It says nothing about the burn floor (CR-93): the state a sell
+     * is charged in is `sellFeeShares`.
      */
     sellFeeInEth: boolean;
+    /**
+     * TownHook.sellFeeShares(): how the next sell's 2% divides, in basis points (CR-93): burned, to
+     * the rebate reserve (BuyerRewards) in TOWN, and in ETH to the Treasury. One of (200, 0, 0),
+     * (100, 100, 0), (0, 0, 200) or (0, 100, 100).
+     */
+    sellFeeShares: SellFeeShares;
+    /** TownHook.RESERVE_FEE_START(): the cycle from which a TOWN-mode sell sends half its fee to the reserve (CR-93: 400, day 401). */
+    RESERVE_FEE_START: number;
     /** TownHook.burned(c), the TOWN the sell fees burned in cycle c (CR-57), for today and yesterday. */
     burned: Record<number, bigint>;
   };
 
   /** BuyerRewards. */
   rewards: {
-    /** BuyerRewards.RESERVE() */
-    RESERVE: bigint;
     /** BuyerRewards.CLAIM_FEE_BPS() */
     CLAIM_FEE_BPS: number;
     /** BuyerRewards.currentCycle() */
@@ -130,8 +148,16 @@ export interface ChainState {
      * (CR-57), for yesterday: the figure TownHook.burned(yesterday) is compared with.
      */
     emissionEstimate: Record<number, bigint>;
-    /** BuyerRewards.reserveExhausted(): the reserve is spent, so every later day's sell fee is burned (CR-57). */
+    /**
+     * BuyerRewards.reserveExhausted(): nothing is available right now (`available() == 0`), so a day
+     * that starts now charges its sell fee in TOWN (CR-57). False again once TOWN arrives (CR-93).
+     */
     reserveExhausted: boolean;
+    /**
+     * BuyerRewards.available(): the reserve available to the next day settled (CR-93): what
+     * BuyerRewards holds less what finished days promised and buyers have not yet claimed.
+     */
+    available: bigint;
   };
 
   /** Treasury. */

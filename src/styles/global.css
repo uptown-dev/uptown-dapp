@@ -359,6 +359,25 @@ main:focus {
   align-items: center;
   gap: 8px;
 }
+/* The wordmark and, below 960 px, the day and its countdown under it (CR-95 item 1). The line under
+   the wordmark is as wide as the wordmark or less up to day 999, so the row does not grow. */
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  flex: none;
+}
+.day-line {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .day-chip {
   display: none;
   font-size: 12.5px;
@@ -538,6 +557,9 @@ main:focus {
   }
   .day-chip {
     display: inline-block;
+  }
+  .day-line {
+    display: none;
   }
 }
 /* Between 480 and 640 px the row is tight: the tag shows the short name ("Local" for the local test
@@ -3035,6 +3057,11 @@ code.break {
 }
 .swap-box-top > :last-child:not(:first-child) {
   text-align: right;
+}
+/* F9u (CR-93): under a TOWN sell fee, how much of it is burned and how much goes to the rebate reserve. */
+.fee-parts {
+  display: block;
+  font-weight: 400;
 }
 .swap-output-usd {
   display: block;

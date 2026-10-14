@@ -15,11 +15,12 @@ import {
   nextTenCaps,
   rateRange,
   readyCycles,
+  reserveEmpty,
   reserveNearlySpent,
-  reserveUnscheduled,
   walletCycles,
+  LAUNCH_FUNDING,
 } from '../lib/derive';
-import { dayName, fmtBps, fmtInt, fmtTown, listDays, fmtRate } from '../lib/format';
+import { dayName, dayNumber, fmtBps, fmtCap, fmtInt, fmtTown, listDays, fmtRate } from '../lib/format';
 
 export function Rewards() {
   const chain = useChain();
@@ -30,7 +31,7 @@ export function Rewards() {
         title="Rewards"
         lead={`Every buy earns a TOWN rebate: ${fmtBps(r.low)} to ${fmtBps(r.high)} of the TOWN you bought, set each day by the last three days’ trading, less a ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee, claimable the next day within each day’s limit.`}
       />
-      {reserveNearlySpent(chain) && <ReserveLow />}
+      {reserveEmpty(chain) ? <ReserveEmpty /> : reserveNearlySpent(chain) && <ReserveLow />}
       <YourRebate />
       <Today />
       <Details>
@@ -41,15 +42,35 @@ export function Rewards() {
   );
 }
 
+/**
+ * CR-36, CR-93: less than ten days of limits are available in the reserve (BuyerRewards.available(),
+ * what it holds less what finished days promised and buyers have not claimed).
+ */
 function ReserveLow() {
   const chain = useChain();
+  const a = chain.rewards.available;
   return (
     <Notice kind="warn" title="The rebate reserve is nearly spent">
-      <p>
-        <span class="num">{fmtTown(reserveUnscheduled(chain))}</span> TOWN <Usd amount={reserveUnscheduled(chain)} unit="TOWN" paren /> remain, less than the
-        next ten days’ limits (<span class="num">{fmtTown(nextTenCaps(chain))}</span> TOWN <Usd amount={nextTenCaps(chain)} unit="TOWN" paren />). Near the
-        end, days are paid in the order they are first claimed or finalised, so a day
-        claimed late can get less or nothing. This site always claims your oldest days first.
+      <p data-view="BuyerRewards.available">
+        <span class="num">{fmtTown(a)}</span> TOWN <Usd amount={a} unit="TOWN" paren /> remain, less than the next ten days’ limits (
+        <span class="num">{fmtTown(nextTenCaps(chain))}</span> TOWN <Usd amount={nextTenCaps(chain)} unit="TOWN" paren />). While the reserve is low, days
+        are paid in the order they are first claimed or finalised, so a day claimed late can get less or nothing. This site always claims your oldest days
+        first. TOWN that reaches the reserve later, from sell fees or from anyone who sends it, is added to what remains.
+      </p>
+    </Notice>
+  );
+}
+
+/** CR-93: nothing is available in the reserve. Rebates pause until TOWN arrives; a day settled meanwhile gets nothing. */
+function ReserveEmpty() {
+  const chain = useChain();
+  return (
+    <Notice kind="warn" title="The rebate reserve is empty">
+      <p data-view="BuyerRewards.available">
+        The reserve has no TOWN left for new rebates, so rebates pause until TOWN arrives: from {dayName(chain.hook.RESERVE_FEE_START)} part of the sell fee
+        goes to it, and anyone can send it TOWN. A day’s rebates are settled when the day is first claimed (or settled by anyone). A day settled while the
+        reserve is empty gets nothing, even if TOWN arrives later, so claiming such a day now settles it with nothing; TOWN that arrives pays the days
+        settled after it. Days already settled can still be claimed in full.
       </p>
     </Notice>
   );
@@ -161,7 +182,7 @@ function YourRebate() {
             const net = afterClaimFee(chain, cycleRebateGross(chain, wallet, d));
             return (
               <tr key={d}>
-                <td class="nowrap">{fmtInt(d)}</td>
+                <td class="nowrap">{fmtInt(dayNumber(d))}</td>
                 <td class="r num" data-view="TownHook.bought(c, wallet)">
                   {fmtTown(wallet.bought[d])}
                   <Usd amount={wallet.bought[d]} unit="TOWN" block />
@@ -177,7 +198,7 @@ function YourRebate() {
                 <td class="r nowrap">
                   {status === 'claimed' && <span class="muted">Claimed</span>}
                   {status === 'ready' && <span class="status-ready">Ready</span>}
-                  {status === 'waiting' && <span class="muted">From day {fmtInt(claimOpensOn(d))}</span>}
+                  {status === 'waiting' && <span class="muted">From day {fmtInt(dayNumber(claimOpensOn(d)))}</span>}
                 </td>
               </tr>
             );
@@ -219,7 +240,7 @@ function Today() {
           note={capped ? `${fmtRate(afterFeeBps(chain, paying))} so far, with the limit shared.` : 'What reaches the buyer.'}
         />
         <YesterdaysLean />
-        <Fig label="Today’s limit" value={fmtTown(chain.rewards.cap[c] ?? 0n)} unit="TOWN" amount={chain.rewards.cap[c] ?? 0n} view="BuyerRewards.cap(currentCycle)" />
+        <Fig label="Today’s limit" value={fmtCap(chain.rewards.cap[c] ?? 0n)} unit="TOWN" amount={chain.rewards.cap[c] ?? 0n} view="BuyerRewards.cap(currentCycle)" />
         <Fig
           label="Bought by everyone today"
           value={fmtTown(chain.hook.cycleTotal[c] ?? 0n)}
@@ -227,7 +248,7 @@ function Today() {
           amount={chain.hook.cycleTotal[c] ?? 0n}
           view="TownHook.cycleTotal(currentCycle)"
         />
-        <Fig label="Today’s rebates open on" value={dayName(claimOpensOn(c))} view="currentCycle + 1 (CR-44)" note="From the start of the next day." />
+        <Fig label="Today’s rebates open on" value={dayName(claimOpensOn(c))} view="currentCycle + 1 (CR-44)" note="From midnight UTC, when the next day begins." />
       </Figures>
       <p class="small muted card-foot">
         <RateRule chain={chain} /> If a day’s buying times its rate passes the day’s limit, the limit is shared and the rate falls.
@@ -254,7 +275,7 @@ function YesterdaysLean() {
   const l = leanToday(chain);
   const first = l.days[0];
   const last = l.days[l.days.length - 1];
-  const span = l.days.length === 0 ? '' : l.days.length === 1 ? `day ${fmtInt(first)}` : `days ${fmtInt(first)} to ${fmtInt(last)}`;
+  const span = l.days.length === 0 ? '' : l.days.length === 1 ? `day ${fmtInt(dayNumber(first))}` : `days ${fmtInt(dayNumber(first))} to ${fmtInt(dayNumber(last))}`;
   const word = l.days.length === 1 ? 'the last day' : `the last ${l.days.length === 2 ? 'two' : 'three'} days`;
   const value = l.lean === 0 ? '0' : `${l.lean > 0 ? '+' : '−'}${Math.abs(l.lean).toFixed(2)}`;
   let note: string;
@@ -279,29 +300,49 @@ function Rules() {
         <RateRule chain={chain} /> The lean is (bought − sold) ÷ (bought + sold) over those days, from −1 to +1; the rate moves in a straight line between
         the three points.
       </li>
-      <li>A day can be claimed from the start of the next day. Rebates never expire.</li>
+      <li>
+        Days are calendar days in UTC, from midnight to midnight; {dayName(0)}, the launch day, began at launch and was shorter. A day can be claimed from
+        midnight UTC, when the next day begins. Rebates never expire.
+      </li>
       <li>
         {fmtBps(chain.rewards.CLAIM_FEE_BPS)} of every claim goes to the treasury for the owner, in TOWN, so a buyer gets {fmtRate(afterFeeBps(chain, r.low))}{' '}
         to {fmtRate(afterFeeBps(chain, r.high))} back.
       </li>
       <li>A limit is not a promise: a quiet day pays less, and what it does not use stays in the reserve.</li>
-      <li>Near the end of the reserve, days are paid in the order they are first claimed or finalised.</li>
+      <li>
+        The reserve can be topped up: from {dayName(chain.hook.RESERVE_FEE_START)} half of every sell fee paid in TOWN goes to it, at the burn floor 1% of
+        every sell does, and anyone can send it TOWN.
+      </li>
+      <li>
+        When the reserve runs low, days are paid in the order they are first claimed or finalised. While it is empty rebates pause, and a day settled then
+        gets nothing, even if TOWN arrives later.
+      </li>
       <li>Only buys in the official TOWN pool count. Claiming costs gas; small rebates may cost more than they are worth.</li>
     </ul>
   );
 }
 
-const EPOCHS = [0, 100, 200, 300, 400, 500, 600];
+/** The first cycle of each 100-day period whose limit halves (seven of them), then the 25,000 TOWN tail from cycle 700 (CR-93). */
+const EPOCHS = [0, 100, 200, 300, 400, 500, 600, 700];
 
+/**
+ * The daily-limit schedule (spec "Emission schedule", CR-93 amended): BuyerRewards.cap() at each
+ * period's first day, and the share of the 500,000,000 TOWN launch funding the limits use up by the
+ * end of each period if every day reached its limit. The reserve also takes in TOWN after launch
+ * (sell fees, anyone's transfers), which the shares leave out and which lengthens the tail.
+ */
 function Schedule() {
   const chain = useChain();
   const now = epochIndex(chain.rewards.currentCycle);
-  const reserve = chain.rewards.RESERVE;
+  const tail = chain.rewards.cap[EPOCHS[EPOCHS.length - 1]] ?? 0n;
   let cumulative = 0n;
   return (
     <>
-      <h3 class="details-title">Daily limit: halves every 100 days</h3>
-      <p class="small muted">Half the 500,000,000 TOWN reserve is scheduled for the first 100 days.</p>
+      <h3 class="details-title">Daily limit: halves every 100 days, then {fmtCap(tail)} TOWN a day</h3>
+      <p class="small muted">
+        Half the 500,000,000 TOWN the reserve was funded with at launch is scheduled for the first 100 days. The limit halves every 100 days down to{' '}
+        {fmtCap(chain.rewards.cap[600] ?? 0n)} TOWN for days 601 to 700; from day 701 it is {fmtCap(tail)} TOWN a day for as long as the reserve has TOWN.
+      </p>
       <div class="table-scroll">
       <table class="table compact">
         <caption class="visually-hidden">Daily rebate limit by 100-day period</caption>
@@ -312,7 +353,7 @@ function Schedule() {
               Limit per day
             </th>
             <th scope="col" class="r">
-              Reserve used by the end
+              Launch funding used by the end
             </th>
           </tr>
         </thead>
@@ -320,25 +361,30 @@ function Schedule() {
           {EPOCHS.map((first, i) => {
             const cap = chain.rewards.cap[first] ?? 0n;
             const last = i < EPOCHS.length - 1 ? first + 99 : null;
-            cumulative += last !== null ? cap * 100n : reserve - cumulative;
-            const share = Math.round(Number((cumulative * 1_000_000n) / reserve) / 100) / 100;
+            cumulative += last !== null ? cap * 100n : 0n;
+            const share = Math.round(Number((cumulative * 1_000_000n) / LAUNCH_FUNDING) / 100) / 100;
             return (
               <tr key={first} class={i === now ? 'current' : undefined}>
                 <td class="nowrap">
-                  {fmtInt(first)}
-                  {last !== null ? `–${fmtInt(last)}` : ' on'}
+                  {fmtInt(dayNumber(first))}
+                  {last !== null ? `–${fmtInt(dayNumber(last))}` : ' on'}
                   {i === now && <span class="now-tag">Now</span>}
                 </td>
                 <td class="r num" data-view={`BuyerRewards.cap(${first})`}>
-                  {fmtTown(cap)}
+                  {fmtCap(cap)}
                 </td>
-                <td class="r num">{last !== null ? `${share}%` : 'until spent'}</td>
+                <td class="r num">{last !== null ? `${share}%` : 'the rest, then what arrives'}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
       </div>
+      <p class="small faint table-note">
+        Shares of the 500,000,000 TOWN launch funding, if every day used its whole limit. The reserve can be topped up: from{' '}
+        {dayName(chain.hook.RESERVE_FEE_START)} half of every sell fee paid in TOWN goes to it, at the burn floor 1% of every sell does, and anyone can send
+        it TOWN. What arrives pays the {fmtCap(tail)} TOWN days for longer.
+      </p>
     </>
   );
 }

@@ -1,10 +1,10 @@
 import { useApp, Card, Fig, Figures, Notice, Verify } from '../components/ui';
 import { CheckIcon, EthIcon, FlowGraphic, LockIcon, RebateIcon } from '../components/icons';
-import { afterFeeBps, burnFloor, burned, dayRateBps, rateRange } from '../lib/derive';
+import { afterFeeBps, burnFloor, burned, dayRateBps, rateRange, reserveFeeStart } from '../lib/derive';
 import { dayName, fmtBps, fmtEth, fmtTown, fmtRate } from '../lib/format';
 import { contractUrl, readUrl, tokenUrl } from '../lib/network';
 
-const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell pays 2%: burned, or to the treasury in ETH'];
+const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell pays 2%: burned, to the rebate reserve, or to the treasury in ETH'];
 
 /**
  * The owner's own words (CR-77 items 2 to 5), character for character as he wrote them, including
@@ -156,8 +156,9 @@ export function Home() {
                 <div>
                   <h3>On a sell, TownHook takes 2%</h3>
                   <p>
-                    The 2% is burned in TOWN, until only {fmtTown(burnFloor(chain))} TOWN remain. On a day after one that burned more TOWN than it paid out in
-                    rebates, and always at that floor, it goes to the treasury in ETH instead.
+                    The 2% is taken in TOWN and burned; from {dayName(reserveFeeStart(chain))} half is burned and half refills the rebate reserve. On a day
+                    after one that burned more TOWN than it paid out in rebates, it goes to the treasury in ETH instead. Once only{' '}
+                    {fmtTown(burnFloor(chain))} TOWN remain, every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.
                   </p>
                 </div>
               </li>
