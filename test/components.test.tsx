@@ -53,6 +53,12 @@
 // - CR-92 part 1 (F9t), the Docs item for whoever routes buys for others: its place after "Buy on
 //   this site", its text character for character (the 32-byte rule), its code words, and its example
 //   `hookData` against the bytes the site's own buy form puts in its swap.
+// - CR-95 items 2 and 3 (F9v): the Trade page without its "Buy here" line; the dollar figures — the
+//   arithmetic from a known sqrtPriceX96 and a known ETH price, the pool's price as the site reads
+//   it (against StateView read on its own at the same block), the figures beside the amounts on
+//   every page from fixtures with the feed's price, the fallback mark (the local chain itself runs
+//   on the owner's fallback price), and no dollar figure anywhere when no usable price is reported.
+//   Checks written before F9v read the pages with the estimates hidden (`plain`).
 // Nothing here sends a transaction to any chain: only Check buttons (read-only calls) are clicked.
 import { render, type ComponentChildren } from 'preact';
 // The site's own stylesheet and the owner's own logo files, read as text (CR-75): the checks
@@ -62,9 +68,14 @@ import LOGO_ON_LIGHT from '../logo/uptown-lamplight-on-light.svg?raw';
 import LOGO_ON_DARK from '../logo/uptown-lamplight-on-dark.svg?raw';
 import { AppContext, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
-import { makeClient, quoteBuy, readAll, readVaults, replacedRecords, verifyCandidate } from '../src/lib/reads';
+import { makeClient, poolId, quoteBuy, readAll, readVaults, replacedRecords, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
-import { ERRORS_ABI, HOOK_ABI, PERMIT2_ABI, ROUTER_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from '../src/lib/abi';
+import { ERRORS_ABI, HOOK_ABI, PERMIT2_ABI, ROUTER_ABI, STAKING_ABI, STATEVIEW_ABI, TOKEN_ABI, TREASURY_ABI } from '../src/lib/abi';
+// CR-95: the files that build and send transactions, read as text, to show no dollar figure reaches them.
+import ACTIONS_SRC from '../src/lib/actions.ts?raw';
+import WALLET_SRC from '../src/lib/wallet.ts?raw';
+import QUICK_SRC from '../src/lib/quick.ts?raw';
+import AMOUNT_SRC from '../src/lib/amount.ts?raw';
 import { ContractFunctionRevertedError, decodeAbiParameters, decodeFunctionData, encodeErrorResult, encodeFunctionData, formatUnits, getAddress, type PublicClient } from 'viem';
 import { Owner, OwnerPage } from '../src/pages/Owner';
 import { networkLabel, pageAccess, showsOwnerLink } from '../src/lib/owner';
@@ -84,8 +95,9 @@ import {
   type WalletInfo,
 } from '../src/lib/wallet';
 import { COMMA_MESSAGE, amountError, parseAmount } from '../src/lib/amount';
-import { afterFeeBps, dayRateBps, minCheck, rateRange, rpcBehind } from '../src/lib/derive';
-import { dayName, fmtBps, fmtDateTime, fmtEth, fmtRate, fmtTown, fmtUsd8, shortAddress } from '../src/lib/format';
+import { ONE_TOWN, afterFeeBps, dayRateBps, minCheck, rateRange, rpcBehind, townPriceWei, usdOf } from '../src/lib/derive';
+import { dayName, fmtBps, fmtDateTime, fmtEth, fmtRate, fmtTown, fmtUsd, fmtUsd8, shortAddress } from '../src/lib/format';
+import { PriceSource } from '../src/data/types';
 import { CandidateMark, OwnerChanges, Stats, TradingVolume } from '../src/pages/Stats';
 import { Trade } from '../src/pages/Trade';
 import { OldVaultCard, Stake } from '../src/pages/Stake';
@@ -161,6 +173,21 @@ async function mount(node: ComponentChildren, chain: ChainState | null, wallet: 
 }
 
 const text = (el: HTMLElement) => el.innerText.replace(/\s+/g, ' ').trim();
+/**
+ * Reads the page with the dollar estimates (CR-95, F9v) left out of view. The checks written before
+ * F9v compare the amounts and sentences themselves; F9v's own checks (cr95 below) read the
+ * estimates. Hiding them with a style rule keeps innerText exactly what it was before.
+ */
+function plain<T>(read: () => T): T {
+  const s = document.createElement('style');
+  s.textContent = '.usd { display: none !important; }';
+  document.head.append(s);
+  try {
+    return read();
+  } finally {
+    s.remove();
+  }
+}
 const button = (el: HTMLElement, label: string) => [...el.querySelectorAll('button')].find((b) => b.textContent!.trim().startsWith(label)) ?? null;
 /** The value shown for the figure read from `view` (its `data-view`), without its unit. */
 const figText = (el: HTMLElement, view: string) => (el.querySelector(`[data-view="${view}"] .num`) as HTMLElement | null)?.innerText.trim() ?? null;
@@ -480,7 +507,7 @@ async function run() {
         shown.soldToday === fmtTown(st),
       `block ${base.blockNumber}, day ${c}: shown ${JSON.stringify(shown)}; views cycleTotal(${c - 1}) ${by}, sold(${c - 1}) ${sy}, cycleTotal(${c}) ${bt}, sold(${c}) ${st}`,
     );
-    const t = text(el).replace(/(\d)TOWN/g, '$1 TOWN'); // unstyled, the value and its unit touch
+    const t = plain(() => text(el)).replace(/(\d)TOWN/g, '$1 TOWN'); // unstyled, the value and its unit touch
     check(
       'CR-61 Stats (live): today is marked as still counting, and the line says what the figures are',
       t.includes(`Bought today so far ${fmtTown(bt)} TOWN ${dayName(c)}, still counting`) &&
@@ -501,7 +528,7 @@ async function run() {
       rewards: { ...base.rewards, currentCycle: 0 },
     };
     const el = await mount(<TradingVolume />, chain, wallet, 'Stats trading volume on day 0 (fixture)');
-    const t = text(el).replace(/(\d)TOWN/g, '$1 TOWN');
+    const t = plain(() => text(el)).replace(/(\d)TOWN/g, '$1 TOWN');
     check(
       'CR-61 day 0 (fixture): yesterday reads "None yet"; today 5,000,000 bought and 1,000,000 sold, still counting',
       t.includes('Bought yesterday None yet Day 0 has no day before it') &&
@@ -813,6 +840,7 @@ async function run() {
   await cr82(base, wallet);
   await cr84cr87cr88();
   await cr92(base, wallet);
+  await cr95(base, wallet);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -825,7 +853,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, v);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
-  const usesIn = (el: Element | null) => (el?.querySelector('.uses') as HTMLElement | null)?.innerText.replace(/\s+/g, ' ').trim() ?? null;
+  const usesIn = (el: Element | null) => plain(() => (el?.querySelector('.uses') as HTMLElement | null)?.innerText.replace(/\s+/g, ' ').trim() ?? null);
   const inAction = (el: HTMLElement, id: string) => el.querySelector(`[data-action="${id}"]`) as HTMLElement;
   const runCheck = async (el: HTMLElement, id: string) => {
     button(inAction(el, id), 'Check:')!.click();
@@ -2358,7 +2386,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
       statusBox = el;
       typeIn(el, '#vault-town', '1000');
       await settle();
-      const before = text(el.querySelector('.action-form') as HTMLElement);
+      const before = plain(() => text(el.querySelector('.action-form') as HTMLElement));
       const label = (el.querySelector('.stake-go') as HTMLButtonElement).textContent!.trim();
       press(el, '.stake-go');
       const st = await finished(el);
@@ -2448,7 +2476,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
       const el = await mount(<Trade />, chain, walletOf(x), 'CR-82: buy quick amounts with the gas kept back', extra);
       const box = el.querySelector('#trade-panel-buy') as HTMLElement;
       await settle(150);
-      const note = text(box.querySelector('.quick-note') as HTMLElement);
+      const note = plain(() => text(box.querySelector('.quick-note') as HTMLElement));
       const got: string[] = [];
       let ok = true;
       for (const p of [25, 50, 75, 100] as const) {
@@ -2473,7 +2501,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
       const box = el.querySelector('#trade-panel-buy') as HTMLElement;
       await settle(150);
       const buttons = [25, 50, 75, 100].map((p) => button(box, `${p}%`));
-      const note = text(box.querySelector('.quick-note') as HTMLElement);
+      const note = plain(() => text(box.querySelector('.quick-note') as HTMLElement));
       check(
         'CR-82 buy quick amounts: with a balance that does not exceed the gas kept back, the four buttons are off, with the reason',
         buttons.every((b) => b?.disabled === true) && note === 'Off: this wallet’s 0.0042 ETH does not cover the 0.0042 ETH kept back for the buy’s gas.',
@@ -3054,6 +3082,229 @@ async function cr92(base: ChainState, wallet: WalletState) {
     render(null, docs);
     docs.remove();
   }
+  style.remove();
+}
+
+// ---- F9v (CR-95 items 2 and 3): no "buy here" line on Trade; dollar figures beside every amount --
+async function cr95(base: ChainState, wallet: WalletState) {
+  const style = document.createElement('style');
+  style.textContent = GLOBAL_CSS;
+  document.head.append(style);
+  const E18 = 10n ** 18n;
+  const ownerWallet = { ...wallet, address: OWNER };
+
+  // ---- item 2: the line is gone; the rest of the page is as it was ----
+  {
+    const el = await mount(<Trade />, base, wallet, 'CR-95 item 2: the Trade page (live)');
+    const all = el.textContent ?? '';
+    check(
+      'CR-95 item 2: the Trade page has no "Buy here so the rebate is credited to your wallet." line: no .credit-line element and none of its words, on the buy side or the sell side',
+      !el.querySelector('.credit-line') && !all.includes('Buy here so the rebate') && !/credited to your wallet/i.test(all) && !GLOBAL_CSS.includes('.credit-line'),
+      `credit-line elements: ${el.querySelectorAll('.credit-line').length}; the words anywhere: ${all.includes('Buy here so the rebate')}; the stylesheet rule left: ${GLOBAL_CSS.includes('.credit-line')}`,
+    );
+    const docs = await mount(<Docs />, base, wallet, 'CR-95 item 2: the Docs page keeps "Buy on this site"');
+    const items = [...docs.querySelectorAll('#docs-know ul.doc-list > li')].map((li) => li.textContent ?? '');
+    check(
+      'CR-95 item 2: the Docs page’s "Buy on this site" item and the note for wallets, aggregators and bots stay',
+      items.some((t) => t.startsWith('Buy on this site.')) && items.some((t) => t.startsWith('For wallets, aggregators and bots.')),
+      `${items.length} items`,
+    );
+  }
+
+  // ---- the arithmetic, from a known pool price and a known ETH price ----
+  const Q96 = 1n << 96n;
+  const SQRT = Q96 * 10_000n; // (sqrtPriceX96 / 2^96)^2 = 10^8 TOWN per ETH: one TOWN is 10^-8 ETH, 10 gwei
+  const ETH_USD = 270_000_000_000n; // $2,700.00 with Chainlink's 8 decimals
+  const at = (source: PriceSource, price = ETH_USD, sqrt: bigint | null = SQRT): ChainState => ({
+    ...base,
+    staking: { ...base.staking, priceStatus: { ...base.staking.priceStatus, price, source } },
+    pool: { sqrtPriceX96: sqrt },
+  });
+  const feed = at(PriceSource.Feed);
+  {
+    const one = usdOf(feed, ONE_TOWN, 'TOWN');
+    const million = usdOf(feed, 1_000_000n * E18, 'TOWN');
+    const eth = usdOf(feed, E18, 'ETH');
+    const weth = usdOf(feed, E18 / 2n, 'WETH');
+    const big = usdOf(feed, 1_234_500n * 10n ** 15n, 'ETH'); // 1,234.5 ETH
+    check(
+      'CR-95 arithmetic: sqrtPriceX96 = 2^96 × 10^4 (10^8 TOWN per ETH, 10 gwei per TOWN) and ETH at $2,700.00 give, exactly in integers, 1 TOWN = $0.000027, 1,000,000 TOWN = $27.00, 1 ETH = $2,700.00, 0.5 WETH = $1,350.00, 1,234.5 ETH = $3,333,150.00',
+      one?.usd === 27_000_000_000_000n &&
+        million?.usd === 27n * E18 &&
+        eth?.usd === 2_700n * E18 &&
+        weth?.usd === 1_350n * E18 &&
+        big?.usd === 3_333_150n * E18 &&
+        townPriceWei(feed) === 10_000_000_000n &&
+        one.fallback === false,
+      `1 TOWN ${one?.usd}, 1,000,000 TOWN ${million?.usd}, 1 ETH ${eth?.usd}, 0.5 WETH ${weth?.usd}, 1,234.5 ETH ${big?.usd} (dollars × 10^18); ${townPriceWei(feed)} wei per TOWN`,
+    );
+    check(
+      'CR-95 format: one helper; two decimals with thousands separators, "< $0.01" below a cent, "$0.00" for nothing; TOWN’s unit price with three significant digits below a dollar',
+      fmtUsd(million!.usd) === '$27.00' &&
+        fmtUsd(big!.usd) === '$3,333,150.00' &&
+        fmtUsd(10n ** 15n) === '< $0.01' &&
+        fmtUsd(0n) === '$0.00' &&
+        fmtUsd(one!.usd, true) === '$0.000027' &&
+        fmtUsd(27_123_456_789_000n, true) === '$0.0000271' &&
+        fmtUsd(12_349n * 10n ** 12n, true) === '$0.0123' &&
+        fmtUsd(E18 / 2n, true) === '$0.50' &&
+        fmtUsd(1_509n * 10n ** 15n, true) === '$1.50',
+      [fmtUsd(million!.usd), fmtUsd(big!.usd), fmtUsd(10n ** 15n), fmtUsd(0n), fmtUsd(one!.usd, true), fmtUsd(27_123_456_789_000n, true), fmtUsd(12_349n * 10n ** 12n, true), fmtUsd(E18 / 2n, true), fmtUsd(1_509n * 10n ** 15n, true)].join(' | '),
+    );
+    // The spec's launch price (spec "Pool and launch position": tick 184,200, sqrtPriceX96 about
+    // 7.916474 × 10^32, 10.016 gwei per TOWN): the same arithmetic gives 10.016 gwei and, at $2,700,
+    // about $0.000027 per TOWN.
+    const start = at(PriceSource.Feed, ETH_USD, 791_647_400_000_000_000_000_000_000_000_000n);
+    const w = townPriceWei(start)!;
+    const u = usdOf(start, ONE_TOWN, 'TOWN')!;
+    check(
+      'CR-95 arithmetic at the spec’s launch price (sqrtPriceX96 ≈ 7.916474 × 10^32): 10.016 gwei per TOWN, about $0.000027 per TOWN at ETH $2,700',
+      w >= 10_015_000_000n && w <= 10_017_000_000n && fmtUsd(u.usd, true) === '$0.000027',
+      `${w} wei per TOWN; ${fmtUsd(u.usd, true)}`,
+    );
+  }
+
+  // ---- what the site reads: the pool's price through StateView, at the figures' block ----
+  {
+    const sv = NETWORK.uniswap!.stateView!;
+    const [sqrt] = (await client.readContract({ address: sv, abi: STATEVIEW_ABI, functionName: 'getSlot0', args: [poolId(NETWORK)], blockNumber: base.blockNumber })) as readonly [bigint, number, number, number];
+    const ps = base.staking.priceStatus;
+    const one = usdOf(base, ONE_TOWN, 'TOWN');
+    // An independent, floating-point reading of the same two numbers, to a millionth.
+    const r = Number(sqrt) / 2 ** 96;
+    const float = Number(ps.price) / 1e8 / (r * r);
+    const exact = one ? Number(one.usd) / 1e18 : NaN;
+    check(
+      'CR-95 the pool’s price is read through StateView.getSlot0(poolId) with the other figures, at the same block; the live dollar price of one TOWN agrees with a floating-point reading of the same numbers',
+      sqrt > 0n && base.pool.sqrtPriceX96 === sqrt && !!one && Math.abs(exact - float) / float < 1e-6,
+      `StateView ${sv}, poolId ${poolId(NETWORK)}, block ${base.blockNumber}: sqrtPriceX96 ${sqrt}; ETH ${fmtUsd8(ps.price)} (source ${PriceSource[ps.source]}); 1 TOWN ${one ? fmtUsd(one.usd, true) : 'none'} (${exact} against ${float})`,
+    );
+  }
+
+  // ---- beside every amount, on every page, with the feed's price ----
+  const pages: [string, () => ComponentChildren, WalletState][] = [
+    ['Home', () => <Home />, wallet],
+    ['Trade', () => <Trade />, wallet],
+    ['Trade, sell', () => <Trade sell />, wallet],
+    ['Rewards', () => <Rewards />, wallet],
+    ['Stake', () => <Stake />, wallet],
+    ['Stats', () => <Stats />, wallet],
+    ['Owner', () => <Owner />, ownerWallet],
+  ];
+  const usdOn = (el: HTMLElement) => [...el.querySelectorAll('.usd')] as HTMLElement[];
+  {
+    const counts: string[] = [];
+    let every = true;
+    for (const [name, node, w] of pages) {
+      const el = await mount(node(), feed, w, `CR-95: ${name}, Chainlink’s price $2,700.00 (fixture)`);
+      const n = usdOn(el).length;
+      counts.push(`${name} ${n}`);
+      every &&= n > 0 && !el.querySelector('.usd.fallback');
+    }
+    check('CR-95 every page shows dollar figures (Home, Trade buy and sell, Rewards, Stake, Stats, Owner), none marked as the fallback while the feed’s price is in use', every, counts.join(', '));
+
+    const stats = await mount(<Stats />, feed, wallet, 'CR-95: Stats (fixture, feed)');
+    const fig = (view: string) => stats.querySelector(`[data-view="${view}"]`) as HTMLElement | null;
+    const bal = fig('eth_getBalance(Treasury)');
+    const sup = fig('UpTownToken.totalSupply');
+    const wantBal = `≈ ${fmtUsd(usdOf(feed, base.treasury.balance, 'ETH')!.usd)}`;
+    const wantSup = `≈ ${fmtUsd(usdOf(feed, base.token.totalSupply, 'TOWN')!.usd)}`;
+    const got = (el: HTMLElement | null) => (el?.querySelector('.usd') as HTMLElement | null)?.innerText.trim() ?? null;
+    check(
+      'CR-95 a figure keeps its amount and its unit, with the dollar estimate under it, muted: the Treasury’s ETH balance and the total supply',
+      bal?.querySelector('.num')?.textContent === fmtEth(base.treasury.balance) &&
+        bal?.querySelector('.unit')?.textContent === 'ETH' &&
+        got(bal) === wantBal &&
+        sup?.querySelector('.num')?.textContent === fmtTown(base.token.totalSupply) &&
+        sup?.querySelector('.unit')?.textContent === 'TOWN' &&
+        got(sup) === wantSup &&
+        getComputedStyle(bal!.querySelector('.usd')!).color === getComputedStyle(bal!.querySelector('.unit')!).color &&
+        parseFloat(getComputedStyle(bal!.querySelector('.usd')!).fontSize) < parseFloat(getComputedStyle(bal!.querySelector('.num')!).fontSize),
+      `balance "${bal?.querySelector('.num')?.textContent} ${bal?.querySelector('.unit')?.textContent}" ${got(bal)} (want ${wantBal}); supply "${sup?.querySelector('.num')?.textContent} ${sup?.querySelector('.unit')?.textContent}" ${got(sup)} (want ${wantSup})`,
+    );
+
+    const trade = await mount(<Trade />, feed, wallet, 'CR-95: Trade with the feed’s price (fixture)');
+    const line = trade.querySelector('.price-line') as HTMLElement | null;
+    const lt = line ? text(line) : '';
+    const balUsd = trade.querySelector('#trade-panel-buy .swap-box-top .usd') as HTMLElement | null;
+    check(
+      'CR-95 Trade shows TOWN’s price in dollars, from the pool’s price and the feed’s ETH price: "TOWN price ≈ $0.000027 10 gwei per TOWN in the pool at ETH $2,700.00, Chainlink’s price"; the wallet’s balance carries its estimate',
+      lt === 'TOWN price ≈ $0.000027 10 gwei per TOWN in the pool at ETH $2,700.00, Chainlink’s price' &&
+        balUsd?.innerText.trim() === `(≈ ${fmtUsd(usdOf(feed, wallet.ethBalance, 'ETH')!.usd)})`,
+      `${lt} | balance: ${balUsd?.innerText.trim()}`,
+    );
+  }
+
+  // ---- the owner's fallback price: every figure marked ----
+  {
+    const fb = at(PriceSource.Fallback);
+    const el = await mount(<Stats />, fb, wallet, 'CR-95: Stats on the owner’s fallback price (fixture)');
+    const list = usdOn(el);
+    const marked = list.filter((u) => u.classList.contains('fallback') && !!u.querySelector('svg') && /fallback ETH price of \$2,700\.00/.test(u.title));
+    const trade = await mount(<Trade />, fb, wallet, 'CR-95: Trade on the owner’s fallback price (fixture)');
+    const lt = text(trade.querySelector('.price-line') as HTMLElement);
+    const warn = getComputedStyle(trade.querySelector('.price-line .usd.fallback svg') as Element).color;
+    const noticeWarn = getComputedStyle(document.documentElement).getPropertyValue('--warn-text').trim();
+    check(
+      'CR-95 fallback: while priceStatus() names the owner’s fallback price, every dollar figure carries the fallback notice’s warning mark and says so in its tooltip; Trade’s price line names the fallback',
+      list.length > 0 && marked.length === list.length && lt.endsWith('at ETH $2,700.00, the owner’s fallback price') && !!warn && !!noticeWarn,
+      `${marked.length} of ${list.length} marked; "${lt}"; mark colour ${warn} (the notice’s --warn-text ${noticeWarn})`,
+    );
+    check(
+      'CR-95 the local chain itself runs on the owner’s fallback price (local-chain.sh sets it; the fork’s Chainlink answer is old), so the site’s own photographs show the mark',
+      base.staking.priceStatus.source === PriceSource.Fallback,
+      `TownStaking.priceStatus(): ${fmtUsd8(base.staking.priceStatus.price)}, source ${PriceSource[base.staking.priceStatus.source]}`,
+    );
+  }
+
+  // ---- no usable price: no dollar figure anywhere ----
+  {
+    const found: string[] = [];
+    let none = true;
+    for (const [label, chain] of [
+      ['source None, price 0', at(PriceSource.None, 0n)],
+      ['source None, a stale price still reported', at(PriceSource.None, ETH_USD)],
+    ] as const) {
+      for (const [name, node, w] of pages) {
+        const el = await mount(node(), chain, w, `CR-95: ${name}, no usable price, ${label} (fixture)`);
+        const n = usdOn(el).length + el.querySelectorAll('[data-usd]').length;
+        const approx = (el.textContent ?? '').match(/≈ \$[\d,.]+/g) ?? [];
+        none &&= n === 0 && approx.length === 0;
+        if (n || approx.length) found.push(`${label}, ${name}: ${n} figures, ${approx.join(' ')}`);
+      }
+    }
+    const trade = await mount(<Trade />, at(PriceSource.None, 0n), wallet, 'CR-95: Trade with no usable price (fixture)');
+    const lt = text(trade.querySelector('.price-line') as HTMLElement);
+    check(
+      'CR-95 hidden: when priceStatus() reports no usable price, no dollar figure appears on any page (Home, Trade buy and sell, Rewards, Stake, Stats, Owner), not even a stale one; Trade says why',
+      none && lt === 'TOWN price 10 gwei per TOWN in the pool No ETH price is reported, so no dollar figures are shown.',
+      found.join(' | ') || `none anywhere; Trade: "${lt}"`,
+    );
+
+    const noPool = at(PriceSource.Feed, ETH_USD, null);
+    const el = await mount(<Stats />, noPool, wallet, 'CR-95: Stats with the pool’s price unread (fixture)');
+    const ethFig = el.querySelector('[data-view="eth_getBalance(Treasury)"] .usd');
+    const townFig = el.querySelector('[data-view="UpTownToken.totalSupply"] .usd');
+    const tr = await mount(<Trade />, noPool, wallet, 'CR-95: Trade with the pool’s price unread (fixture)');
+    check(
+      'CR-95 hidden: without the pool’s price the TOWN figures have no dollar estimate (and Trade no TOWN price line) while the ETH figures keep theirs',
+      !!ethFig && !townFig && !tr.querySelector('.price-line'),
+      `ETH figure: ${!!ethFig}; TOWN figure: ${!!townFig}; price line: ${!!tr.querySelector('.price-line')}`,
+    );
+  }
+
+  // ---- estimates only: nothing that builds or sends a transaction reads a dollar figure ----
+  {
+    const files = { 'actions.ts': ACTIONS_SRC, 'wallet.ts': WALLET_SRC, 'quick.ts': QUICK_SRC, 'amount.ts': AMOUNT_SRC };
+    const hits = Object.entries(files).filter(([, src]) => /usdOf|fmtUsd\b|\bUsd\b|priceStatus|sqrtPriceX96/.test(src)).map(([f]) => f);
+    check(
+      'CR-95 estimates only: the files that build, check and send transactions (actions, wallet, quick amounts, typed amounts) use no dollar figure, ETH price or pool price',
+      hits.length === 0,
+      hits.length ? `found in ${hits.join(', ')}` : 'none of the four mentions usdOf, fmtUsd, Usd, priceStatus or sqrtPriceX96',
+    );
+  }
+
+  if (!GALLERY) stage.replaceChildren();
   style.remove();
 }
 
