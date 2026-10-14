@@ -1,4 +1,4 @@
-import { useApp, useChain, useTx, Card, Fig, Figures, Notice, PageHead, TxStatus, Verify } from '../components/ui';
+import { useApp, useChain, useTx, Card, Fig, Figures, Notice, PageHead, TxStatus, Usd, Verify } from '../components/ui';
 import { applyStakingTx, pokeTx } from '../lib/actions';
 import { TIERS, type CandidateCheck } from '../data/types';
 import {
@@ -47,9 +47,16 @@ function Treasury() {
   return (
     <Card title="Treasury">
       <Figures cols={3}>
-        <Fig label="ETH balance" value={fmtEth(t.balance)} unit="ETH" view="eth_getBalance(Treasury)" />
-        <Fig label="Owner reserve" value={fmtEth(t.ownerEthAvailable)} unit="ETH" view="Treasury.ownerEthAvailable" note="10% of all ETH in" />
-        <Fig label="For stakers" value={fmtEth(forStakers(chain))} unit="ETH" view="balance - ownerEthAvailable" note="balance less the owner reserve" />
+        <Fig label="ETH balance" value={fmtEth(t.balance)} unit="ETH" amount={t.balance} view="eth_getBalance(Treasury)" />
+        <Fig label="Owner reserve" value={fmtEth(t.ownerEthAvailable)} unit="ETH" amount={t.ownerEthAvailable} view="Treasury.ownerEthAvailable" note="10% of all ETH in" />
+        <Fig
+          label="For stakers"
+          value={fmtEth(forStakers(chain))}
+          unit="ETH"
+          amount={forStakers(chain)}
+          view="balance - ownerEthAvailable"
+          note="balance less the owner reserve"
+        />
         <Fig
           label="Daily payout rate"
           value={fmtBps(t.spendBps)}
@@ -60,6 +67,7 @@ function Treasury() {
           label={`${dayName(c)} budget`}
           value={b.kind === 'paused' ? (paidBeforePause ? fmtEth(t.budget) : 'None') : b.kind === 'waiting' ? `≈ ${fmtEth(b.estimate)}` : fmtEth(b.amount)}
           unit={b.kind === 'paused' && !paidBeforePause ? undefined : 'ETH'}
+          amount={b.kind === 'paused' ? (paidBeforePause ? t.budget : null) : b.kind === 'waiting' ? b.estimate : b.amount}
           view={b.kind === 'waiting' ? 'derived: (balance - ownerEthAvailable) × spendBps' : 'Treasury.budget'}
           accent
           note={
@@ -99,7 +107,8 @@ function Treasury() {
       {b.kind === 'below-minimum' && (
         <Notice kind="info" title="Today’s budget is under the minimum">
           <p>
-            The budget of <span class="num">{fmtEth(b.amount)}</span> ETH is under 0.001 ETH, so nothing was paid today. It stays in the treasury and counts
+            The budget of <span class="num">{fmtEth(b.amount)}</span> ETH <Usd amount={b.amount} unit="ETH" paren /> is under 0.001 ETH, so nothing was paid
+            today. It stays in the treasury and counts
             toward a later day.
           </p>
         </Notice>
@@ -337,12 +346,13 @@ export function TradingVolume() {
       label={label}
       value={y !== null ? fmtTown(h[what][y] ?? 0n) : 'None yet'}
       unit={y !== null ? 'TOWN' : undefined}
+      amount={y !== null ? (h[what][y] ?? 0n) : null}
       view={y !== null ? `TownHook.${what}(${y})` : `TownHook.${what}(c - 1)`}
       note={y !== null ? dayName(y) : `${dayName(0)} has no day before it`}
     />
   );
   const today = (what: 'cycleTotal' | 'sold', label: string) => (
-    <Fig label={label} value={fmtTown(h[what][c] ?? 0n)} unit="TOWN" view={`TownHook.${what}(${c})`} note={`${dayName(c)}, still counting`} />
+    <Fig label={label} value={fmtTown(h[what][c] ?? 0n)} unit="TOWN" amount={h[what][c] ?? 0n} view={`TownHook.${what}(${c})`} note={`${dayName(c)}, still counting`} />
   );
   return (
     <Card title="Trading volume, in TOWN" class="volume">
@@ -370,22 +380,24 @@ function EthFlows() {
   return (
     <Card title="ETH in and out, since launch">
       <Figures cols={2}>
-        <Fig label="ETH received by the treasury" value={fmtEth(t.totalEthReceived)} unit="ETH" view="Treasury.totalEthReceived" />
+        <Fig label="ETH received by the treasury" value={fmtEth(t.totalEthReceived)} unit="ETH" amount={t.totalEthReceived} view="Treasury.totalEthReceived" />
         <Fig
           label="from TownHook fees"
           value={fmtEth(hookFeesReceived(chain))}
           unit="ETH"
+          amount={hookFeesReceived(chain)}
           view="totalEthReceived - TownStaking.totalVaultFees"
           note="buy fees, and sell fees paid in ETH"
         />
-        <Fig label="from vault purchases" value={fmtEth(chain.staking.totalVaultFees)} unit="ETH" view="TownStaking.totalVaultFees" />
-        <Fig label="Paid to stakers" value={fmtEth(t.totalDistributed)} unit="WETH" view="Treasury.totalDistributed" accent />
-        <Fig label="Withdrawn by the owner" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" view="Treasury.totalOwnerEthWithdrawn" />
+        <Fig label="from vault purchases" value={fmtEth(chain.staking.totalVaultFees)} unit="ETH" amount={chain.staking.totalVaultFees} view="TownStaking.totalVaultFees" />
+        <Fig label="Paid to stakers" value={fmtEth(t.totalDistributed)} unit="WETH" amount={t.totalDistributed} view="Treasury.totalDistributed" accent />
+        <Fig label="Withdrawn by the owner" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" amount={t.totalOwnerEthWithdrawn} view="Treasury.totalOwnerEthWithdrawn" />
       </Figures>
       <p class="small faint card-foot">
         {unbooked > 0n && (
           <>
-            Another <span class="num">{fmtEth(unbooked)}</span> ETH has arrived and is counted at the next treasury action.{' '}
+            Another <span class="num">{fmtEth(unbooked)}</span> ETH <Usd amount={unbooked} unit="ETH" paren /> has arrived and is counted at the next treasury
+            action.{' '}
           </>
         )}
         ETH leaves the treasury only two ways: to the current staking contract and the owner’s 10% reserve. “From TownHook fees” also counts any other ETH
@@ -411,14 +423,15 @@ function TownTotals() {
   return (
     <Card title="TOWN">
       <Figures cols={2}>
-        <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="TOWN" view="UpTownToken.totalSupply" />
-        <Fig label="Burned" value={fmtTown(burned(chain))} unit="TOWN" view="1,000,000,000 - totalSupply" />
-        <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="TOWN" view="totalSupply - TownHook.BURN_FLOOR" />
+        <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="TOWN" amount={chain.token.totalSupply} view="UpTownToken.totalSupply" />
+        <Fig label="Burned" value={fmtTown(burned(chain))} unit="TOWN" amount={burned(chain)} view="1,000,000,000 - totalSupply" />
+        <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="TOWN" amount={leftToBurn(chain)} view="totalSupply - TownHook.BURN_FLOOR" />
         <Fig label="Sell fee today" value={words.mode} view="TownHook.sellFeeInEth" note={words.reason} accent />
         <Fig
           label="TOWN burned yesterday"
           value={m.burnedYesterday !== null ? fmtTown(m.burnedYesterday) : '—'}
           unit={m.burnedYesterday !== null ? 'TOWN' : undefined}
+          amount={m.burnedYesterday}
           view={y !== null ? `TownHook.burned(${y})` : 'TownHook.burned(c - 1)'}
           note={y !== null ? `by sell fees on ${dayName(y)}` : `${dayName(0)} has no day before it`}
         />
@@ -426,13 +439,14 @@ function TownTotals() {
           label="Rebates paid out yesterday"
           value={m.rebatesYesterday !== null ? fmtTown(m.rebatesYesterday) : '—'}
           unit={m.rebatesYesterday !== null ? 'TOWN' : undefined}
+          amount={m.rebatesYesterday}
           view={y !== null ? `BuyerRewards.emissionEstimate(${y})` : 'BuyerRewards.emissionEstimate(c - 1)'}
           note={y !== null ? `${dayName(y)}’s rebate pot; the fee is in ETH today only if the burn was larger` : undefined}
         />
-        <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="TOWN" view="BuyerRewards.totalEmitted" />
-        <Fig label="Rebate reserve remaining" value={fmtTown(reserveUnscheduled(chain))} unit="TOWN" view="RESERVE - totalEmitted" />
-        <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="TOWN" view="BuyerRewards.totalPaidToBuyers" accent />
-        <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" view="BuyerRewards.totalFeesToTreasury" />
+        <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="TOWN" amount={r.totalEmitted} view="BuyerRewards.totalEmitted" />
+        <Fig label="Rebate reserve remaining" value={fmtTown(reserveUnscheduled(chain))} unit="TOWN" amount={reserveUnscheduled(chain)} view="RESERVE - totalEmitted" />
+        <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="TOWN" amount={r.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" accent />
+        <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" amount={r.totalFeesToTreasury} view="BuyerRewards.totalFeesToTreasury" />
       </Figures>
       <p class="small faint card-foot">
         Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> TOWN of supply;
@@ -466,10 +480,10 @@ function Staking() {
         .
       </p>
       <Figures cols={4}>
-        <Fig label="TOWN staked" value={fmtTown(st.totalStaked)} unit="TOWN" view="TownStaking.totalStaked" />
+        <Fig label="TOWN staked" value={fmtTown(st.totalStaked)} unit="TOWN" amount={st.totalStaked} view="TownStaking.totalStaked" />
         <Fig label="Vaults" value={fmtInt(vaults)} view="sum of TownStaking.tierVaults" />
-        <Fig label="WETH received by staking" value={fmtEth(st.totalRewardsNotified)} unit="WETH" view="TownStaking.totalRewardsNotified" />
-        <Fig label="WETH claimed by stakers" value={fmtEth(st.totalRewardsPaid)} unit="WETH" view="TownStaking.totalRewardsPaid" />
+        <Fig label="WETH received by staking" value={fmtEth(st.totalRewardsNotified)} unit="WETH" amount={st.totalRewardsNotified} view="TownStaking.totalRewardsNotified" />
+        <Fig label="WETH claimed by stakers" value={fmtEth(st.totalRewardsPaid)} unit="WETH" amount={st.totalRewardsPaid} view="TownStaking.totalRewardsPaid" />
       </Figures>
       <table class="table compact per-tier">
         <caption class="visually-hidden">Each tier’s figures</caption>
@@ -496,9 +510,11 @@ function Staking() {
               </td>
               <td class="r num" data-view={`TownStaking.tierNotified(${t})`}>
                 {fmtEth(st.tierNotified[t])}
+                <Usd amount={st.tierNotified[t]} unit="WETH" block />
               </td>
               <td class="r num" data-view={`TownStaking.tierPaid(${t})`}>
                 {fmtEth(st.tierPaid[t])}
+                <Usd amount={st.tierPaid[t]} unit="WETH" block />
               </td>
             </tr>
           ))}

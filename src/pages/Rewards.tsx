@@ -1,4 +1,4 @@
-import { useApp, useChain, useTx, Card, ConnectPrompt, Details, Fig, Figures, Notice, PageHead, TxStatus } from '../components/ui';
+import { useApp, useChain, useTx, Card, ConnectPrompt, Details, Fig, Figures, Notice, PageHead, TxStatus, Usd } from '../components/ui';
 import { claimRebatesTx } from '../lib/actions';
 import type { ChainState } from '../data/types';
 import {
@@ -46,8 +46,9 @@ function ReserveLow() {
   return (
     <Notice kind="warn" title="The rebate reserve is nearly spent">
       <p>
-        <span class="num">{fmtTown(reserveUnscheduled(chain))}</span> TOWN remain, less than the next ten days’ limits (
-        <span class="num">{fmtTown(nextTenCaps(chain))}</span> TOWN). Near the end, days are paid in the order they are first claimed or finalised, so a day
+        <span class="num">{fmtTown(reserveUnscheduled(chain))}</span> TOWN <Usd amount={reserveUnscheduled(chain)} unit="TOWN" paren /> remain, less than the
+        next ten days’ limits (<span class="num">{fmtTown(nextTenCaps(chain))}</span> TOWN <Usd amount={nextTenCaps(chain)} unit="TOWN" paren />). Near the
+        end, days are paid in the order they are first claimed or finalised, so a day
         claimed late can get less or nothing. This site always claims your oldest days first.
       </p>
     </Notice>
@@ -90,10 +91,17 @@ function YourRebate() {
           label={`Claimable now, after the ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} fee`}
           value={fmtTown(wallet.claimable)}
           unit="TOWN"
+          amount={wallet.claimable}
           view="BuyerRewards.claimable(wallet, readyCycles)"
           accent
           large
-          note={ready.length ? `About ${fmtTown(fee)} TOWN goes to the treasury as the claim fee.` : undefined}
+          note={
+            ready.length ? (
+              <>
+                About {fmtTown(fee)} TOWN <Usd amount={fee} unit="TOWN" paren /> goes to the treasury as the claim fee.
+              </>
+            ) : undefined
+          }
         />
       </Figures>
       {ready.length > 0 ? (
@@ -156,6 +164,7 @@ function YourRebate() {
                 <td class="nowrap">{fmtInt(d)}</td>
                 <td class="r num" data-view="TownHook.bought(c, wallet)">
                   {fmtTown(wallet.bought[d])}
+                  <Usd amount={wallet.bought[d]} unit="TOWN" block />
                 </td>
                 <td class="r num" data-view={`BuyerRewards.rateBps(${d})`}>
                   {fmtBps(dayRateBps(chain, d))}
@@ -163,6 +172,7 @@ function YourRebate() {
                 <td class="r num">
                   {info?.finalized ? '' : '≈ '}
                   {fmtTown(net)}
+                  <Usd amount={net} unit="TOWN" block />
                 </td>
                 <td class="r nowrap">
                   {status === 'claimed' && <span class="muted">Claimed</span>}
@@ -209,8 +219,14 @@ function Today() {
           note={capped ? `${fmtRate(afterFeeBps(chain, paying))} so far, with the limit shared.` : 'What reaches the buyer.'}
         />
         <YesterdaysLean />
-        <Fig label="Today’s limit" value={fmtTown(chain.rewards.cap[c] ?? 0n)} unit="TOWN" view="BuyerRewards.cap(currentCycle)" />
-        <Fig label="Bought by everyone today" value={fmtTown(chain.hook.cycleTotal[c] ?? 0n)} unit="TOWN" view="TownHook.cycleTotal(currentCycle)" />
+        <Fig label="Today’s limit" value={fmtTown(chain.rewards.cap[c] ?? 0n)} unit="TOWN" amount={chain.rewards.cap[c] ?? 0n} view="BuyerRewards.cap(currentCycle)" />
+        <Fig
+          label="Bought by everyone today"
+          value={fmtTown(chain.hook.cycleTotal[c] ?? 0n)}
+          unit="TOWN"
+          amount={chain.hook.cycleTotal[c] ?? 0n}
+          view="TownHook.cycleTotal(currentCycle)"
+        />
         <Fig label="Today’s rebates open on" value={dayName(claimOpensOn(c))} view="currentCycle + 1 (CR-44)" note="From the start of the next day." />
       </Figures>
       <p class="small muted card-foot">

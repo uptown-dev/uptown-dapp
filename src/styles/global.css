@@ -1472,13 +1472,6 @@ main:focus {
 .swap-note {
   margin: 4px 2px 14px;
 }
-.credit-line {
-  text-align: center;
-  font-size: 12.5px;
-  font-weight: 550;
-  color: var(--accent-text);
-  margin-top: 10px;
-}
 .after-card {
   display: grid;
   gap: 8px;
@@ -3001,4 +2994,68 @@ code.break {
 }
 .feed-note {
   margin: 0;
+}
+
+/* ---- F9v (CR-95): dollar estimates beside ETH, WETH and TOWN amounts ---- */
+/* Secondary and muted, never in place of the amount: smaller, lighter, the third text colour. */
+.usd {
+  font-size: 11.5px;
+  font-weight: 450;
+  letter-spacing: 0;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.usd.block {
+  display: block;
+}
+/* In a figure the estimate takes its own line under the amount and its unit. */
+.fig-value .usd.block {
+  flex-basis: 100%;
+  line-height: 1.35;
+}
+.fig.accent .fig-value .usd {
+  color: var(--text-3);
+}
+/* The owner's fallback price: the fallback notice's warning mark, in its colour. */
+.usd.fallback svg {
+  display: inline-block;
+  color: var(--warn-text);
+  margin-left: 3px;
+  vertical-align: -1px;
+}
+.row dd .usd.block,
+.table .usd.block {
+  font-weight: 400;
+  margin-top: 1px;
+}
+/* The balance line above a swap box grew its estimate: the box’s label keeps its one line, the balance wraps. */
+.swap-box-top > :first-child {
+  flex: none;
+}
+.swap-box-top > :last-child:not(:first-child) {
+  text-align: right;
+}
+.swap-output-usd {
+  display: block;
+  margin: 0 2px;
+  min-height: 15px;
+}
+/* Trade: TOWN's price, at the top of the swap card. */
+.price-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.price-line .price-value {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+.price-line .price-source {
+  color: var(--text-3);
 }

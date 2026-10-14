@@ -131,6 +131,8 @@ if (CHAIN === 31337) {
     permit2: pick('permit2'),
     multicall3: pick('multicall3'),
     weth: pick('weth'),
+    // CR-95 (F9v): the pool's current price is read through StateView for the dollar figures.
+    stateView: pick('stateView'),
   };
   const wallets = Array.isArray(src.testWallets) ? src.testWallets : [];
   if (!wallets.every(isAddress)) fail('testWallets holds something that is not an address');
@@ -200,6 +202,8 @@ const FROM_FILE = {
   permit2: 'permit2',
   multicall3: 'multicall3',
   weth: 'weth',
+  // CR-95 (F9v): the dollar figures read the pool's price through StateView.
+  stateView: 'stateView',
 };
 const uniswap = {};
 const fromFile = [];

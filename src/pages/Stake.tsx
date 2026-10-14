@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { RunStatus, Stop, readUntil, useRun, useWatch, type Run, type Runner } from '../components/steps';
-import { useApp, useChain, useTx, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs, TxStatus, Uses, type Tx } from '../components/ui';
+import { useApp, useChain, useTx, Card, Chips, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Row, Rows, Tabs, TxStatus, Usd, Uses, type Tx } from '../components/ui';
 import { amountError, amountOrNull } from '../lib/amount';
 import { UNLISTED_STAKING, listedStaking } from '../lib/network';
 import { PriceSource, TIERS, type OldVault, type Tier } from '../data/types';
@@ -209,8 +209,8 @@ export function OldVaultCard({ vault }: { vault: OldVault }) {
       </p>
       <Figures cols={3}>
         <Fig label="Tier" value={has ? `Tier ${vault.positionOf.tier}` : 'No vault'} view="positionOf(wallet).tier, replaced contract" />
-        <Fig label="TOWN staked" value={fmtTown(amount)} unit="TOWN" view="positionOf(wallet).amount, replaced contract" />
-        <Fig label="Earned" value={fmtEth(vault.earned)} unit="WETH" view="earned(wallet), replaced contract" accent />
+        <Fig label="TOWN staked" value={fmtTown(amount)} unit="TOWN" amount={amount} view="positionOf(wallet).amount, replaced contract" />
+        <Fig label="Earned" value={fmtEth(vault.earned)} unit="WETH" amount={vault.earned} view="earned(wallet), replaced contract" accent />
       </Figures>
       <div class="btn-row">
         <button
@@ -230,7 +230,8 @@ export function OldVaultCard({ vault }: { vault: OldVault }) {
       {confirming && (
         <div class="confirm-box" role="group" aria-label="Confirm unstaking from the replaced contract">
           <p>
-            <strong>Unstake everything from the replaced contract?</strong> Your {fmtTown(amount)} TOWN comes back and that vault closes.
+            <strong>Unstake everything from the replaced contract?</strong> Your {fmtTown(amount)} TOWN <Usd amount={amount} unit="TOWN" paren /> comes back and
+            that vault closes.
           </p>
           <div class="btn-row">
             <button
@@ -322,7 +323,8 @@ function EmptyTiers() {
     <Notice kind="info" title={waiting.length === 1 ? `Tier ${waiting[0]} is empty, with ETH waiting` : 'Empty tiers with ETH waiting'}>
       {waiting.map((t) => (
         <p key={t}>
-          <span class="num">{fmtEth(unpaidStream(chain, t))}</span> WETH is waiting in tier {t}. It goes to whoever joins the tier, over at most seven days,
+          <span class="num">{fmtEth(unpaidStream(chain, t))}</span> WETH <Usd amount={unpaidStream(chain, t)} unit="WETH" paren /> is waiting in tier {t}. It
+          goes to whoever joins the tier, over at most seven days,
           shared with anyone else who joins meanwhile.
         </p>
       ))}
@@ -408,11 +410,15 @@ function TierTable() {
                     {fmtInt(st.tierVaults[t])}
                   </td>
                   <td class="r num" data-label="TOWN staked" data-view={`TownStaking.tierStaked(${t})`}>
-                    {fmtTown(st.tierStaked[t])}
+                    <span>
+                      {fmtTown(st.tierStaked[t])} <Usd amount={st.tierStaked[t]} unit="TOWN" paren />
+                    </span>
                   </td>
                   <td class="r num" data-label="ETH still to stream" data-view={`derived from TownStaking.streamInfo(${t})`}>
                     <span class="cell">
-                      <span>{fmtEth(unpaid)} WETH</span>
+                      <span>
+                        {fmtEth(unpaid)} WETH <Usd amount={unpaid} unit="WETH" paren />
+                      </span>
                       <span class="sub">{empty ? (unpaid > 0n ? 'waiting for whoever joins' : 'nothing waiting') : end ? `until ${fmtDate(end)}` : 'no stream running'}</span>
                     </span>
                   </td>
@@ -484,8 +490,8 @@ function YourVault() {
       <div>
       <Figures cols={3}>
         <Fig label="Tier" value={has ? `Tier ${pos.tier}` : 'No vault'} view="TownStaking.positionOf(wallet).tier" />
-        <Fig label="TOWN staked" value={fmtTown(pos.amount)} unit="TOWN" view="TownStaking.positionOf(wallet).amount" />
-        <Fig label="Earned" value={fmtEth(wallet.earned)} unit="WETH" view="TownStaking.earned(wallet)" accent />
+        <Fig label="TOWN staked" value={fmtTown(pos.amount)} unit="TOWN" amount={pos.amount} view="TownStaking.positionOf(wallet).amount" />
+        <Fig label="Earned" value={fmtEth(wallet.earned)} unit="WETH" amount={wallet.earned} view="TownStaking.earned(wallet)" accent />
       </Figures>
       {unlisted ? (
         <div class="action-form unlisted-off" role="note">
@@ -533,7 +539,8 @@ function StakePlan({ amount, action }: { amount: bigint; action: string }) {
   const { network } = useApp();
   return (
     <p class="run-plan small" data-transactions="2">
-      <strong>This takes 2 transactions:</strong> approve exactly <span class="num">{fmtTown(amount)}</span> TOWN for the staking contract, then {action}.{' '}
+      <strong>This takes 2 transactions:</strong> approve exactly <span class="num">{fmtTown(amount)}</span> TOWN <Usd amount={amount} unit="TOWN" paren /> for
+      the staking contract, then {action}.{' '}
       {network.local
         ? 'Each is sent from the test wallet as soon as the one before is confirmed.'
         : 'Your wallet asks you to confirm each one; the second is sent as soon as the first is confirmed.'}
@@ -624,7 +631,7 @@ function OpenForm({ tx, run }: { tx: Tx; run: Run }) {
         <Uses value={amt} unit="TOWN" />
         {townError(amount) && <FieldError>{townError(amount)}</FieldError>}
         <span class="hint">
-          Your TOWN: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span>
+          Your TOWN: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span> <Usd amount={wallet?.townBalance} unit="TOWN" paren />
           {wallet?.townBalance === 0n && (
             <>
               {' '}
@@ -642,8 +649,32 @@ function OpenForm({ tx, run }: { tx: Tx; run: Run }) {
       </div>
       <Rows>
         <Row label={`Vault price, paid once ($${st.tierUsd[tier]})`} value={price === null ? 'paused' : `${fmtEth(price, 6)} ETH`} view={`TownStaking.vaultPriceWei(${tier})`} />
-        <Row label="You send (about 1% more)" value={price === null ? '—' : `${fmtEth(withMargin(price), 6)} ETH`} />
-        <Row label="Refunded at once" value={price === null ? '—' : `≈ ${fmtEth(withMargin(price) - price, 6)} ETH`} />
+        <Row
+          label="You send (about 1% more)"
+          value={
+            price === null ? (
+              '—'
+            ) : (
+              <>
+                {fmtEth(withMargin(price), 6)} ETH
+                <Usd amount={withMargin(price)} unit="ETH" block />
+              </>
+            )
+          }
+        />
+        <Row
+          label="Refunded at once"
+          value={
+            price === null ? (
+              '—'
+            ) : (
+              <>
+                ≈ {fmtEth(withMargin(price) - price, 6)} ETH
+                <Usd amount={withMargin(price) - price} unit="ETH" block />
+              </>
+            )
+          }
+        />
       </Rows>
       {amt !== null && amt > 0n && !approved && !tooMuch && !tx.busy && <StakePlan amount={amt} action="open the vault" />}
       <PausedTag />
@@ -714,7 +745,8 @@ function AddForm({ tx, run }: { tx: Tx; run: Run }) {
         <Uses value={amt} unit="TOWN" />
         {townError(amount) && <FieldError>{townError(amount)}</FieldError>}
         <span class="hint">
-          No extra vault price, only gas. Your TOWN: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span>
+          No extra vault price, only gas. Your TOWN: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span>{' '}
+          <Usd amount={wallet?.townBalance} unit="TOWN" paren />
           {wallet && wallet.townAllowanceToStaking > 0n && (
             <>
               {' '}
@@ -760,7 +792,19 @@ function UpgradeForm({ tx }: { tx: Tx }) {
             value={up === null ? 'paused' : `${fmtEth(up, 6)} ETH`}
             view={`TownStaking.upgradePriceWei(wallet, ${chosen})`}
           />
-          <Row label="You send (about 1% more)" value={up === null ? '—' : `${fmtEth(withMargin(up), 6)} ETH`} />
+          <Row
+            label="You send (about 1% more)"
+            value={
+              up === null ? (
+                '—'
+              ) : (
+                <>
+                  {fmtEth(withMargin(up), 6)} ETH
+                  <Usd amount={withMargin(up)} unit="ETH" block />
+                </>
+              )
+            }
+          />
         </Rows>
       )}
       <p class="small muted">Your whole stake moves up. Earned WETH stays yours. There is no way back down.</p>
@@ -789,13 +833,15 @@ function UnstakeForm({ tx }: { tx: Tx }) {
   return (
     <div class="action-form">
       <p class="small muted">
-        Full exit: all <span class="num">{fmtTown(amount)}</span> TOWN comes back and the vault closes. Earned WETH stays claimable. The vault price is not
+        Full exit: all <span class="num">{fmtTown(amount)}</span> TOWN <Usd amount={amount} unit="TOWN" paren /> comes back and the vault closes. Earned WETH
+        stays claimable. The vault price is not
         refunded; staking again means buying a new vault.
       </p>
       {confirming ? (
         <div class="confirm-box" role="group" aria-label="Confirm unstaking">
           <p>
-            <strong>Unstake everything and close your vault?</strong> Your {fmtTown(amount)} TOWN comes back; the vault price is not refunded.
+            <strong>Unstake everything and close your vault?</strong> Your {fmtTown(amount)} TOWN <Usd amount={amount} unit="TOWN" paren /> comes back; the vault
+            price is not refunded.
           </p>
           <div class="btn-row">
             <button

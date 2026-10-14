@@ -8,7 +8,8 @@ import { ChevronIcon, ExternalIcon, InfoIcon, NoteIcon, WarnIcon } from './icons
 import { txUrl, type Network } from '../lib/network';
 import { explainError, type TradeKind } from '../lib/errors';
 import { sendTx, waitForTx, type TxRequest } from '../lib/wallet';
-import { fmtInt, shortAddress } from '../lib/format';
+import { fmtInt, fmtUsd, fmtUsd8, shortAddress } from '../lib/format';
+import { usdOf, type Priced } from '../lib/derive';
 import { fmtExact } from '../lib/amount';
 
 /**
@@ -106,6 +107,7 @@ export function Fig({
   view,
   accent,
   large,
+  amount,
 }: {
   label: ComponentChildren;
   value: ComponentChildren;
@@ -114,13 +116,17 @@ export function Fig({
   view: string;
   accent?: boolean;
   large?: boolean;
+  /** The raw amount behind `value` (CR-95): with an ETH, WETH or TOWN unit, its dollar estimate shows under the value. */
+  amount?: bigint | null;
 }) {
+  const priced = unit === 'ETH' || unit === 'WETH' || unit === 'TOWN' ? (unit as Priced) : null;
   return (
     <div class={`fig${accent ? ' accent' : ''}${large ? ' large' : ''}`}>
       <dt>{label}</dt>
       <dd class="fig-value" data-view={view}>
         <span class="num">{value}</span>
         {unit && <span class="unit">{unit}</span>}
+        {priced && amount !== undefined && <Usd amount={amount} unit={priced} block />}
       </dd>
       <dd class="fig-note">{note}</dd>
     </div>
@@ -404,13 +410,57 @@ export function FieldError({ children }: { children: ComponentChildren }) {
 
 /**
  * Beside an amount field (CR-72): the amount the form will use, formatted with every decimal typed,
- * as soon as the text is a valid amount; nothing otherwise.
+ * as soon as the text is a valid amount; nothing otherwise. An ETH, WETH or TOWN amount carries its
+ * dollar estimate after it (CR-95).
  */
 export function Uses({ value, decimals = 18, unit, id }: { value: bigint | null; decimals?: number; unit: string; id?: string }) {
   if (value === null) return null;
+  const priced = decimals === 18 && (unit === 'ETH' || unit === 'WETH' || unit === 'TOWN') ? (unit as Priced) : null;
   return (
     <span class="uses" id={id} data-uses={value.toString()} aria-live="polite">
       Uses <span class="num">{fmtExact(value, decimals)}</span> {unit}
+      {priced && (
+        <>
+          {' '}
+          <Usd amount={value} unit={priced} />
+        </>
+      )}
+    </span>
+  );
+}
+
+/**
+ * CR-95: the dollar estimate beside an ETH, WETH or TOWN amount, "≈ $12.34", muted and secondary:
+ * the amount itself always stays beside it with its unit. ETH/USD is TownStaking.priceStatus() and
+ * TOWN's price the pool's, through `usdOf` (derive.ts), the one place the arithmetic is done.
+ * Nothing is shown when no usable price is reported (hidden, never shown stale), or, for TOWN, when
+ * the pool's price could not be read. When the price is the owner's fallback, the figure carries
+ * the fallback notice's warning mark and says so in its tooltip and to screen readers. `block` puts
+ * it on its own line; `paren` wraps it in brackets inside a sentence; `unitPrice` formats the price
+ * of one TOWN with enough digits to read below a cent.
+ */
+export function Usd({ amount, unit, block, paren, unitPrice }: { amount: bigint | null | undefined; unit: Priced; block?: boolean; paren?: boolean; unitPrice?: boolean }) {
+  const { chain } = useApp();
+  if (amount === null || amount === undefined || !chain) return null;
+  const f = usdOf(chain, amount, unit);
+  if (!f) return null;
+  const shown = fmtUsd(f.usd, unitPrice);
+  const eth = fmtUsd8(chain.staking.priceStatus.price);
+  const pool = unit === 'TOWN' ? ' and the pool’s current TOWN price' : '';
+  const tip = f.fallback
+    ? `An estimate, at the owner’s fallback ETH price of ${eth}${pool}: the Chainlink feed is not up to date, so the staking contract uses the fallback.`
+    : `An estimate, at Chainlink’s ETH price of ${eth}${pool}.`;
+  return (
+    <span class={`usd${block ? ' block' : ''}${f.fallback ? ' fallback' : ''}`} data-usd={f.usd.toString()} title={tip}>
+      {paren ? '(' : ''}
+      {shown.startsWith('<') ? shown : `≈ ${shown}`}
+      {f.fallback && (
+        <>
+          <WarnIcon size={11} />
+          <span class="visually-hidden"> at the owner’s fallback ETH price</span>
+        </>
+      )}
+      {paren ? ')' : ''}
     </span>
   );
 }

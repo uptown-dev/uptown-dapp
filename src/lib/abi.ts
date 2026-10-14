@@ -289,3 +289,10 @@ export const PERMIT2_ABI = parseAbi([
 
 /** Universal Router 2.1.2 (R1b A2): `execute(commands, inputs, deadline)`. */
 export const ROUTER_ABI = parseAbi(['function execute(bytes commands, bytes[] inputs, uint256 deadline) payable', ...UPTOWN_ERRORS, ...OTHER_ERRORS]);
+
+/**
+ * Uniswap v4 StateView (R1b A1, A6): the pool's current price, for the dollar figures (CR-95). The
+ * price is TOWN per ETH (spec "Pool and launch position -> Price direction"): currency0 is ETH,
+ * currency1 is TOWN, so (sqrtPriceX96 / 2^96)^2 is TOWN units per wei.
+ */
+export const STATEVIEW_ABI = parseAbi(['function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)']);

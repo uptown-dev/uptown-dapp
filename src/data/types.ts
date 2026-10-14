@@ -244,6 +244,15 @@ export interface ChainState {
     lockDuration: number;
   };
 
+  /** The TOWN pool (CR-95: the dollar figures). */
+  pool: {
+    /**
+     * StateView.getSlot0(poolId).sqrtPriceX96: the pool's current price, TOWN per ETH as a square
+     * root in Q64.96 (spec "Pool and launch position -> Price direction"). `null` when the read failed
+     * or the site has no StateView address for the chain: the TOWN dollar figures are then hidden.
+     */
+    sqrtPriceX96: bigint | null;
+  };
 }
 
 /** Everything read for the connected wallet. */

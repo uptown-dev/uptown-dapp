@@ -7,10 +7,11 @@
 // page's views (CR-64) ride in the same rounds: each contract's owner and offered owner in rounds 1
 // and 2, and in round 3 the signers of any owner that is a multisig. Round 2 also reads each
 // replaced staking contract's own settings and ownership, for the owner powers the owner still holds
-// there (CR-73). Before launch only the owner page's views are read, since most of the others revert
-// until then.
-import { createPublicClient, defineChain, encodeAbiParameters, http, type Hex, type PublicClient } from 'viem';
-import { CANDIDATE_ABI, HOOK_ABI, LAUNCHER_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, SAFE_ABI, STAKING_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
+// there (CR-73). Round 1 also reads the pool's current price through Uniswap's StateView, for the
+// dollar figures (CR-95). Before launch only the owner page's views are read, since most of the
+// others revert until then.
+import { createPublicClient, defineChain, encodeAbiParameters, http, keccak256, type Hex, type PublicClient } from 'viem';
+import { CANDIDATE_ABI, HOOK_ABI, LAUNCHER_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, SAFE_ABI, STAKING_ABI, STATEVIEW_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
 import { replacedStaking, type Network, type StakingRecord } from './network';
 import {
   PriceSource,
@@ -314,6 +315,10 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     paused: T('paused'),
     unlockTime: a.add('LPVault.unlockTime', { address: k.LPVault, abi: LPVAULT_ABI, functionName: 'unlockTime' }),
     lockDuration: a.add('LPVault.lockDuration', { address: k.LPVault, abi: LPVAULT_ABI, functionName: 'lockDuration' }),
+    // CR-95: the pool's current price, for the dollar figures; a failed read only hides the TOWN ones.
+    slot0: n.uniswap.stateView
+      ? a.add('StateView.getSlot0(poolId)', { address: n.uniswap.stateView, abi: STATEVIEW_ABI, functionName: 'getSlot0', args: [poolId(n)] })
+      : -1,
   };
   // The owner page (CR-64): who owns each contract and who has been offered it; the Launcher before launch.
   const V = (fn: string) => a.add(`LPVault.${fn}`, { address: k.LPVault, abi: LPVAULT_ABI, functionName: fn });
@@ -720,6 +725,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       totalVaultFees: r2.get(si.totalVaultFees),
     },
     lpVault: { unlockTime: num(r1.get(i.unlockTime)), lockDuration: num(r1.get(i.lockDuration)) },
+    pool: { sqrtPriceX96: poolPrice(i.slot0 >= 0 ? r1.maybe<readonly [bigint, number, number, number]>(i.slot0) : null) },
   };
 
   let wallet: WalletState | null = null;
@@ -815,6 +821,22 @@ export async function readVaults(client: PublicClient, records: StakingRecord[],
 export function poolKey(n: Network) {
   const k = n.deployment!.contracts;
   return { currency0: '0x0000000000000000000000000000000000000000' as Address, currency1: k.UpTownToken, fee: 5000, tickSpacing: 60, hooks: k.TownHook };
+}
+
+/** The pool's ID: keccak256(abi.encode(PoolKey)), as Uniswap v4's PoolIdLibrary computes it. */
+export function poolId(n: Network): Hex {
+  const key = poolKey(n);
+  return keccak256(
+    encodeAbiParameters(
+      [{ type: 'address' }, { type: 'address' }, { type: 'uint24' }, { type: 'int24' }, { type: 'address' }],
+      [key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks],
+    ),
+  );
+}
+
+/** StateView.getSlot0's sqrtPriceX96, or null when the read failed or the pool has no price yet (0). */
+function poolPrice(slot0: readonly [bigint, number, number, number] | null): bigint | null {
+  return slot0 && slot0[0] > 0n ? slot0[0] : null;
 }
 
 /** `hookData` naming the buyer: the address in 32 bytes (spec "Buy tally", attribution rule 1). */

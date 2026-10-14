@@ -15,7 +15,7 @@ import { useContext, useState } from 'preact/hooks';
 import { createContext, type ComponentChildren } from 'preact';
 import type { TransactionReceipt } from 'viem';
 import { formatEther, formatUnits, getAddress } from 'viem';
-import { useApp, useTx, Card, FieldError, Notice, PageHead, TxStatus, Uses, type Tx } from '../components/ui';
+import { useApp, useTx, Card, FieldError, Notice, PageHead, TxStatus, Usd, Uses, type Tx } from '../components/ui';
 import { amountOrNull } from '../lib/amount';
 import { UNLISTED_STAKING, listedStaking } from '../lib/network';
 import { targetProblem } from '../lib/wallet';
@@ -609,7 +609,15 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
             <Setting label="Highest rate allowed" value={fmtBps(t.MAX_SPEND_BPS)} view="Treasury.MAX_SPEND_BPS" note="A constant: no call can raise it." />
             <Setting
               label={`${dayName(c)} budget`}
-              value={b.kind === 'waiting' ? 'Not set yet' : `${fmtEth(t.budget)} ETH`}
+              value={
+                b.kind === 'waiting' ? (
+                  'Not set yet'
+                ) : (
+                  <>
+                    {fmtEth(t.budget)} ETH <Usd amount={t.budget} unit="ETH" paren />
+                  </>
+                )
+              }
               view="Treasury.budget"
               note={b.kind === 'waiting' ? 'Set by the day’s first trigger.' : b.kind === 'paused' ? 'Payouts are paused.' : 'Set for the day; it never changes.'}
             />
@@ -648,7 +656,18 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
       <Power
         id="owner-eth"
         title="Owner ETH"
-        settings={<Setting label="Owner ETH available" value={`${fmtEth(t.ownerEthAvailable, 6)} ETH`} view="Treasury.ownerEthAvailable" note="10% of all ETH the treasury receives." />}
+        settings={
+          <Setting
+            label="Owner ETH available"
+            value={
+              <>
+                {fmtEth(t.ownerEthAvailable, 6)} ETH <Usd amount={t.ownerEthAvailable} unit="ETH" paren />
+              </>
+            }
+            view="Treasury.ownerEthAvailable"
+            note="10% of all ETH the treasury receives."
+          />
+        }
       >
         <OwnerAction
           id="withdrawOwnerEth"
@@ -668,7 +687,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
                 uses={<Uses value={amountOrNull(ethAmount, 18)} unit="ETH" />}
                 hint={
                   <>
-                    Up to {fmtEth(t.ownerEthAvailable, 6)} ETH.{' '}
+                    Up to {fmtEth(t.ownerEthAvailable, 6)} ETH <Usd amount={t.ownerEthAvailable} unit="ETH" paren />.{' '}
                     <button type="button" class="link-btn" onClick={() => setEthAmount(formatEther(t.ownerEthAvailable))}>
                       All of it
                     </button>
@@ -693,7 +712,18 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
       <Power
         id="owner-town"
         title="TOWN claim fees"
-        settings={<Setting label="TOWN available" value={`${fmtTown(t.ownerTownAvailable)} TOWN`} view="Treasury.ownerTownAvailable" note="The claim fees on rebates; all of it belongs to the owner." />}
+        settings={
+          <Setting
+            label="TOWN available"
+            value={
+              <>
+                {fmtTown(t.ownerTownAvailable)} TOWN <Usd amount={t.ownerTownAvailable} unit="TOWN" paren />
+              </>
+            }
+            view="Treasury.ownerTownAvailable"
+            note="The claim fees on rebates; all of it belongs to the owner."
+          />
+        }
       >
         <OwnerAction
           id="withdrawTown"
@@ -713,7 +743,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
                 uses={<Uses value={amountOrNull(townAmount, 18)} unit="TOWN" />}
                 hint={
                   <>
-                    Up to {fmtTown(t.ownerTownAvailable)} TOWN.{' '}
+                    Up to {fmtTown(t.ownerTownAvailable)} TOWN <Usd amount={t.ownerTownAvailable} unit="TOWN" paren />.{' '}
                     <button type="button" class="link-btn" onClick={() => setTownAmount(formatUnits(t.ownerTownAvailable, 18))}>
                       All of it
                     </button>

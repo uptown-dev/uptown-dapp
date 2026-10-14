@@ -24,6 +24,12 @@ export interface ChainContracts {
   /** Multicall3: every figure is read through it in one call. */
   multicall3: `0x${string}`;
   weth: `0x${string}`;
+  /**
+   * StateView: the pool's current price, `getSlot0(poolId)`, for the dollar figures (CR-95; R1b A1
+   * and A6). `null` where the chain's address file does not name it (a local address file written
+   * before F9v): the TOWN dollar figures are then hidden, the ETH ones still shown.
+   */
+  stateView: `0x${string}` | null;
 }
 
 export interface ChainInfo {
@@ -65,6 +71,8 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
       permit2: PERMIT2,
       multicall3: MULTICALL3,
       weth: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+      // R1b A1: StateView.poolManager() is the PoolManager above (CONFIRMED).
+      stateView: '0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227',
     },
     local: false,
   },
@@ -93,6 +101,9 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
       permit2: PERMIT2,
       multicall3: MULTICALL3,
       weth: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14',
+      // R1b A6: StateView.poolManager() is the PoolManager above (CONFIRMED); the address the
+      // Sepolia deployment file names too (script/deployments/11155111.json).
+      stateView: '0xE1Dd9c3fA50EDB962E442f60DfBc432e24537E4C',
     },
     local: false,
   },

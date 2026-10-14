@@ -172,6 +172,9 @@ function readFile(chainId: ChainId, info: ChainInfo, file: AddressFile): Network
           permit2: getAddress(u.permit2),
           multicall3: getAddress(u.multicall3),
           weth: getAddress(u.weth),
+          // CR-95 (F9v): the local address file copies StateView from the deployment file; an older
+          // file without it leaves the TOWN dollar figures hidden rather than stopping the site.
+          stateView: u.stateView ? getAddress(u.stateView) : null,
         }
       : null);
   const testWallets = info.local

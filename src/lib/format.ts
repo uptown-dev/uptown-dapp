@@ -45,6 +45,27 @@ export function fmtUsd8(price: bigint): string {
   return '$' + fmtUnits(price, 8, 2, 2);
 }
 
+/**
+ * A dollar estimate (CR-95), from dollars × 10^18 (`usdOf` in derive.ts), cut and never rounded up.
+ * Ordinary figures: two decimals with thousands separators ("$1,234.56"), "< $0.01" for a non-zero
+ * amount below a cent, "$0.00" for nothing. `unitPrice` (TOWN's price for one TOWN): below a dollar,
+ * three significant digits so a price under a cent still says something ("$0.0000271", "$0.0123",
+ * "$0.512"); from a dollar up, two decimals. The caller adds the "≈".
+ */
+export function fmtUsd(usd18: bigint, unitPrice = false): string {
+  if (usd18 <= 0n) return '$0.00';
+  const ONE = 10n ** 18n;
+  if (!unitPrice || usd18 >= ONE) {
+    if (usd18 < 10n ** 16n) return '< $0.01';
+    return '$' + fmtUnits(usd18, 18, 2, 2);
+  }
+  const frac = usd18.toString().padStart(18, '0');
+  const lead = frac.search(/[1-9]/);
+  let digits = frac.slice(0, lead + 3).replace(/0+$/, '');
+  if (digits.length < 2) digits = digits.padEnd(2, '0');
+  return `$0.${digits}`;
+}
+
 export function fmtInt(n: number): string {
   return n.toLocaleString('en-US');
 }

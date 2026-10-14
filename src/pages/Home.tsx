@@ -183,10 +183,10 @@ export function Home() {
           <Card title={<span id="live-title">So far</span>}>
             {chain ? (
               <Figures cols={4}>
-                <Fig label="ETH sent to stakers" value={fmtEth(chain.treasury.totalDistributed)} unit="WETH" view="Treasury.totalDistributed" />
-                <Fig label="TOWN rebated to buyers" value={fmtTown(chain.rewards.totalPaidToBuyers)} unit="TOWN" view="BuyerRewards.totalPaidToBuyers" />
-                <Fig label="TOWN burned" value={fmtTown(burned(chain))} unit="TOWN" view="1,000,000,000 - UpTownToken.totalSupply" />
-                <Fig label="TOWN staked" value={fmtTown(chain.staking.totalStaked)} unit="TOWN" view="TownStaking.totalStaked" />
+                <Fig label="ETH sent to stakers" value={fmtEth(chain.treasury.totalDistributed)} unit="WETH" amount={chain.treasury.totalDistributed} view="Treasury.totalDistributed" />
+                <Fig label="TOWN rebated to buyers" value={fmtTown(chain.rewards.totalPaidToBuyers)} unit="TOWN" amount={chain.rewards.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" />
+                <Fig label="TOWN burned" value={fmtTown(burned(chain))} unit="TOWN" amount={burned(chain)} view="1,000,000,000 - UpTownToken.totalSupply" />
+                <Fig label="TOWN staked" value={fmtTown(chain.staking.totalStaked)} unit="TOWN" amount={chain.staking.totalStaked} view="TownStaking.totalStaked" />
               </Figures>
             ) : network.deployment ? (
               <p class="muted">Reading the figures from the contracts…</p>

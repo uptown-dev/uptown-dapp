@@ -1,6 +1,6 @@
 // Figures the site works out from contract views. Every input is a field of ChainState or
 // WalletState (read by src/lib/reads.ts); nothing here invents a number.
-import type { ChainState, Tier, WalletState } from '../data/types';
+import { PriceSource, type ChainState, type Tier, type WalletState } from '../data/types';
 
 const BPS = 10_000n;
 
@@ -410,4 +410,56 @@ export function fallbackExpiresAt(chain: ChainState): number {
 
 export function daysUntil(chain: ChainState, ts: number): number {
   return Math.max(0, Math.floor((ts - chain.blockTimestamp) / 86_400));
+}
+
+// --- dollar figures (CR-95) ------------------------------------------------------------
+
+/** The units a dollar figure is shown beside. */
+export type Priced = 'ETH' | 'WETH' | 'TOWN';
+
+/** 2^192: (sqrtPriceX96)^2 / 2^192 is the pool's price in TOWN units per wei. */
+const Q192 = 1n << 192n;
+/** Chainlink's ETH/USD answer has 8 decimals (spec "TownStaking -> Price"). */
+const E8 = 10n ** 8n;
+/** One TOWN in its smallest units. */
+export const ONE_TOWN = 10n ** 18n;
+
+/** A dollar estimate: dollars with 18 decimals, and whether the ETH price behind it is the owner's fallback. */
+export interface UsdFigure {
+  /** Dollars × 10^18, rounded down. */
+  usd: bigint;
+  /** TownStaking.priceStatus() named the owner's fallback price, not the Chainlink feed. */
+  fallback: boolean;
+}
+
+/**
+ * The dollar estimate of an ETH, WETH or TOWN amount (CR-95, spec "Frontend -> Dollar figures"), in
+ * integer arithmetic; null when it cannot be given, and then the site shows none.
+ *
+ * - ETH/USD is TownStaking.priceStatus(): the Chainlink feed the staking contract uses, or the
+ *   owner's fallback price (marked). No usable price (source None, or a price of 0): null.
+ * - ETH and WETH: `amount (wei) × price / 10^8` gives dollars × 10^18.
+ * - TOWN: the pool's price from StateView.getSlot0(poolId).sqrtPriceX96 is TOWN per ETH (spec "Pool
+ *   and launch position -> Price direction": currency0 is ETH, currency1 is TOWN), so an amount of
+ *   TOWN is worth `amount × 2^192 / sqrtPriceX96^2` wei; times the ETH price, in one division so
+ *   nothing is lost: `amount × 2^192 × price / (sqrtPriceX96^2 × 10^8)`. No pool price: null.
+ *
+ * Estimates for reading only: nothing the site sends is ever computed from one.
+ */
+export function usdOf(chain: ChainState | null, amount: bigint, unit: Priced): UsdFigure | null {
+  if (!chain) return null;
+  const { price, source } = chain.staking.priceStatus;
+  if (source === PriceSource.None || price <= 0n) return null;
+  const fallback = source === PriceSource.Fallback;
+  if (unit !== 'TOWN') return { usd: (amount * price) / E8, fallback };
+  const sp = chain.pool.sqrtPriceX96;
+  if (sp === null || sp <= 0n) return null;
+  return { usd: (amount * Q192 * price) / (sp * sp * E8), fallback };
+}
+
+/** The pool's price of one TOWN in wei (rounded down), from the same sqrtPriceX96; null without one. Shown on Trade as gwei per TOWN. */
+export function townPriceWei(chain: ChainState): bigint | null {
+  const sp = chain.pool.sqrtPriceX96;
+  if (sp === null || sp <= 0n) return null;
+  return (ONE_TOWN * Q192) / (sp * sp);
 }

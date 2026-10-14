@@ -1,9 +1,9 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus, Uses } from '../components/ui';
+import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus, Usd, Uses } from '../components/ui';
 import { RunStatus, Stop, readUntil, useRun, useWatch } from '../components/steps';
 import { amountError, amountOrNull } from '../lib/amount';
-import { ArrowDownIcon } from '../components/icons';
+import { ArrowDownIcon, WarnIcon } from '../components/icons';
 import {
   afterClaimFee,
   antiSnipeActive,
@@ -17,11 +17,14 @@ import {
   limitReached,
   minCheck,
   minReceived,
+  ONE_TOWN,
   sellFeeMode,
+  townPriceWei,
   townSellFee,
+  usdOf,
 } from '../lib/derive';
-import type { ChainState } from '../data/types';
-import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtInt, fmtTown, fmtUnits, shortAddress, fmtRate } from '../lib/format';
+import { PriceSource, type ChainState } from '../data/types';
+import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtInt, fmtTown, fmtUnits, fmtUsd, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
 import { quoteBuy, quoteSell, readSellApprovals, readTownBalance, type SellApprovals } from '../lib/reads';
 import { BUY_DEADLINE_SECONDS, ROUTER_ALLOWANCE_SECONDS, allowRouterTx, approvePermit2Tx, buyTx, sellTx } from '../lib/actions';
 import { BUY_GAS_ALLOWANCE, BUY_GAS_MARGIN, QUICK_SHARES, buyGasReserve, buyShare, quickText, shareOf, type QuickShare } from '../lib/quick';
@@ -133,6 +136,7 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
       <PageHead title="Trade TOWN" lead="Buy or sell TOWN for ETH. Every buy here is counted for your wallet, so its rebate is yours." />
       {mode === 'buy' && antiSnipeActive(chain) && <AntiSnipe />}
       <section class="card swap-card" aria-label="Trade TOWN">
+        <TownPrice />
         <div class="tab-list trade-switch" role="tablist" aria-label="Buy or sell">
           {(['buy', 'sell'] as const).map((m) => (
             <button
@@ -200,6 +204,45 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
         </ul>
       </Details>
     </div>
+  );
+}
+
+/**
+ * CR-95: TOWN's price, at the top of the swap card. The pool's current price (StateView.getSlot0,
+ * TOWN per ETH) as gwei per TOWN, and in dollars at the ETH price TownStaking.priceStatus() reports,
+ * the Chainlink feed or, marked, the owner's fallback; with no usable ETH price the dollar price is
+ * left out and the line says why. An estimate for reading only.
+ */
+export function TownPrice() {
+  const chain = useChain();
+  const wei = townPriceWei(chain);
+  if (wei === null) return null;
+  const ps = chain.staking.priceStatus;
+  const one = usdOf(chain, ONE_TOWN, 'TOWN');
+  return (
+    <p class="price-line" data-view="StateView.getSlot0(poolId).sqrtPriceX96; TownStaking.priceStatus">
+      <span>TOWN price</span>
+      {one !== null && (
+        <span class="price-value num" data-usd={one.usd.toString()}>
+          ≈ {fmtUsd(one.usd, true)}
+        </span>
+      )}
+      <span class="num" data-wei={wei.toString()}>
+        {fmtGwei(wei)} gwei per TOWN in the pool
+      </span>
+      <span class="price-source">
+        {one === null ? (
+          'No ETH price is reported, so no dollar figures are shown.'
+        ) : ps.source === PriceSource.Fallback ? (
+          <span class="usd fallback">
+            at ETH {fmtUsd8(ps.price)}, the owner’s fallback price
+            <WarnIcon size={11} />
+          </span>
+        ) : (
+          <>at ETH {fmtUsd8(ps.price)}, Chainlink’s price</>
+        )}
+      </span>
+    </p>
   );
 }
 
@@ -374,7 +417,7 @@ function BuyForm({ active }: { active: boolean }) {
           <label for="buy-eth">You pay</label>
           {wallet && (
             <span class="muted small">
-              Balance <span class="num">{fmtEth(wallet.ethBalance)}</span> ETH
+              Balance <span class="num">{fmtEth(wallet.ethBalance)}</span> ETH <Usd amount={wallet.ethBalance} unit="ETH" paren />
             </span>
           )}
         </div>
@@ -405,8 +448,8 @@ function BuyForm({ active }: { active: boolean }) {
               {keep === null
                 ? 'Reading the network’s gas price…'
                 : tooLittle
-                  ? `Off: this wallet’s ${fmtEth(wallet!.ethBalance, 6)} ETH does not cover the ${fmtEth(keep, 6)} ETH kept back for the buy’s gas.`
-                  : `Keeps back ${fmtEth(keep, 6)} ETH for the buy’s gas (${fmtInt(Number(BUY_GAS_ALLOWANCE))} gas at ${fmtGwei(maxFee!)} gwei, times ${BUY_GAS_MARGIN}).`}
+                  ? <>Off: this wallet’s {fmtEth(wallet!.ethBalance, 6)} ETH does not cover the {fmtEth(keep, 6)} ETH <Usd amount={keep} unit="ETH" paren /> kept back for the buy’s gas.</>
+                  : <>Keeps back {fmtEth(keep, 6)} ETH <Usd amount={keep} unit="ETH" paren /> for the buy’s gas ({fmtInt(Number(BUY_GAS_ALLOWANCE))} gas at {fmtGwei(maxFee!)} gwei, times {BUY_GAS_MARGIN}).</>}
             </p>
           </QuickAmounts>
         )}
@@ -421,7 +464,7 @@ function BuyForm({ active }: { active: boolean }) {
           <span>You receive (estimate)</span>
           {wallet && (
             <span class="muted small">
-              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> TOWN
+              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> TOWN <Usd amount={wallet.townBalance} unit="TOWN" paren />
             </span>
           )}
         </div>
@@ -431,6 +474,9 @@ function BuyForm({ active }: { active: boolean }) {
           </output>
           <span class="token-pill gold">TOWN</span>
         </div>
+        <span class="swap-output-usd">
+          <Usd amount={estimate} unit="TOWN" />
+        </span>
       </div>
 
       {amountIn === null && <FieldError>{amountError(amount, 18, 'Enter an amount of ETH, for example 0.1.') ?? 'Enter an amount of ETH, for example 0.1.'}</FieldError>}
@@ -442,13 +488,17 @@ function BuyForm({ active }: { active: boolean }) {
           <dt>Buy fee ({fmtBps(feeBps)}, to the treasury)</dt>
           <dd class="num" data-view="TownHook.currentBuyFeeBps">
             {fee !== null ? `${fmtEth(fee)} ETH` : '—'}
+            <Usd amount={fee} unit="ETH" block />
           </dd>
         </div>
         <div class="row">
           <dt>
             <label for="buy-min">Minimum received</label>
           </dt>
-          <dd class="num">{minValue !== null ? `${fmtTown(minValue)} TOWN` : '—'}</dd>
+          <dd class="num">
+            {minValue !== null ? `${fmtTown(minValue)} TOWN` : '—'}
+            <Usd amount={minValue} unit="TOWN" block />
+          </dd>
         </div>
         <div class="row row-control">
           <dt class="visually-hidden">Minimum received setting</dt>
@@ -477,7 +527,10 @@ function BuyForm({ active }: { active: boolean }) {
         </div>
         <div class="row strong">
           <dt>Rebate this buy can earn</dt>
-          <dd class="num accent-text">{rebate !== null ? `up to ${fmtTown(rebate)} TOWN` : '—'}</dd>
+          <dd class="num accent-text">
+            {rebate !== null ? `up to ${fmtTown(rebate)} TOWN` : '—'}
+            <Usd amount={rebate} unit="TOWN" block />
+          </dd>
         </div>
       </dl>
       <MinMessages min={minValue} estimate={estimate} text={minText} unit="TOWN" example="150,000" trade="buy" />
@@ -504,7 +557,6 @@ function BuyForm({ active }: { active: boolean }) {
         <ConnectPrompt what="your balance and buy" block />
       )}
       <TxStatus tx={tx} />
-      <p class="credit-line">Buy here so the rebate is credited to your wallet.</p>
     </div>
   );
 }
@@ -635,7 +687,7 @@ function SellForm({ active }: { active: boolean }) {
           <label for="sell-town">You sell</label>
           {wallet && (
             <span class="muted small">
-              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> TOWN
+              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> TOWN <Usd amount={wallet.townBalance} unit="TOWN" paren />
             </span>
           )}
         </div>
@@ -672,7 +724,7 @@ function SellForm({ active }: { active: boolean }) {
           <span>You receive (estimate)</span>
           {wallet && (
             <span class="muted small">
-              Balance <span class="num">{fmtEth(wallet.ethBalance)}</span> ETH
+              Balance <span class="num">{fmtEth(wallet.ethBalance)}</span> ETH <Usd amount={wallet.ethBalance} unit="ETH" paren />
             </span>
           )}
         </div>
@@ -682,6 +734,9 @@ function SellForm({ active }: { active: boolean }) {
           </output>
           <span class="token-pill">ETH</span>
         </div>
+        <span class="swap-output-usd">
+          <Usd amount={estimate} unit="ETH" />
+        </span>
       </div>
 
       {amount.trim() !== '' && amountIn === null && <FieldError>{amountError(amount, 18, 'Enter an amount of TOWN, for example 1,000,000.')}</FieldError>}
@@ -701,17 +756,24 @@ function SellForm({ active }: { active: boolean }) {
                 : townFee !== null
                   ? `${fmtTown(townFee)} TOWN`
                   : '—'}
+            {inEth ? <Usd amount={ethFee} unit="ETH" block /> : leftToBurn(chain) === 0n ? null : <Usd amount={townFee} unit="TOWN" block />}
           </dd>
         </div>
         <div class="row">
           <dt>Pool fee (0.5%, to the locked liquidity)</dt>
-          <dd class="num">{poolFee !== null ? `${fmtTown(poolFee)} TOWN` : '—'}</dd>
+          <dd class="num">
+            {poolFee !== null ? `${fmtTown(poolFee)} TOWN` : '—'}
+            <Usd amount={poolFee} unit="TOWN" block />
+          </dd>
         </div>
         <div class="row">
           <dt>
             <label for="sell-min">Minimum received</label>
           </dt>
-          <dd class="num">{minValue !== null ? `${fmtEth(minValue, 6)} ETH` : '—'}</dd>
+          <dd class="num">
+            {minValue !== null ? `${fmtEth(minValue, 6)} ETH` : '—'}
+            <Usd amount={minValue} unit="ETH" block />
+          </dd>
         </div>
         <div class="row row-control">
           <dt class="visually-hidden">Minimum received setting</dt>
