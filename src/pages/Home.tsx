@@ -1,8 +1,9 @@
-import { useApp, Card, Fig, Figures, Notice, Verify } from '../components/ui';
+import { useApp, useBeforeLaunch, useRules, Card, Fig, Figures, Notice, Verify } from '../components/ui';
 import { CheckIcon, EthIcon, FlowGraphic, LockIcon, RebateIcon } from '../components/icons';
 import { afterFeeBps, burnFloor, burned, dayRateBps, rateRange, reserveFeeStart } from '../lib/derive';
 import { dayName, fmtBps, fmtEth, fmtTown, fmtRate } from '../lib/format';
 import { contractUrl, readUrl, tokenUrl } from '../lib/network';
+import { HomeContracts, launchLine } from './BeforeLaunch';
 
 const FIXED_RULES = ['1,000,000,000 TOWN, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell pays 2%: burned, to the rebate reserve, or to the treasury in ETH'];
 
@@ -20,12 +21,15 @@ const STAKER_CARD = 'charged in ETH, sent to the treasury; 90% of it streams to 
 const RULES_CARD = 'never more. Zero dev allocation. No upgrades; trading never pauses; liquidity locked for a minimum of ten years.';
 
 export function Home() {
-  const { chain, network } = useApp();
+  const { chain, network, prelaunch } = useApp();
+  // Deployed, not launched (CR-86): the contracts are live, the pool is not open yet.
+  const before = useBeforeLaunch() && !!prelaunch;
+  const rules = useRules();
   const c = chain?.hook.currentCycle ?? null;
   // Today's rebate rate before the claim fee, BuyerRewards.rateBps(today) (CR-47); before the
   // contracts are deployed here, the range before the fee. CR-77 item 3: the card's sentence now
   // subtracts the claim fee itself, so the figure above it is the rate before the fee.
-  const r = rateRange(chain);
+  const r = rateRange(rules);
   const today = chain ? fmtRate(dayRateBps(chain, chain.rewards.currentCycle)) : null;
   const town = network.deployment?.contracts.UpTownToken;
   return (
@@ -42,6 +46,11 @@ export function Home() {
                 </>
               )}
             </p>
+            {before && (
+              <p class="launch-line" role="status" data-state="not-launched">
+                {launchLine(network)}
+              </p>
+            )}
             <h1>TOWN, the first token that rewards buyers and stakers.</h1>
             <p class="hero-summary">
               Every trade in the $TOWN pool on Uniswap v4 passes through TownHook, a contract managed by no one: it sends 2% of every buy, charged in ETH, to
@@ -49,14 +58,26 @@ export function Home() {
               treasury when it collects ETH. Every day, buyers claim up to 5.5% of $TOWN bought from a 500,000,000 TOWN reserve. 90% of the treasury’s ETH
               funds staker rewards, which stream to stakers every day as WETH.
             </p>
-            <div class="btn-row hero-cta">
-              <a class="btn btn-primary btn-large" href="#/trade">
-                Buy TOWN
-              </a>
-              <a class="btn btn-secondary btn-large" href="#/stake">
-                Stake TOWN
-              </a>
-            </div>
+            {before ? (
+              // Nothing can be bought or staked before the launch, so the buttons lead to what can be read now.
+              <div class="btn-row hero-cta">
+                <a class="btn btn-primary btn-large" href="#/docs">
+                  How it works
+                </a>
+                <a class="btn btn-secondary btn-large" href="#/stats">
+                  See the contracts
+                </a>
+              </div>
+            ) : (
+              <div class="btn-row hero-cta">
+                <a class="btn btn-primary btn-large" href="#/trade">
+                  Buy TOWN
+                </a>
+                <a class="btn btn-secondary btn-large" href="#/stake">
+                  Stake TOWN
+                </a>
+              </div>
+            )}
             <ul class="rule-list" aria-label="The rules are fixed">
               <li class="rule-list-head">The rules are fixed:</li>
               {FIXED_RULES.map((r) => (
@@ -156,9 +177,9 @@ export function Home() {
                 <div>
                   <h3>On a sell, TownHook takes 2%</h3>
                   <p>
-                    The 2% is taken in TOWN and burned; from {dayName(reserveFeeStart(chain))} half is burned and half refills the rebate reserve. On a day
+                    The 2% is taken in TOWN and burned; from {dayName(reserveFeeStart(rules))} half is burned and half refills the rebate reserve. On a day
                     after one that burned more TOWN than it paid out in rebates, it goes to the treasury in ETH instead. Once only{' '}
-                    {fmtTown(burnFloor(chain))} TOWN remain, every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.
+                    {fmtTown(burnFloor(rules))} TOWN remain, every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.
                   </p>
                 </div>
               </li>
@@ -168,7 +189,7 @@ export function Home() {
                   <h3>Buyers and stakers are rewarded</h3>
                   <p>
                     From the day after a buy you can claim {fmtBps(r.low)} to {fmtBps(r.high)} of your TOWN back from the reserve, set each day by the last
-                    three days’ trading ({fmtRate(afterFeeBps(chain, r.low))} to {fmtRate(afterFeeBps(chain, r.high))} after the claim fee). Each day the treasury pays
+                    three days’ trading ({fmtRate(afterFeeBps(rules, r.low))} to {fmtRate(afterFeeBps(rules, r.high))} after the claim fee). Each day the treasury pays
                     part of its ETH to stakers as WETH, streamed over seven days.
                   </p>
                 </div>
@@ -181,6 +202,10 @@ export function Home() {
 
       <section class="section" aria-labelledby="live-title">
         <div class="wrap">
+          {/* Before the launch (CR-86) the running totals do not exist yet: the contracts and the supply instead, never zeros. */}
+          {before ? (
+            <HomeContracts p={prelaunch!} />
+          ) : (
           <Card title={<span id="live-title">So far</span>}>
             {chain ? (
               <Figures cols={4}>
@@ -205,6 +230,7 @@ export function Home() {
               ]}
             />
           </Card>
+          )}
           {/* CR-77 item 6: the line about the owner's powers and income is deleted. */}
         </div>
       </section>

@@ -474,7 +474,7 @@ function TownTotals() {
 
 function Staking() {
   const chain = useChain();
-  const { network } = useApp();
+  const { network, owner } = useApp();
   const st = chain.staking;
   const vaults = TIERS.reduce((a, t) => a + st.tierVaults[t], 0);
   const unlock = chain.lpVault.unlockTime;
@@ -539,7 +539,7 @@ function Staking() {
         links={[
           { label: 'staking totals', what: 'the staking contract’s totals per tier', href: readUrl(network, st.address) },
           { label: 'unlock time', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
-          { label: 'position NFT', what: 'the liquidity position NFT', href: positionUrl(network) },
+          { label: 'position NFT', what: 'the liquidity position NFT', href: positionUrl(network, owner?.lpVault.tokenId) },
         ]}
       />
     </Card>

@@ -1,6 +1,6 @@
 // Figures the site works out from contract views. Every input is a field of ChainState or
 // WalletState (read by src/lib/reads.ts); nothing here invents a number.
-import { PriceSource, type ChainState, type SellFeeShares, type Tier, type WalletState } from '../data/types';
+import { PriceSource, type ChainState, type FixedRules, type SellFeeShares, type Tier, type WalletState } from '../data/types';
 
 const BPS = 10_000n;
 
@@ -136,7 +136,7 @@ export function burned(chain: ChainState): bigint {
  * The burn floor in TOWN units: TownHook.BURN_FLOOR() when the figures have been read; the spec's
  * 100,000,000 TOWN (CR-55) only where the contracts are not deployed on this network yet.
  */
-export function burnFloor(chain: ChainState | null): bigint {
+export function burnFloor(chain: FixedRules | null): bigint {
   return chain ? chain.hook.BURN_FLOOR : SPEC_BURN_FLOOR;
 }
 const SPEC_BURN_FLOOR = 100_000_000n * 10n ** 18n;
@@ -297,7 +297,7 @@ export function reserveNearlySpent(chain: ChainState): boolean {
  * when the figures have been read; the spec's 400 (day 401; CR-93) only where the contracts are not
  * deployed on this network yet.
  */
-export function reserveFeeStart(chain: ChainState | null): number {
+export function reserveFeeStart(chain: FixedRules | null): number {
   return chain ? chain.hook.RESERVE_FEE_START : SPEC_RESERVE_FEE_START;
 }
 const SPEC_RESERVE_FEE_START = 400;
@@ -314,7 +314,7 @@ export const LAUNCH_FUNDING = 500_000_000n * 10n ** 18n;
 export const SPEC_RATE = { base: 500, buySpan: 25, sellSpan: 50 } as const;
 
 /** The rebate rates in basis points, from BuyerRewards' constants (CR-47): balanced (500), after only buys (525), the highest (550). */
-export function rateRange(chain: ChainState | null): { low: number; buyTop: number; high: number } {
+export function rateRange(chain: FixedRules | null): { low: number; buyTop: number; high: number } {
   const base = chain ? chain.rewards.RATE_BASE_BPS : SPEC_RATE.base;
   const buy = chain ? chain.rewards.RATE_BUY_SPAN_BPS : SPEC_RATE.buySpan;
   const sell = chain ? chain.rewards.RATE_SELL_SPAN_BPS : SPEC_RATE.sellSpan;
@@ -330,12 +330,12 @@ export function dayRateBps(chain: ChainState, cycle: number): number {
 export const SPEC_CLAIM_FEE_BPS = 200;
 
 /** The claim fee in basis points: BuyerRewards.CLAIM_FEE_BPS(), or the spec's figure before deployment. */
-export function claimFeeBps(chain: ChainState | null): number {
+export function claimFeeBps(chain: FixedRules | null): number {
   return chain ? chain.rewards.CLAIM_FEE_BPS : SPEC_CLAIM_FEE_BPS;
 }
 
 /** A rate after the claim fee: rate x (1 - CLAIM_FEE_BPS / 10000), in basis points with decimals. */
-export function afterFeeBps(chain: ChainState | null, rateBps: number): number {
+export function afterFeeBps(chain: FixedRules | null, rateBps: number): number {
   const fee = claimFeeBps(chain);
   return (rateBps * (10_000 - fee)) / 10_000;
 }
@@ -499,12 +499,12 @@ export function stakingPaidSince(records: { address: string; replacedOn: number 
 // --- staking -----------------------------------------------------------------------------
 
 /** A tier's share of every payout, in basis points with decimals: 100/750 -> 1333.33. */
-export function tierShareBps(chain: ChainState, tier: Tier): number {
+export function tierShareBps(chain: FixedRules, tier: Tier): number {
   return Math.round((chain.staking.tierWeight[tier] * 1_000_000) / chain.staking.TOTAL_WEIGHT) / 100;
 }
 
 /** A tier's multiplier as text: weight 125 -> "1.25x". */
-export function tierMultiplier(chain: ChainState, tier: Tier): string {
+export function tierMultiplier(chain: FixedRules, tier: Tier): string {
   return `${chain.staking.tierWeight[tier] / 100}x`;
 }
 

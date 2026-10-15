@@ -3,7 +3,7 @@
 import { createContext, type ComponentChildren } from 'preact';
 import { useContext, useState } from 'preact/hooks';
 import type { PublicClient, TransactionReceipt } from 'viem';
-import type { Address, ChainState, OwnerState, WalletState } from '../data/types';
+import type { Address, ChainState, FixedRules, OwnerState, PrelaunchState, WalletState } from '../data/types';
 import { ChevronIcon, ExternalIcon, InfoIcon, NoteIcon, WarnIcon } from './icons';
 import { txUrl, type Network } from '../lib/network';
 import { explainError, type TradeKind } from '../lib/errors';
@@ -14,7 +14,9 @@ import { fmtExact } from '../lib/amount';
 
 /**
  * Where the figures stand: being read, read, failed to read, nothing deployed on this chain, or
- * deployed but not launched yet (only the owner page's views are read then; CR-64).
+ * deployed but not launched yet (CR-86: `Launcher.launched()` is false; the owner page's views and
+ * the fixed rules are read then, `AppState.prelaunch`). The state comes from the chain, never from
+ * the address file.
  */
 export interface DataStatus {
   state: 'loading' | 'ready' | 'error' | 'not-deployed' | 'not-launched';
@@ -27,8 +29,10 @@ export interface DataStatus {
 export interface AppState {
   /** The chain shown, its RPC, its explorer and the contract addresses (the network module). */
   network: Network;
-  /** Every figure, read from the chain at one block; null until the first read. */
+  /** Every figure, read from the chain at one block; null until the first read, and before the launch. */
   chain: ChainState | null;
+  /** Deployed, not launched (CR-86): the fixed rules and the supply, read from the chain; null otherwise. */
+  prelaunch?: PrelaunchState | null;
   /** The connected wallet's figures, or null when no wallet is connected. */
   wallet: WalletState | null;
   /** The owner page's views (CR-64), read with the figures; also before launch. Null until the first read. */
@@ -56,6 +60,18 @@ export function useApp(): AppState {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error('AppContext missing');
   return ctx;
+}
+
+/** The fixed rules (CR-86): from the launched figures, or before the launch from what the contracts answer then; null until read. */
+export function useRules(): FixedRules | null {
+  const { chain, prelaunch } = useApp();
+  return chain ?? prelaunch ?? null;
+}
+
+/** True between the two mainnet phases (CR-86): the contracts are deployed and `Launcher.launched()` answered false. */
+export function useBeforeLaunch(): boolean {
+  const { chain, data, network } = useApp();
+  return !chain && !!network.deployment && data.state === 'not-launched';
 }
 
 /** The figures, on pages that are only shown once they have been read. */
@@ -483,6 +499,7 @@ export interface VerifyLink {
  */
 export function Verify({ links, inline }: { links: VerifyLink[]; inline?: boolean }) {
   const { network } = useApp();
+  const before = useBeforeLaunch();
   const Tag = inline ? 'span' : 'p';
   const usable = links.filter((l) => l.href);
   if (!network.explorer || usable.length === 0) {
@@ -491,10 +508,16 @@ export function Verify({ links, inline }: { links: VerifyLink[]; inline?: boolea
         <span class="verify-text" aria-disabled="true">
           Don’t trust, verify
         </span>{' '}
-        <span class="verify-note">{network.explorer ? '(not deployed on this network yet)' : `(no block explorer on the ${network.name.toLowerCase()})`}</span>
+        <span class="verify-note">
+          {!network.explorer ? `(no block explorer on the ${network.name.toLowerCase()})` : network.deployment ? '(from the launch)' : '(not deployed on this network yet)'}
+        </span>
       </Tag>
     );
   }
+  // Between the two mainnet phases the explorer may still show the contracts' code as unverified:
+  // the owner publishes the source shortly before phase 2 (CR-98 as amended). Said beside the links,
+  // and only then.
+  const source = before ? <SourceNote /> : null;
   const a = (l: VerifyLink, text: string) => (
     <a
       class="verify-link"
@@ -509,7 +532,12 @@ export function Verify({ links, inline }: { links: VerifyLink[]; inline?: boolea
     </a>
   );
   if (usable.length === 1 && !usable[0].label) {
-    return <Tag class={`verify${inline ? ' inline' : ''}`}>{a(usable[0], 'Don’t trust, verify')}</Tag>;
+    return (
+      <Tag class={`verify${inline ? ' inline' : ''}`}>
+        {a(usable[0], 'Don’t trust, verify')}
+        {source}
+      </Tag>
+    );
   }
   return (
     <Tag class={`verify${inline ? ' inline' : ''}`}>
@@ -519,6 +547,13 @@ export function Verify({ links, inline }: { links: VerifyLink[]; inline?: boolea
           {a(l, l.label ?? l.what)}
         </span>
       ))}
+      {source}
     </Tag>
   );
+}
+
+/** Beside explorer links between the phases (CR-98 as amended): the source is not on the explorer yet. */
+export const SOURCE_NOTE = 'source published shortly before the pool opens';
+export function SourceNote() {
+  return <span class="verify-note source-note">({SOURCE_NOTE})</span>;
 }

@@ -3086,3 +3086,77 @@ code.break {
 .price-line .price-source {
   color: var(--text-3);
 }
+
+/* ---- Deployed, not launched (CR-86, F12a) --------------------------------------------------- */
+/* The home page's one line: the contracts are live, the pool opens soon. */
+.launch-line {
+  display: inline-block;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.45;
+  max-width: 100%;
+}
+/* A switched-off action: its button, disabled, and the sentence that says why. */
+.off-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 0;
+}
+.off-action + .off-action {
+  border-top: 1px solid var(--border);
+}
+.off-action p {
+  margin: 0;
+  flex: 1 1 220px;
+}
+.off-action .btn[disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.swap-card .off-action {
+  padding: 12px 0;
+}
+/* The seven contracts in full. */
+.contract-list {
+  list-style: none;
+  margin: 12px 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.contract-list li {
+  display: grid;
+  grid-template-columns: 9.5em minmax(0, 1fr);
+  gap: 2px 12px;
+  align-items: baseline;
+  font-size: 14px;
+}
+.contract-list .contract-name {
+  color: var(--text-2);
+}
+.contract-list code {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .contract-list li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* "source published shortly before the pool opens", beside the explorer links (CR-98 as amended). */
+.source-note {
+  color: var(--text-3);
+}
+.verify .source-note {
+  margin-left: 6px;
+}
+.off-list li + li {
+  margin-top: 6px;
+}

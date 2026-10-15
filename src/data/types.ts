@@ -449,3 +449,31 @@ export interface Deployment {
   /** The launch position's token ID on the Uniswap v4 PositionManager (LPVault holds it); `null` before launch. */
   lpTokenId: bigint | null;
 }
+
+/**
+ * The fixed rules, read from the contracts' constants and settings (F12a, CR-86): the part of
+ * `ChainState` that means the same before the launch as after it. `ChainState` has every field
+ * here, so whatever shows only the rules takes either one.
+ */
+export interface FixedRules {
+  token: Pick<ChainState['token'], 'totalSupply' | 'INITIAL_SUPPLY'>;
+  hook: Pick<ChainState['hook'], 'BUY_FEE_BPS' | 'ANTI_SNIPE_START_BPS' | 'ANTI_SNIPE_DURATION' | 'BURN_FLOOR' | 'RESERVE_FEE_START'>;
+  rewards: Pick<ChainState['rewards'], 'CLAIM_FEE_BPS' | 'RATE_BASE_BPS' | 'RATE_BUY_SPAN_BPS' | 'RATE_SELL_SPAN_BPS' | 'LEAN_CYCLES' | 'cap'>;
+  treasury: Pick<ChainState['treasury'], 'spendBps' | 'MAX_SPEND_BPS' | 'OWNER_ETH_BPS' | 'MIN_DISTRIBUTION' | 'OWNER_DELAY' | 'APPLY_WINDOW' | 'staking'>;
+  staking: Pick<ChainState['staking'], 'address' | 'tierUsd' | 'tierWeight' | 'TOTAL_WEIGHT' | 'STREAM_LENGTH'>;
+  lpVault: Pick<ChainState['lpVault'], 'lockDuration'>;
+}
+
+/**
+ * Deployed, not launched (CR-86): what the site reads while `Launcher.launched()` is false. Only
+ * views that mean something before the launch: the constants and settings above, the supply and
+ * where it sits. Everything that starts at the launch (the day, the price, the rebate reserve, the
+ * treasury's money, the lock's end) is left out, not shown as zero.
+ */
+export interface PrelaunchState extends FixedRules {
+  /** `block.timestamp` of the block read. */
+  blockTimestamp: number;
+  blockNumber: bigint;
+  /** UpTownToken.balanceOf(Launcher): until the launch the Launcher holds the whole supply. */
+  launcherBalance: bigint;
+}

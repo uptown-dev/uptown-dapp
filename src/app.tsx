@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { getAddress } from 'viem';
-import { AppContext, Notice, PageHead, useApp, type AppState, type DataStatus } from './components/ui';
+import { AppContext, Notice, PageHead, SOURCE_NOTE, useApp, useBeforeLaunch, type AppState, type DataStatus } from './components/ui';
 import { CloseIcon, ExternalIcon, GmgnMark, MenuIcon, DarkModeIcon, LightModeIcon, OpenSeaMark, SkylineMark, TelegramMark, XMark } from './components/icons';
-import { CONTRACT_NAMES, type Address, type ChainState, type OwnerState, type WalletState } from './data/types';
+import { CONTRACT_NAMES, type Address, type ChainState, type OwnerState, type PrelaunchState, type WalletState } from './data/types';
 import { NETWORK, contractUrl, type Network } from './lib/network';
 import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetTownAddress } from './lib/places';
 import { makeClient, readAll } from './lib/reads';
@@ -18,6 +18,7 @@ import { Stake } from './pages/Stake';
 import { Stats } from './pages/Stats';
 import { Docs } from './pages/Docs';
 import { Owner } from './pages/Owner';
+import { RewardsBeforeLaunch, StakeBeforeLaunch, StatsBeforeLaunch, TradeBeforeLaunch } from './pages/BeforeLaunch';
 import { showsOwnerLink } from './lib/owner';
 
 /** Every page: its address (`#/<page>`), its label and its browser title. */
@@ -324,8 +325,91 @@ export function PlaceRow({ town = mainnetTownAddress() }: { town?: Address | nul
   );
 }
 
-/** Pages made of live figures: shown once the figures have been read. */
+/** Pages made of live figures: shown once the figures have been read (before the launch, as their "deployed, not launched" form). */
 const LIVE_PAGES = new Set(['trade', 'rewards', 'stake', 'stats']);
+
+/**
+ * The page for `#/<page>`, in the state the chain is in (CR-86): not deployed, deployed and not
+ * launched (`Launcher.launched()` false: each live page in its "before the launch" form, with the
+ * fixed rules, the addresses and its actions off), or launched (every figure).
+ */
+export function PageView({ page, section = '' }: { page: string; section?: string }) {
+  const { chain, prelaunch, data, refresh } = useApp();
+  if (LIVE_PAGES.has(page) && !chain) {
+    if (data.state === 'not-launched' && prelaunch) {
+      switch (page) {
+        case 'trade':
+          return <TradeBeforeLaunch p={prelaunch} />;
+        case 'rewards':
+          return <RewardsBeforeLaunch p={prelaunch} />;
+        case 'stake':
+          return <StakeBeforeLaunch p={prelaunch} />;
+        default:
+          return <StatsBeforeLaunch p={prelaunch} />;
+      }
+    }
+    return <ChainPending title={NAV.find((n) => n.page === page)!.label} data={data} onRetry={refresh} />;
+  }
+  switch (page) {
+    case 'trade':
+      return <Trade sell={section === 'sell'} />;
+    case 'rewards':
+      return <Rewards />;
+    case 'stake':
+      return <Stake />;
+    case 'stats':
+      return <Stats />;
+    case 'docs':
+      return <Docs />;
+    case 'owner':
+      return <Owner />;
+    default:
+      return <Home />;
+  }
+}
+
+/**
+ * The footer's list of the seven contracts, each linked to the explorer (CR-40). Between the two
+ * mainnet phases it says, in a few words, that the source is published shortly before the pool
+ * opens (CR-98 as amended): until then the explorer may show the code unverified.
+ */
+export function FooterContracts() {
+  const { network } = useApp();
+  const before = useBeforeLaunch();
+  return (
+    <div class="footer-contracts">
+      <p class="footer-head">Contracts{network.explorerName ? ` on ${network.explorerName}` : ''}</p>
+      {network.deployment ? (
+        <ul>
+          {CONTRACT_NAMES.map((name) => {
+            const href = contractUrl(network, name);
+            const addr = network.deployment!.contracts[name];
+            return (
+              <li key={name}>
+                {href ? (
+                  <a href={href} target="_blank" rel="noopener noreferrer" aria-label={`${name}, ${addr}, on ${network.explorerName} (opens in a new tab)`}>
+                    <span class="footer-cname">{name}</span>
+                    <span class="footer-addr num">{shortAddress(addr)}</span>
+                    <ExternalIcon size={12} />
+                  </a>
+                ) : (
+                  <span class="footer-off" title={addr}>
+                    <span class="footer-cname">{name}</span>
+                    <span class="footer-addr num">{shortAddress(addr)}</span>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p class="footer-note">Not deployed on {network.name} yet: the addresses are published here once they are.</p>
+      )}
+      {network.deployment && !network.explorer && <p class="footer-note">No block explorer on the {network.name.toLowerCase()}, so these are not links.</p>}
+      {before && network.explorer && <p class="footer-note source-note">Not launched yet: {SOURCE_NOTE}.</p>}
+    </div>
+  );
+}
 
 /** How often the figures are read again while the page is open (and after every transaction). */
 const REFRESH_MS = 15_000;
@@ -373,6 +457,7 @@ export function App() {
   const [account, setAccount] = useState<Address | null>(() => storedLocalWallet());
   const [walletChain, setWalletChain] = useState<number | null>(null);
   const [chain, setChain] = useState<ChainState | null>(null);
+  const [prelaunch, setPrelaunch] = useState<PrelaunchState | null>(null);
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [owner, setOwner] = useState<OwnerState | null>(null);
   const [data, setData] = useState<DataStatus>({ state: network.deployment ? 'loading' : 'not-deployed', error: null, readAt: null });
@@ -401,13 +486,15 @@ export function App() {
         if (accountRef.current !== who) return; // the wallet changed meanwhile: a new read follows
         const readAt = Date.now();
         setChain(r.chain);
+        setPrelaunch(r.prelaunch);
         setWallet(r.wallet);
         setOwner(r.owner);
         const block = r.chain?.blockTimestamp;
         if (block !== undefined) setClock((prev) => stepClock(prev, block, readAt));
         setData({ state: r.chain ? 'ready' : 'not-launched', error: null, readAt });
       } catch (e) {
-        setData((d) => ({ ...d, state: d.readAt ? 'ready' : 'error', error: explainError(e).message }));
+        // A failed read after a good one keeps the state that read found (launched, or not yet: CR-86) and its figures.
+        setData((d) => ({ ...d, state: d.readAt ? d.state : 'error', error: explainError(e).message }));
       }
     })();
     reading.current = p;
@@ -593,6 +680,7 @@ export function App() {
   const state: AppState = {
     network,
     chain,
+    prelaunch,
     wallet: account && wallet && wallet.address === account ? wallet : null,
     owner,
     account,
@@ -609,25 +697,7 @@ export function App() {
     toast,
   };
 
-  const view = (() => {
-    if (LIVE_PAGES.has(page) && !chain) return <ChainPending title={NAV.find((n) => n.page === page)!.label} data={data} onRetry={refresh} />;
-    switch (page) {
-      case 'trade':
-        return <Trade sell={section === 'sell'} />;
-      case 'rewards':
-        return <Rewards />;
-      case 'stake':
-        return <Stake />;
-      case 'stats':
-        return <Stats />;
-      case 'docs':
-        return <Docs />;
-      case 'owner':
-        return <Owner />;
-      default:
-        return <Home />;
-    }
-  })();
+  const view = <PageView page={page} section={section} />;
 
   const nextTheme: Theme = theme === 'dark' ? 'light' : 'dark';
   const dayClock = (place: 'tools' | 'brand') =>
@@ -789,36 +859,7 @@ export function App() {
             </div>
             <PlaceRow />
           </div>
-          <div class="footer-contracts">
-            <p class="footer-head">Contracts{network.explorerName ? ` on ${network.explorerName}` : ''}</p>
-            {network.deployment ? (
-              <ul>
-                {CONTRACT_NAMES.map((name) => {
-                  const href = contractUrl(network, name);
-                  const addr = network.deployment!.contracts[name];
-                  return (
-                    <li key={name}>
-                      {href ? (
-                        <a href={href} target="_blank" rel="noopener noreferrer" aria-label={`${name}, ${addr}, on ${network.explorerName} (opens in a new tab)`}>
-                          <span class="footer-cname">{name}</span>
-                          <span class="footer-addr num">{shortAddress(addr)}</span>
-                          <ExternalIcon size={12} />
-                        </a>
-                      ) : (
-                        <span class="footer-off" title={addr}>
-                          <span class="footer-cname">{name}</span>
-                          <span class="footer-addr num">{shortAddress(addr)}</span>
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p class="footer-note">Not deployed on {network.name} yet: the addresses are published here once they are.</p>
-            )}
-            {network.deployment && !network.explorer && <p class="footer-note">No block explorer on the {network.name.toLowerCase()}, so these are not links.</p>}
-          </div>
+          <FooterContracts />
           {/* CR-87 removed the visible font licence sentence. The licence files themselves are
               still published with the site, at licenses/OFL-Inter.txt and licenses/OFL-Cinzel.txt
               (public/licenses/, copied into dist/ by every build), which is what the fonts'
@@ -842,7 +883,7 @@ export function App() {
 
 /** A live page before its figures are read: reading, not deployed, or the network did not answer. */
 function ChainPending({ title, data, onRetry }: { title: string; data: DataStatus; onRetry: () => Promise<void> }) {
-  const n = NETWORK;
+  const n = useApp().network;
   return (
     <div class="wrap page narrow">
       <PageHead

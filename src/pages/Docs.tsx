@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useApp, Details, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
+import { useApp, useRules, Details, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
 import { OWNER_CANNOT, OWNER_POWERS, ROUTING_NOTE, THINGS_TO_KNOW } from '../content/docs';
 import { buyerHookData } from '../lib/reads';
 import { PriceSource } from '../data/types';
@@ -23,12 +23,14 @@ const SECTIONS: { id: string; title: string }[] = [
 const titleOf = (id: string) => SECTIONS.find((s) => s.id === id)!.title;
 
 export function Docs() {
-  const { network, chain } = useApp();
+  const { network, chain, owner } = useApp();
+  // The fixed rules from the contracts, before the launch too (CR-86); the spec's figures only where nothing is deployed.
+  const rules = useRules();
   const town = network.deployment?.contracts.UpTownToken;
-  const r = rateRange(chain);
+  const r = rateRange(rules);
   // From this day a TOWN sell fee is half burned and half sent to the rebate reserve (CR-93): day 401.
-  const fromDay = dayName(reserveFeeStart(chain));
-  const floor = fmtTown(burnFloor(chain));
+  const fromDay = dayName(reserveFeeStart(rules));
+  const floor = fmtTown(burnFloor(rules));
   return (
     <div class="wrap page docs">
       <PageHead title="Docs" lead="How UpTown works, part by part, and what the owner can do. UpTown is an experiment on Ethereum." />
@@ -99,7 +101,7 @@ export function Docs() {
                 {fmtBps(r.high)} after days of only selling. The <a href="#/rewards">Rewards page</a> shows today’s rate and the three-day lean behind it.
               </li>
               <li>
-                {fmtBps(claimFeeBps(chain))} of every claim goes to the treasury for the owner, so {fmtRate(afterFeeBps(chain, r.low))} to {fmtRate(afterFeeBps(chain, r.high))}{' '}
+                {fmtBps(claimFeeBps(rules))} of every claim goes to the treasury for the owner, so {fmtRate(afterFeeBps(rules, r.low))} to {fmtRate(afterFeeBps(rules, r.high))}{' '}
                 reaches you.
               </li>
               <li data-item="limit">
@@ -192,7 +194,7 @@ export function Docs() {
               </li>
               <li>
                 The position is an NFT on Uniswap’s v4 PositionManager, owned by LPVault.{' '}
-                <Verify inline links={[{ what: 'the liquidity position NFT', href: positionUrl(network) }]} />
+                <Verify inline links={[{ what: 'the liquidity position NFT', href: positionUrl(network, owner?.lpVault.tokenId) }]} />
               </li>
               <li>The owner can extend the lock, never shorten it, and can collect the 0.5% pool fee, but cannot remove liquidity before the unlock time.</li>
             </ul>
@@ -204,7 +206,7 @@ export function Docs() {
                 No contract can be upgraded, and trading never pauses. The one moving part: the owner can pause the treasury’s daily payout or point it at a
                 new staking contract, each after a 2-day public wait.
               </li>
-              <li>The fees are fixed: 2% on buys, 2% on sells, the 0.5% pool fee and the {fmtBps(claimFeeBps(chain))} claim fee.</li>
+              <li>The fees are fixed: 2% on buys, 2% on sells, the 0.5% pool fee and the {fmtBps(claimFeeBps(rules))} claim fee.</li>
               <li>The supply (1,000,000,000 TOWN), the vault tiers and their dollar prices are fixed.</li>
               <li>
                 UpTownToken, TownHook and BuyerRewards have no owner at all.{' '}
@@ -337,7 +339,11 @@ function Owner() {
       </p>
 
       <Details summary="Current owner settings">
-        {chain ? <Settings /> : <p class="small muted">Shown once the contracts are deployed on this network.</p>}
+        {chain ? (
+          <Settings />
+        ) : (
+          <p class="small muted">{network.deployment ? 'Shown once UpTown has launched.' : 'Shown once the contracts are deployed on this network.'}</p>
+        )}
       </Details>
     </Section>
   );

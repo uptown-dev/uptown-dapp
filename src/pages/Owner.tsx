@@ -136,8 +136,36 @@ export function OwnerPage({ o, chain, access }: { o: OwnerState; chain: ChainSta
           ))}
         </Card>
       )}
+      {!chain && !o.launcher.launched && <OffUntilLaunch />}
       <p class="small faint owner-foot">This page is hidden, not locked: every owner function refuses any caller but the owner in the contract itself.</p>
     </div>
+  );
+}
+
+/**
+ * Deployed, not launched (CR-86): the owner's powers this page offers only from the launch (they act
+ * on the payouts, the money or the position, which start there), each switched off with one plain sentence. They appear above, with their settings, once the launch has run.
+ */
+export const OFF_UNTIL_LAUNCH: { power: string; why: string }[] = [
+  { power: 'Withdraw the ETH owner reserve and the TOWN claim fees', why: 'The treasury receives nothing before the launch, so there is nothing to withdraw.' },
+  { power: 'Change the daily payout rate', why: 'Payouts start at the launch; this page offers the change from then.' },
+  { power: 'Replace the staking contract or pause the payouts', why: 'Both act on the treasury’s daily payouts, which start at the launch; this page offers them from then.' },
+  { power: 'Collect the pool fees, extend the lock or withdraw the position', why: 'LPVault receives the locked position at the launch.' },
+  { power: 'Set a fallback ETH price or replace the price feed', why: 'Vault prices are used from the launch, when vaults open; this page offers them from then.' },
+];
+
+function OffUntilLaunch() {
+  return (
+    <Card title="From the launch" class="owner-card">
+      <p class="small muted card-lead">This page offers these owner powers from the launch. Each is off until then.</p>
+      <ul class="plain-list off-list">
+        {OFF_UNTIL_LAUNCH.map((x) => (
+          <li key={x.power} data-off-power={x.power}>
+            <strong>{x.power}.</strong> {x.why}
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

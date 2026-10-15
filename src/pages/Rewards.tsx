@@ -1,6 +1,6 @@
 import { useApp, useChain, useTx, Card, ConnectPrompt, Details, Fig, Figures, Notice, PageHead, TxStatus, Usd } from '../components/ui';
 import { claimRebatesTx } from '../lib/actions';
-import type { ChainState } from '../data/types';
+import type { FixedRules } from '../data/types';
 import {
   afterClaimFee,
   afterFeeBps,
@@ -35,8 +35,8 @@ export function Rewards() {
       <YourRebate />
       <Today />
       <Details>
-        <Rules />
-        <Schedule />
+        <Rules rules={chain} />
+        <Schedule rules={chain} current={chain.rewards.currentCycle} />
       </Details>
     </div>
   );
@@ -258,7 +258,7 @@ function Today() {
 }
 
 /** The three-point rule, in one sentence, from BuyerRewards' constants (CR-47). */
-export function RateRule({ chain }: { chain: ChainState | null }) {
+export function RateRule({ chain }: { chain: FixedRules | null }) {
   const r = rateRange(chain);
   return (
     <>
@@ -286,8 +286,8 @@ function YesterdaysLean() {
   return <Fig label="Yesterday’s lean" value={value} view={`BuyerRewards.lean(${c}); TownHook.cycleTotal, sold`} note={note} />;
 }
 
-function Rules() {
-  const chain = useChain();
+/** The rebate rules, from the contracts' constants; `before`: the launch has not happened yet (CR-86), so the launch day is spoken of ahead. */
+export function Rules({ rules: chain, before }: { rules: FixedRules; before?: boolean }) {
   const r = rateRange(chain);
   return (
     <ul class="plain-list">
@@ -301,8 +301,8 @@ function Rules() {
         the three points.
       </li>
       <li>
-        Days are calendar days in UTC, from midnight to midnight; {dayName(0)}, the launch day, began at launch and was shorter. A day can be claimed from
-        midnight UTC, when the next day begins. Rebates never expire.
+        Days are calendar days in UTC, from midnight to midnight; {dayName(0)}, the launch day, {before ? 'begins at the launch and is' : 'began at launch and was'}{' '}
+        shorter. A day can be claimed from midnight UTC, when the next day begins. Rebates never expire.
       </li>
       <li>
         {fmtBps(chain.rewards.CLAIM_FEE_BPS)} of every claim goes to the treasury for the owner, in TOWN, so a buyer gets {fmtRate(afterFeeBps(chain, r.low))}{' '}
@@ -331,16 +331,16 @@ const EPOCHS = [0, 100, 200, 300, 400, 500, 600, 700];
  * end of each period if every day reached its limit. The reserve also takes in TOWN after launch
  * (sell fees, anyone's transfers), which the shares leave out and which lengthens the tail.
  */
-function Schedule() {
-  const chain = useChain();
-  const now = epochIndex(chain.rewards.currentCycle);
+export function Schedule({ rules: chain, current }: { rules: FixedRules; current: number | null }) {
+  // Before the launch (CR-86) there is no current day, so no row is marked "Now".
+  const now = current === null ? -1 : epochIndex(current);
   const tail = chain.rewards.cap[EPOCHS[EPOCHS.length - 1]] ?? 0n;
   let cumulative = 0n;
   return (
     <>
       <h3 class="details-title">Daily limit: halves every 100 days, then {fmtCap(tail)} TOWN a day</h3>
       <p class="small muted">
-        Half the 500,000,000 TOWN the reserve was funded with at launch is scheduled for the first 100 days. The limit halves every 100 days down to{' '}
+        Half the 500,000,000 TOWN the reserve {current === null ? 'is funded with at the launch' : 'was funded with at launch'} is scheduled for the first 100 days. The limit halves every 100 days down to{' '}
         {fmtCap(chain.rewards.cap[600] ?? 0n)} TOWN for days 601 to 700; from day 701 it is {fmtCap(tail)} TOWN a day for as long as the reserve has TOWN.
       </p>
       <div class="table-scroll">

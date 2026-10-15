@@ -53,6 +53,10 @@
 // - CR-92 part 1 (F9t), the Docs item for whoever routes buys for others: its place after "Buy on
 //   this site", its text character for character (the 32-byte rule), its code words, and its example
 //   `hookData` against the bytes the site's own buy form puts in its swap.
+// - F12a (CR-86, CR-98): the three states — not deployed, deployed and not launched (from a fixture of
+//   the live constants, the chain itself being launched while the tests run), launched — through the
+//   site's own page switch; the switched-off actions and their sentences, no price, no dollar figure,
+//   no zero, the note beside the explorer links between the phases only, and the position link.
 // - CR-95 items 2 and 3 (F9v): the Trade page without its "Buy here" line; the dollar figures — the
 //   arithmetic from a known sqrtPriceX96 and a known ETH price, the pool's price as the site reads
 //   it (against StateView read on its own at the same block), the figures beside the amounts on
@@ -81,7 +85,7 @@ const SITE_SOURCES = import.meta.glob(['../src/**/*.ts', '../src/**/*.tsx', '../
 import { ContractFunctionRevertedError, decodeAbiParameters, decodeFunctionData, decodeFunctionResult, encodeErrorResult, encodeFunctionData, formatUnits, getAddress, pad, toHex, type PublicClient } from 'viem';
 import { Owner, OwnerPage } from '../src/pages/Owner';
 import { networkLabel, pageAccess, showsOwnerLink } from '../src/lib/owner';
-import { UNLISTED_STAKING, listedStaking, replacedStaking } from '../src/lib/network';
+import { UNLISTED_STAKING, listedStaking, positionUrl, replacedStaking } from '../src/lib/network';
 import { MAX_UINT160, MAX_UINT256, UnlistedStakingError, addStakeTx, buyTx, approvePermit2Tx, approveTx, claimWethTx, openVaultTx, ownerTx, unstakeTx, upgradeTx, withMargin } from '../src/lib/actions';
 import { BUY_GAS_ALLOWANCE, buyGasReserve } from '../src/lib/quick';
 import {
@@ -107,10 +111,10 @@ import { Rewards } from '../src/pages/Rewards';
 import { Home } from '../src/pages/Home';
 import { Docs } from '../src/pages/Docs';
 import { OWNER_POWERS, ROUTING_NOTE, THINGS_TO_KNOW } from '../src/content/docs';
-import { App, DayClock, Freshness, NetworkTag, PlaceRow, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
+import { App, DayClock, FooterContracts, Freshness, PageView, NetworkTag, PlaceRow, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
 import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetTownAddress } from '../src/lib/places';
 import type { ChainId, Network } from '../src/lib/network';
-import type { Address, CandidateCheck, ChainState, OwnerState, ReplacedStaking, StakingControls, WalletState } from '../src/data/types';
+import type { Address, CandidateCheck, ChainState, OwnerState, PrelaunchState, ReplacedStaking, StakingControls, WalletState } from '../src/data/types';
 
 const log = document.getElementById('log')!;
 const stage = document.getElementById('stage')!;
@@ -851,6 +855,7 @@ async function run() {
   await cr92(base, wallet);
   await cr95(base, wallet);
   await f9u(base, wallet);
+  await f12a(base, wallet, live.owner, live);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -3803,6 +3808,253 @@ async function f9u(base: ChainState, wallet: WalletState) {
 
 /** The schedule row a cycle is in (0 to 7). */
 const epochIndexOf = (cycle: number) => Math.min(7, Math.floor(cycle / 100));
+
+
+// ---- F12a (CR-86, CR-98): the three states, not deployed / deployed not launched / launched --------
+// The live chain is launched while these tests run (`npm test` reads it), so the "deployed, not
+// launched" state is rendered from a fixture made of the live chain's own constants, exactly the
+// fields reads.ts reads before the launch (`PrelaunchState`), with the owner's views saying "not
+// launched". The real read before the launch is photographed and checked against the Deployer's
+// not-launched local chain by scripts/f12a-shots.mjs. Each state is rendered through `PageView`, the
+// same switch the site uses for every page, so the state decides the page exactly as on the site.
+// A network fixture with Etherscan stands for mainnet, so the explorer links and the note beside
+// them can be seen (the local chain has no explorer).
+async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: { prelaunch: unknown }) {
+  check('F12a launched: the live read has every figure and no "before the launch" figures (prelaunch null)', live.prelaunch === null && base.hook.launchTime > 0);
+
+  const prelaunch: PrelaunchState = {
+    blockTimestamp: base.blockTimestamp,
+    blockNumber: base.blockNumber,
+    launcherBalance: base.token.INITIAL_SUPPLY,
+    token: { totalSupply: base.token.INITIAL_SUPPLY, INITIAL_SUPPLY: base.token.INITIAL_SUPPLY },
+    hook: {
+      BUY_FEE_BPS: base.hook.BUY_FEE_BPS,
+      ANTI_SNIPE_START_BPS: base.hook.ANTI_SNIPE_START_BPS,
+      ANTI_SNIPE_DURATION: base.hook.ANTI_SNIPE_DURATION,
+      BURN_FLOOR: base.hook.BURN_FLOOR,
+      RESERVE_FEE_START: base.hook.RESERVE_FEE_START,
+    },
+    rewards: {
+      CLAIM_FEE_BPS: base.rewards.CLAIM_FEE_BPS,
+      RATE_BASE_BPS: base.rewards.RATE_BASE_BPS,
+      RATE_BUY_SPAN_BPS: base.rewards.RATE_BUY_SPAN_BPS,
+      RATE_SELL_SPAN_BPS: base.rewards.RATE_SELL_SPAN_BPS,
+      LEAN_CYCLES: base.rewards.LEAN_CYCLES,
+      cap: Object.fromEntries([0, 100, 200, 300, 400, 500, 600, 700].map((c) => [c, base.rewards.cap[c]])),
+    },
+    treasury: {
+      spendBps: base.treasury.spendBps,
+      MAX_SPEND_BPS: base.treasury.MAX_SPEND_BPS,
+      OWNER_ETH_BPS: base.treasury.OWNER_ETH_BPS,
+      MIN_DISTRIBUTION: base.treasury.MIN_DISTRIBUTION,
+      OWNER_DELAY: base.treasury.OWNER_DELAY,
+      APPLY_WINDOW: base.treasury.APPLY_WINDOW,
+      staking: base.treasury.staking,
+    },
+    staking: { address: base.staking.address, tierUsd: base.staking.tierUsd, tierWeight: base.staking.tierWeight, TOTAL_WEIGHT: base.staking.TOTAL_WEIGHT, STREAM_LENGTH: base.staking.STREAM_LENGTH },
+    lpVault: { lockDuration: base.lpVault.lockDuration },
+  };
+  const preOwner: OwnerState = { ...o, launcher: { ...o.launcher, launched: false }, lpVault: { ...o.lpVault, tokenId: 0n, unlockTime: 0 } };
+  // Ethereum, as a network fixture: the local deployment's addresses with mainnet's explorer.
+  const ETH_NET: Network = { ...NETWORK, chainId: 1 as ChainId, name: 'Ethereum', explorer: 'https://etherscan.io', explorerName: 'Etherscan', local: false, testWallets: [] };
+  const NONE_NET: Network = { ...NETWORK, deployment: null, stakingContracts: [] };
+  const notLaunched = (network: Network): Partial<AppState> => ({ network, prelaunch, owner: preOwner, data: { state: 'not-launched', error: null, readAt: Date.now() } });
+  const PAGES = ['', 'trade', 'rewards', 'stake', 'stats', 'docs', 'owner'];
+  const pageName = (p: string) => p || 'home';
+  const ownerAccount = { ...wallet, address: OWNER };
+  const zeros = (t: string) => t.match(/(?:^|[^\d.,])0(?:\.0+)? (?:TOWN|ETH|WETH)\b/g) ?? [];
+
+  // 1. Not deployed: every live page says so; Home and the footer too; nothing of the launch states.
+  {
+    const seen: string[] = [];
+    let ok = true;
+    for (const p of PAGES) {
+      const el = await mount(<PageView page={p} />, null, null, `F12a not deployed: ${pageName(p)}`, { network: NONE_NET, owner: null, data: { state: 'not-deployed', error: null, readAt: null } });
+      const t = text(el);
+      const says = /Not deployed on Local test chain yet|not deployed on this network yet/i.test(t);
+      seen.push(`${pageName(p)}: ${says ? 'says not deployed' : t.slice(0, 80)}`);
+      ok &&= says && !el.querySelector('[data-state="not-launched"], .launch-line, .source-note, .usd');
+    }
+    const foot = await mount(<FooterContracts />, null, null, 'F12a not deployed: footer', { network: NONE_NET, data: { state: 'not-deployed', error: null, readAt: null } });
+    ok &&= text(foot).includes('Not deployed on Local test chain yet') && !foot.querySelector('.source-note');
+    check('F12a not deployed: every page (Home, Trade, Rewards, Stake, Stats, Docs, Owner) and the footer say the contracts are not deployed; no launch line, no source note, no dollar figure', ok, seen.join(' | '));
+  }
+
+  // 2. Deployed, not launched, on "Ethereum": each page's form before the launch.
+  {
+    const results: string[] = [];
+    let anyUsd = false;
+    let anyZero: string[] = [];
+    let anyPrice = false;
+    let anyDay = false;
+    let sourceEverywhere = true;
+    for (const p of PAGES) {
+      const el = await mount(<PageView page={p} />, null, p === 'owner' ? ownerAccount : null, `F12a deployed, not launched (Ethereum): ${pageName(p)}`, {
+        ...notLaunched(ETH_NET),
+        account: p === 'owner' ? OWNER : null,
+      });
+      const t = text(el);
+      anyUsd ||= !!el.querySelector('.usd') || /≈ \$/.test(t);
+      anyZero = anyZero.concat(zeros(t).map((z) => `${pageName(p)}:${z.trim()}`));
+      anyPrice ||= !!el.querySelector('.price-line') || /TOWN price/.test(t);
+      anyDay ||= /Day \d[\d,]* ·|\bDay \d[\d,]* \d+h/.test(t) || !!el.querySelector('.day-chip, .day-line');
+      // Every explorer link block carries the note beside it, between the phases.
+      const verifies = [...el.querySelectorAll('.verify:not(.off)')];
+      const noted = verifies.filter((v) => v.querySelector('.source-note')?.textContent === '(source published shortly before the pool opens)').length;
+      if (verifies.length && noted !== verifies.length) sourceEverywhere = false;
+      results.push(`${pageName(p)}: ${verifies.length} link blocks, ${noted} with the note`);
+      if (p === '') {
+        const line = el.querySelector('.launch-line')?.textContent ?? '';
+        const list = [...el.querySelectorAll('.contract-list li')];
+        const linked = list.every((li) => {
+          const a = li.querySelector('a') as HTMLAnchorElement | null;
+          const name = li.getAttribute('data-contract') as keyof typeof k;
+          return a && a.href === `https://etherscan.io/address/${k[name]}` && li.textContent!.includes(k[name]);
+        });
+        check(
+          'F12a not launched, Home: one line says the contracts are live on Ethereum and the pool opens soon; the seven addresses in full with their Etherscan links; the supply; no "So far" figures; the buttons lead to Docs and Stats, not to buying',
+          line === 'UpTown’s contracts are live on Ethereum. The pool opens soon: trading, rebates and staking start at the launch.' &&
+            el.querySelectorAll('.launch-line').length === 1 &&
+            list.length === 7 &&
+            linked &&
+            figText(el, 'UpTownToken.totalSupply') === '1,000,000,000' &&
+            figText(el, 'UpTownToken.balanceOf(Launcher)') === '1,000,000,000' &&
+            !t.includes('So far') &&
+            !t.includes('TOWN rebated to buyers') &&
+            !!el.querySelector('.hero-cta a[href="#/docs"]') &&
+            !el.querySelector('.hero-cta a[href="#/trade"]'),
+          `${line} | ${list.length} contracts, linked ${linked}`,
+        );
+      }
+      const off = [...el.querySelectorAll('.off-action')].map((x) => ({ id: (x as HTMLElement).dataset.off, disabled: !!x.querySelector('button')?.disabled, why: x.querySelector('p')?.textContent ?? '' }));
+      if (p === 'trade')
+        check(
+          'F12a not launched, Trade: buying and selling are off, each with its sentence; no price, no quote form; the warning that no TOWN is traded anywhere yet, with TOWN’s address; the fees from TownHook’s constants',
+          off.map((x) => x.id).join() === 'buy,sell' &&
+            off.every((x) => x.disabled) &&
+            off[0].why === 'Buying starts when the pool opens at the launch.' &&
+            off[1].why === 'Selling starts when the pool opens at the launch.' &&
+            !el.querySelector('input') &&
+            t.includes('No TOWN is traded anywhere yet') &&
+            t.includes(k.UpTownToken) &&
+            t.includes(`Buy. ${fmtBps(base.hook.BUY_FEE_BPS)} of the ETH`) &&
+            t.includes('starts at 90%'),
+          off.map((x) => `${x.id}: ${x.why}`).join(' | '),
+        );
+      if (p === 'rewards')
+        check(
+          'F12a not launched, Rewards: claiming is off with its sentence; the rules and the schedule from the contracts (launch day spoken of ahead, no row marked "Now"); no day, no rate of the day, no reserve figure',
+          off.length === 1 &&
+            off[0].id === 'claim' &&
+            off[0].disabled &&
+            off[0].why === 'Rebates are earned by buys in the pool, so there is nothing to claim before the launch.' &&
+            t.includes('the launch day, begins at the launch and is shorter') &&
+            t.includes('2,500,000') &&
+            !el.querySelector('.now-tag') &&
+            !t.includes('Today’s limit') &&
+            !t.includes('Rebate reserve') &&
+            !t.includes('Claimable'),
+          off.map((x) => `${x.id}: ${x.why}`).join(' | '),
+        );
+      if (p === 'stake') {
+        const rows = [...el.querySelectorAll('table.tiers tbody tr')].map((r) => (r as HTMLElement).innerText.replace(/\s+/g, ' ').trim());
+        check(
+          'F12a not launched, Stake: opening a vault is off with its sentence; the five tiers with multiplier, dollar price and share from TownStaking; no ETH price, no staked or streamed figures',
+          off.length === 1 &&
+            off[0].id === 'stake' &&
+            off[0].disabled &&
+            off[0].why === 'Vaults open at the launch, when TOWN can first be bought.' &&
+            rows.length === 5 &&
+            rows[0].includes('$5') &&
+            rows[4].includes('2x') &&
+            !t.includes('ETH still to stream') &&
+            !t.includes('TOWN staked') &&
+            !/\d ETH\b/.test(rows.join(' ')),
+          rows.join(' | '),
+        );
+      }
+      if (p === 'stats')
+        check(
+          'F12a not launched, Stats: the seven contracts, the supply held by the Launcher and the settings; none of the running totals (treasury balance, volume, burn, rebates, staking), absent rather than zero',
+          el.querySelectorAll('.contract-list li').length === 7 &&
+            figText(el, 'UpTownToken.balanceOf(Launcher)') === '1,000,000,000' &&
+            figText(el, 'Treasury.spendBps') === fmtBps(base.treasury.spendBps) &&
+            figText(el, 'LPVault.lockDuration') === '10 years' &&
+            !t.includes('ETH balance') &&
+            !t.includes('Burned') &&
+            !t.includes('Rebates emitted') &&
+            !t.includes('Trading volume') &&
+            !t.includes('Liquidity locked until'),
+          t.slice(0, 200),
+        );
+      if (p === 'docs')
+        check(
+          'F12a not launched, Docs: the rules from the contracts; the owner settings "shown once UpTown has launched"; no lock date; the position NFT link off "(from the launch)"',
+          t.includes('Shown once UpTown has launched.') && !t.includes('locked for at least 10 years: until') && t.includes('(from the launch)'),
+          (t.match(/Shown once[^.]*\./) ?? [''])[0],
+        );
+      if (p === 'owner') {
+        const items = [...el.querySelectorAll('[data-off-power]')].map((x) => x.textContent ?? '');
+        check(
+          'F12a not launched, Owner: Launch is offered; ownership can be handed over; the five launch-dependent powers are off, each with one sentence',
+          t.includes('Check: Launch') && t.includes('Launched Not yet'),
+          t.slice(0, 120),
+        );
+        check('F12a not launched, Owner: the "From the launch" list', items.length === 5 && items.every((x) => /\.\s\S/.test(x)) && t.includes('Ownership of LPVault'), items.join(' | '));
+      }
+    }
+    check('F12a not launched: no dollar figure on any page (Home, Trade, Rewards, Stake, Stats, Docs, Owner)', !anyUsd);
+    check('F12a not launched: no price and no day number or countdown on any page', !anyPrice && !anyDay);
+    check('F12a not launched: no figure shown as 0 TOWN, 0 ETH or 0 WETH on any page (absent, not zero)', anyZero.length === 0, anyZero.join(', '));
+    check('F12a not launched: beside every "Don’t trust, verify" link, "(source published shortly before the pool opens)" (CR-98 as amended)', sourceEverywhere, results.join(' | '));
+    const foot = await mount(<FooterContracts />, null, null, 'F12a not launched (Ethereum): footer', notLaunched(ETH_NET));
+    const links = [...foot.querySelectorAll('a')].map((a) => (a as HTMLAnchorElement).href);
+    check(
+      'F12a not launched, footer: the seven contracts linked to Etherscan, and "Not launched yet: source published shortly before the pool opens."',
+      links.length === 7 && links.every((h) => h.startsWith('https://etherscan.io/address/')) && text(foot).includes('Not launched yet: source published shortly before the pool opens.'),
+      text(foot).slice(-80),
+    );
+    // The same state on the local chain (no explorer): no note about the explorer's source, the links are off as before.
+    const local = await mount(<PageView page="" />, null, null, 'F12a not launched (local chain): Home', notLaunched(NETWORK));
+    check(
+      'F12a not launched on the local chain: the launch line names the local test chain; no source note where there is no explorer',
+      text(local).includes('UpTown’s contracts are live on the local test chain. The pool opens soon') && !local.querySelector('.source-note'),
+      local.querySelector('.launch-line')?.textContent ?? '',
+    );
+  }
+
+  // 3. Launched (the live chain): every page as before, with none of the "before the launch" forms or notes.
+  {
+    const seen: string[] = [];
+    let ok = true;
+    for (const p of PAGES) {
+      const el = await mount(<PageView page={p} />, base, p === 'owner' ? ownerAccount : wallet, `F12a launched (Ethereum fixture network): ${pageName(p)}`, {
+        network: ETH_NET,
+        account: p === 'owner' ? OWNER : wallet.address,
+      });
+      const bad = !!el.querySelector('[data-state="not-launched"], .launch-line, .off-action, .source-note, [data-off-power]');
+      seen.push(`${pageName(p)}: ${bad ? 'HAS a before-the-launch element' : 'normal'}`);
+      ok &&= !bad;
+    }
+    const home = await mount(<PageView page="" />, base, wallet, 'F12a launched: Home', { network: ETH_NET });
+    const trade = await mount(<PageView page="trade" />, base, wallet, 'F12a launched: Trade', { network: ETH_NET });
+    const foot = await mount(<FooterContracts />, base, wallet, 'F12a launched: footer', { network: ETH_NET });
+    ok &&= text(home).includes('So far') && !!home.querySelector('.hero-cta a[href="#/trade"]') && !!trade.querySelector('.price-line') && !!trade.querySelector('#trade-panel-buy') && !foot.querySelector('.source-note');
+    check('F12a launched: every page is the launched page (Home "So far" and "Buy TOWN", Trade’s price line and forms); no launch line, no switched-off action, no source note, in the footer neither', ok, seen.join(' | '));
+  }
+
+  // 4. The position's explorer link, when the address file was written before the launch (mainnet phase 1).
+  {
+    const d = NETWORK.deployment!;
+    const n: Network = { ...ETH_NET, deployment: { ...d, lpTokenId: null } };
+    const fromChain = positionUrl(n, 445440n);
+    check(
+      'F12a the position NFT link: from the address file when it has the token ID, else from LPVault.tokenId() on chain, none while that is 0',
+      fromChain === `https://etherscan.io/nft/${NETWORK.uniswap!.positionManager}/445440` && positionUrl(n, 0n) === null && positionUrl(n) === null && positionUrl({ ...n, deployment: { ...d, lpTokenId: 7n } }, 445440n)!.endsWith('/7'),
+      String(fromChain),
+    );
+  }
+}
 
 run()
   .catch((e) => check('the tests ran to the end', false, String(e?.stack ?? e)))

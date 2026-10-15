@@ -42,42 +42,49 @@ export function Stake() {
       <EmptyTiers />
       <TierTable />
       <YourVault />
-      <Details>
-        <ul class="plain-list">
-          <li>
-            <strong>Fixed shares per tier.</strong> Every payout is cut into five fixed slices by multiplier (100 : 125 : 150 : 175 : 200 of 750), however many
-            stakers each tier has. A lone staker takes the tier’s whole slice; a crowded tier shares it thinly.
-          </li>
-          <li>
-            <strong>Empty tiers.</strong> An empty tier’s waiting ETH goes to whoever joins it, over at most seven days, shared with anyone else who joins
-            meanwhile.
-          </li>
-          <li>
-            <strong>When payouts happen.</strong> Once a day, when someone triggers the day: any staking action, or the free button on the{' '}
-            <a href="#/stats">Stats page</a>. The day’s budget is paid only if it is at least 0.001 ETH; a smaller one waits. Each payout streams to the tiers
-            over seven days, and you earn only while staked.
-          </li>
-          <li>
-            <strong>Only here.</strong> This page offers vaults only in the staking contract the treasury pays now. If the owner ever replaces it, the old
-            contract still sells vaults to anyone who reaches it another way, but they earn nothing new; this page shows a vault left there with unstake and
-            claim only.
-          </li>
-          <li>
-            <strong>Vaults.</strong> One vault per wallet; it cannot be transferred. No lock and no expiry. Adding TOWN costs no extra vault price. Upgrading
-            costs the dollar difference between the two tiers; there is no downgrade.
-          </li>
-          <li>
-            <strong>Prices.</strong> Vault prices are set in dollars and paid in ETH at Chainlink’s ETH/USD price. While the feed is unhealthy (no update for
-            over 3 hours, a failed read, or a time in the future), the owner’s fallback price is used for up to 7 days from each setting; with neither, opening
-            and upgrading pause. Adding TOWN, unstaking and claiming never use the price.
-          </li>
-          <li>
-            <strong>Gas.</strong> Staking transactions are sent with a gas limit of {fmtInt(Number(STAKING_GAS_LIMIT))}, so the day’s payout can run with your action;
-            the first staking action of a day costs more gas for that reason. Small vaults may not cover their gas.
-          </li>
-        </ul>
-      </Details>
+      <StakeDetails />
     </div>
+  );
+}
+
+/** How staking works, in the page's Details (also shown before the launch, CR-86). */
+export function StakeDetails() {
+  return (
+    <Details>
+      <ul class="plain-list">
+        <li>
+          <strong>Fixed shares per tier.</strong> Every payout is cut into five fixed slices by multiplier (100 : 125 : 150 : 175 : 200 of 750), however many
+          stakers each tier has. A lone staker takes the tier’s whole slice; a crowded tier shares it thinly.
+        </li>
+        <li>
+          <strong>Empty tiers.</strong> An empty tier’s waiting ETH goes to whoever joins it, over at most seven days, shared with anyone else who joins
+          meanwhile.
+        </li>
+        <li>
+          <strong>When payouts happen.</strong> Once a day, when someone triggers the day: any staking action, or the free button on the{' '}
+          <a href="#/stats">Stats page</a>. The day’s budget is paid only if it is at least 0.001 ETH; a smaller one waits. Each payout streams to the tiers
+          over seven days, and you earn only while staked.
+        </li>
+        <li>
+          <strong>Only here.</strong> This page offers vaults only in the staking contract the treasury pays now. If the owner ever replaces it, the old
+          contract still sells vaults to anyone who reaches it another way, but they earn nothing new; this page shows a vault left there with unstake and
+          claim only.
+        </li>
+        <li>
+          <strong>Vaults.</strong> One vault per wallet; it cannot be transferred. No lock and no expiry. Adding TOWN costs no extra vault price. Upgrading
+          costs the dollar difference between the two tiers; there is no downgrade.
+        </li>
+        <li>
+          <strong>Prices.</strong> Vault prices are set in dollars and paid in ETH at Chainlink’s ETH/USD price. While the feed is unhealthy (no update for
+          over 3 hours, a failed read, or a time in the future), the owner’s fallback price is used for up to 7 days from each setting; with neither, opening
+          and upgrading pause. Adding TOWN, unstaking and claiming never use the price.
+        </li>
+        <li>
+          <strong>Gas.</strong> Staking transactions are sent with a gas limit of {fmtInt(Number(STAKING_GAS_LIMIT))}, so the day’s payout can run with your action;
+          the first staking action of a day costs more gas for that reason. Small vaults may not cover their gas.
+        </li>
+      </ul>
+    </Details>
   );
 }
 

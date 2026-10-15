@@ -28,6 +28,12 @@ interface AddressFile {
   contracts: Record<string, string> | null;
   owner: string | null;
   positionTokenId: string | null;
+  /**
+   * Mainnet only (F12a): the launch time and the pool ID, null after phase 1 and filled after phase 2.
+   * Not used to decide whether UpTown has launched: the site asks Launcher.launched() (CR-86).
+   */
+  launchTime?: string | null;
+  poolId?: string | null;
   uniswap: Record<string, string> | null;
   testWallets: string[];
 }
@@ -256,7 +262,12 @@ export function contractUrl(n: Network, name: ContractName, page: 'address' | 'c
   return page === 'code' ? codeUrl(n, a) : page === 'read' ? readUrl(n, a) : addressUrl(n, a);
 }
 
-/** The launch position's NFT on the Uniswap v4 PositionManager, held by LPVault. */
-export function positionUrl(n: Network): string | null {
-  return nftUrl(n, n.uniswap?.positionManager ?? null, n.deployment?.lpTokenId ?? null);
+/**
+ * The launch position's NFT on the Uniswap v4 PositionManager, held by LPVault: the token ID from the
+ * address file, or, where the file was written before the launch (mainnet phase 1, CR-86), the one
+ * LPVault.tokenId() answers on chain (0 before the launch: no link then).
+ */
+export function positionUrl(n: Network, onChain?: bigint | null): string | null {
+  const id = n.deployment?.lpTokenId ?? (onChain ? onChain : null);
+  return nftUrl(n, n.uniswap?.positionManager ?? null, id);
 }

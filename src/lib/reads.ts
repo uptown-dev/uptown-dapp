@@ -8,8 +8,10 @@
 // and 2, and in round 3 the signers of any owner that is a multisig. Round 2 also reads each
 // replaced staking contract's own settings and ownership, for the owner powers the owner still holds
 // there (CR-73). Round 1 also reads the pool's current price through Uniswap's StateView, for the
-// dollar figures (CR-95). Before launch only the owner page's views are read, since most of the
-// others revert until then.
+// dollar figures (CR-95). Before launch (CR-86, F12a) only the owner page's views and the fixed
+// rules are read (the constants, the settings, the supply and where it sits): most other views
+// revert with NotStarted until then, and those that answer mean nothing yet (the day count, the
+// sell-fee shares, the empty reserve), so they are not shown.
 import { createPublicClient, defineChain, encodeAbiParameters, http, keccak256, type Hex, type PublicClient } from 'viem';
 import { CANDIDATE_ABI, HOOK_ABI, LAUNCHER_ABI, LPVAULT_ABI, PERMIT2_ABI, QUOTER_ABI, REWARDS_ABI, SAFE_ABI, STAKING_ABI, STATEVIEW_ABI, TOKEN_ABI, TREASURY_ABI } from './abi';
 import { replacedStaking, type Network, type StakingRecord } from './network';
@@ -24,6 +26,7 @@ import {
   type OldVault,
   type OwnerState,
   type PerTier,
+  type PrelaunchState,
   type ReplacedStaking,
   type StakingControls,
   type StreamInfo,
@@ -129,6 +132,8 @@ const pastTally = new Map<string, { through: number; bought: Record<number, bigi
 export interface ReadResult {
   /** Every figure; `null` before launch (Launcher.launched() is false), when most views revert. */
   chain: ChainState | null;
+  /** Deployed, not launched (CR-86): the fixed rules and the supply; `null` once launched. */
+  prelaunch: PrelaunchState | null;
   wallet: WalletState | null;
   /** The owner page's views (CR-64), before and after launch. */
   owner: OwnerState;
@@ -396,9 +401,24 @@ export async function readAll(client: PublicClient, n: Network, account: Address
   const codesOf = (holders: Address[]) => Promise.all(holders.map((h) => client.getCode({ address: h, blockNumber: bn })));
 
   if (!ownerBase.launcher.launched) {
-    // Before launch: the owner page's views only, so the owner can launch (CR-64).
+    // Before launch: the owner page's views, so the owner can launch (CR-64), and the fixed rules
+    // for every page (CR-86, F12a): the staking tiers, the daily limits, the Launcher's TOWN.
     const b0 = new Batch();
     const so0 = stakingOwnerCalls(b0);
+    const P0 = (fn: string, args?: unknown[]) => b0.add(`TownStaking.${fn}`, { address: stakingAddress, abi: STAKING_ABI, functionName: fn, args });
+    const tier0 = (fn: string) => {
+      const out = {} as PerTier<number>;
+      for (const t of TIERS) out[t] = P0(fn, [t]);
+      return out;
+    };
+    const pre0 = {
+      TOTAL_WEIGHT: P0('TOTAL_WEIGHT'),
+      STREAM_LENGTH: P0('STREAM_LENGTH'),
+      tierUsd: tier0('tierUsd'),
+      tierWeight: tier0('tierWeight'),
+      caps: EPOCH_FIRSTS.map((c) => b0.add(`BuyerRewards.cap(${c})`, { address: k.BuyerRewards, abi: REWARDS_ABI, functionName: 'cap', args: [BigInt(c)] })),
+      launcherBalance: b0.add('UpTownToken.balanceOf(Launcher)', { address: k.UpTownToken, abi: TOKEN_ABI, functionName: 'balanceOf', args: [k.Launcher] }),
+    };
     const rep0 = replacedRecords(n, stakingAddress);
     const rc0 = replacedCalls(b0, rep0);
     const [r0, repCodes0] = await Promise.all([b0.run(client, n, bn), codesOf(rep0.map((x) => x.address))]);
@@ -407,7 +427,57 @@ export async function readAll(client: PublicClient, n: Network, account: Address
     const c0 = new Batch();
     const ms = multisigCalls(c0, holders);
     const [rm, codes] = await Promise.all([c0.run(client, n, bn), codesOf(holders)]);
-    return { chain: null, wallet: null, owner: { ...ownerBase, staking, replaced: replacedFrom(n, r0, rc0, repCodes0), multisigs: multisigsFrom(rm, ms, codes) } };
+    const perTier0 = (idx: PerTier<number>) => {
+      const out = {} as PerTier<number>;
+      for (const t of TIERS) out[t] = num(r0.get(idx[t]));
+      return out;
+    };
+    const cap0: Record<number, bigint> = {};
+    EPOCH_FIRSTS.forEach((c, j) => (cap0[c] = r0.get<bigint>(pre0.caps[j])));
+    const prelaunch: PrelaunchState = {
+      blockTimestamp: Number(block.timestamp),
+      blockNumber: bn,
+      launcherBalance: r0.get(pre0.launcherBalance),
+      token: { totalSupply: r1.get(i.totalSupply), INITIAL_SUPPLY },
+      hook: {
+        BUY_FEE_BPS: num(r1.get(i.BUY_FEE_BPS)),
+        ANTI_SNIPE_START_BPS: num(r1.get(i.ANTI_SNIPE_START_BPS)),
+        ANTI_SNIPE_DURATION: num(r1.get(i.ANTI_SNIPE_DURATION)),
+        BURN_FLOOR: r1.get(i.BURN_FLOOR),
+        RESERVE_FEE_START: num(r1.get(i.RESERVE_FEE_START)),
+      },
+      rewards: {
+        CLAIM_FEE_BPS: num(r1.get(i.CLAIM_FEE_BPS)),
+        RATE_BASE_BPS: num(r1.get(i.RATE_BASE_BPS)),
+        RATE_BUY_SPAN_BPS: num(r1.get(i.RATE_BUY_SPAN_BPS)),
+        RATE_SELL_SPAN_BPS: num(r1.get(i.RATE_SELL_SPAN_BPS)),
+        LEAN_CYCLES: num(r1.get(i.LEAN_CYCLES)),
+        cap: cap0,
+      },
+      treasury: {
+        spendBps: num(r1.get(i.spendBps)),
+        MAX_SPEND_BPS: num(r1.get(i.MAX_SPEND_BPS)),
+        OWNER_ETH_BPS: num(r1.get(i.OWNER_ETH_BPS)),
+        MIN_DISTRIBUTION: r1.get(i.MIN_DISTRIBUTION),
+        OWNER_DELAY: num(r1.get(i.OWNER_DELAY)),
+        APPLY_WINDOW: num(r1.get(i.APPLY_WINDOW)),
+        staking: stakingAddress,
+      },
+      staking: {
+        address: stakingAddress,
+        tierUsd: perTier0(pre0.tierUsd),
+        tierWeight: perTier0(pre0.tierWeight),
+        TOTAL_WEIGHT: num(r0.get(pre0.TOTAL_WEIGHT)),
+        STREAM_LENGTH: num(r0.get(pre0.STREAM_LENGTH)),
+      },
+      lpVault: { lockDuration: num(r1.get(i.lockDuration)) },
+    };
+    return {
+      chain: null,
+      prelaunch,
+      wallet: null,
+      owner: { ...ownerBase, staking, replaced: replacedFrom(n, r0, rc0, repCodes0), multisigs: multisigsFrom(rm, ms, codes) },
+    };
   }
 
   const current = num(r1.get(i.rewardsCycle));
@@ -758,7 +828,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
       oldVaults,
     };
   }
-  return { chain, wallet, owner };
+  return { chain, prelaunch: null, wallet, owner };
 }
 
 /**
