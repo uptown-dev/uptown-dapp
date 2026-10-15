@@ -3858,7 +3858,13 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
   // Ethereum, as a network fixture: the local deployment's addresses with mainnet's explorer.
   const ETH_NET: Network = { ...NETWORK, chainId: 1 as ChainId, name: 'Ethereum', explorer: 'https://etherscan.io', explorerName: 'Etherscan', local: false, testWallets: [] };
   const NONE_NET: Network = { ...NETWORK, deployment: null, stakingContracts: [] };
-  const notLaunched = (network: Network): Partial<AppState> => ({ network, prelaunch, owner: preOwner, data: { state: 'not-launched', error: null, readAt: Date.now() } });
+  // Between the phases the address file has no position yet (mainnet phase 1), whatever the local file says now.
+  const notLaunched = (network: Network): Partial<AppState> => ({
+    network: network.deployment ? { ...network, deployment: { ...network.deployment, lpTokenId: null } } : network,
+    prelaunch,
+    owner: preOwner,
+    data: { state: 'not-launched', error: null, readAt: Date.now() },
+  });
   const PAGES = ['', 'trade', 'rewards', 'stake', 'stats', 'docs', 'owner'];
   const pageName = (p: string) => p || 'home';
   const ownerAccount = { ...wallet, address: OWNER };
@@ -3871,7 +3877,8 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
     for (const p of PAGES) {
       const el = await mount(<PageView page={p} />, null, null, `F12a not deployed: ${pageName(p)}`, { network: NONE_NET, owner: null, data: { state: 'not-deployed', error: null, readAt: null } });
       const t = text(el);
-      const says = /Not deployed on Local test chain yet|not deployed on this network yet/i.test(t);
+      // Docs says it in its owner-settings box, which is closed: read as textContent.
+      const says = p === 'docs' ? (el.textContent ?? '').includes('Shown once the contracts are deployed on this network.') : /Not deployed on Local test chain yet|not deployed on this network yet/i.test(t);
       seen.push(`${pageName(p)}: ${says ? 'says not deployed' : t.slice(0, 80)}`);
       ok &&= says && !el.querySelector('[data-state="not-launched"], .launch-line, .source-note, .usd');
     }
@@ -3990,8 +3997,8 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
       if (p === 'docs')
         check(
           'F12a not launched, Docs: the rules from the contracts; the owner settings "shown once UpTown has launched"; no lock date; the position NFT link off "(from the launch)"',
-          t.includes('Shown once UpTown has launched.') && !t.includes('locked for at least 10 years: until') && t.includes('(from the launch)'),
-          (t.match(/Shown once[^.]*\./) ?? [''])[0],
+          (el.textContent ?? '').includes('Shown once UpTown has launched.') && !t.includes('locked for at least 10 years: until') && t.includes('(from the launch)'),
+          ((el.textContent ?? '').match(/Shown once[^.]*\./) ?? [''])[0],
         );
       if (p === 'owner') {
         const items = [...el.querySelectorAll('[data-off-power]')].map((x) => x.textContent ?? '');
