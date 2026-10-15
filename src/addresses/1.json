@@ -11,9 +11,9 @@
     "Launcher": "0x9B8a662Cc3e9F8B49045d60a52af0770bDa92E33"
   },
   "owner": "0x2218d18213519b66863413bDCe5f9b9044c0928B",
-  "positionTokenId": null,
-  "launchTime": null,
-  "poolId": null,
+  "positionTokenId": "462188",
+  "launchTime": "1792056563",
+  "poolId": "0x085d279a62ed35fec4bf1469d1c75efb1db20e1dbd3da2a70ecc071852bd6ddb",
   "uniswap": {
     "poolManager": "0x000000000004444c5dc75cB358380D2e3dE08A90",
     "positionManager": "0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e",
