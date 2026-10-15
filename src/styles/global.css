@@ -2013,11 +2013,13 @@ a.place:hover {
   fill: var(--mark-opensea-hole);
 }
 /* Not a link, and not dimmed either (CR-87): the same weight as the links, with no pointer that
-   suggests a link. The only sign is the word it shows ("soon", or "at launch" for GMGN). */
+   suggests a link. The only sign is the message it shows ("Uptowners collection soon", or
+   "at launch" for GMGN). */
 .place-soon {
   cursor: default;
 }
-/* The short word, under its mark: "soon". Hidden until the pointer rests on the mark or a keyboard
+/* The mark's one message, under it: "Uptowners collection soon" for OpenSea (CR-101), "at launch"
+   for GMGN while it has no address. Hidden until the pointer rests on the mark or a keyboard
    reaches it; it takes no space of its own either way. */
 .place-word {
   position: absolute;
@@ -2037,6 +2039,17 @@ a.place:hover {
 .place-soon:hover .place-word,
 .place-soon:focus .place-word {
   opacity: 1;
+}
+/* The last mark (OpenSea) carries the longest message, "Uptowners collection soon" (CR-101), 148 px
+   wide, and stands at the row's right end — at the footer's right edge in the three-column layout.
+   Centred under its 32 px mark the bubble would end 58 px past that edge, and in windows from
+   1000 px to about 1190 px wide past the window itself, where it would be cut off (34 px of it at
+   1024 px; measured by scripts/f12b-shots.mjs). So its bubble is lined up with the mark's right
+   edge and grows to the left, below the marks beside it, which it does not cover. */
+.place-row > li:last-child .place-word {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 @media (min-width: 760px) {
   .footer-grid {

@@ -241,12 +241,16 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
 // noreferrer"`, and an accessible name that names the platform and says it opens in a new tab,
 // exactly as the footer's contract links do.
 //
-// OpenSea is not a link: no href, so nothing to follow, and the short word "soon" when the pointer
-// rests on it or a keyboard reaches it. CR-87 took its dimming away — no dashed border and no
-// reduced opacity, the same weight as the two links — and left everything else as F9q built it: a
-// focusable element (tabindex 0) carrying both the word a sighted visitor sees (`.place-word`,
-// shown by the stylesheet on hover and on focus) and the same words for a screen reader
-// ("OpenSea: soon"), because a `title` alone never reaches a keyboard.
+// OpenSea is not a link: no href, so nothing to follow. It shows exactly one message, the owner's
+// words "Uptowners collection soon" (CR-101), when the pointer rests on it or a keyboard reaches
+// it. CR-87 took its dimming away — no dashed border and no reduced opacity, the same weight as the
+// two links. It is a focusable element (tabindex 0) carrying the message once for each kind of
+// reader: the bubble a sighted visitor sees (`.place-word`, shown by the stylesheet on hover and on
+// focus, hidden from screen readers) and the same words with the platform named for a screen
+// reader ("OpenSea: Uptowners collection soon", visually hidden). It carries no `title`: F9q added
+// one as a fallback, but the browser drew it as a second hover label beside the bubble ("OpenSea:
+// soon" next to "soon"). CR-101 removed it from the form of the mark that is not a link (GMGN's
+// "at launch" form shares it); the links keep theirs.
 //
 // GMGN is shown from today (CR-88 item 3), which replaces F9q's hiding rule — the owner withdrew it
 // after seeing the mark. With no TOWN address on Ethereum it gets exactly OpenSea's treatment with
@@ -257,7 +261,7 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
 // to its TOWN page, with no word and no further change here.
 // ---------------------------------------------------------------------------------------------
 
-/** One mark: a link that opens in a new tab, or a mark that leads nowhere and shows `word` (CR-87: not dimmed). */
+/** One mark: a link that opens in a new tab, or a mark that leads nowhere and shows `word` (CR-87: not dimmed; CR-101: no `title`, so `word` is its only message). */
 export function PlaceMark({
   name,
   what,
@@ -282,7 +286,7 @@ export function PlaceMark({
   }
   return (
     <li>
-      <span class="place place-soon" data-place={name} tabIndex={0} role="note" title={`${name}: ${word}`}>
+      <span class="place place-soon" data-place={name} tabIndex={0} role="note">
         {children}
         <span class="visually-hidden">
           {name}: {word}
@@ -317,7 +321,8 @@ export function PlaceRow({ town = mainnetTownAddress() }: { town?: Address | nul
         <PlaceMark name="GMGN" what="TOWN on GMGN" href={gmgn} word="at launch">
           <GmgnMark />
         </PlaceMark>
-        <PlaceMark name="OpenSea" what="UpTown on OpenSea" href={null} word="soon">
+        {/* One message, the owner's words exactly (CR-101). */}
+        <PlaceMark name="OpenSea" what="UpTown on OpenSea" href={null} word="Uptowners collection soon">
           <OpenSeaMark />
         </PlaceMark>
       </ul>

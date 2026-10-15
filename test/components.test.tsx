@@ -2566,6 +2566,13 @@ async function cr82(base: ChainState, wallet: WalletState) {
 //      GMGN 16 (the only size at or below the box that puts its 2-unit blocks on whole screen
 //      pixels) and OpenSea 28, whose disc is larger than X's box because its boat is only part of
 //      it.
+//
+// CR-101 (F12b): OpenSea shows one message, the owner's words "Uptowners collection soon", on hover
+// and on keyboard focus, and a screen reader hears "OpenSea: Uptowners collection soon" once; the
+// mark that is not a link carries no `title`, so the browser draws no second label beside the
+// bubble. The links keep their `title`. Since mainnet phase 1 (15 October 2026) the chain-1 address
+// file names TOWN, so the site's own row has GMGN as a link; the "at launch" form is checked by
+// passing `null` in the file's place.
 
 /** The X mark's path, exactly as CR-87's task brief gives it (Simple Icons). */
 const X_PATH =
@@ -2656,7 +2663,7 @@ async function cr84cr87cr88() {
   const own = row();
   const order = [...own.querySelectorAll('li > *')].map((e) => (e as HTMLElement).dataset.place).join(',');
   check(
-    'CR-88 item 3: with the site’s own Ethereum address file (no TOWN address today) the row holds all four marks, in order: X, Telegram, GMGN, OpenSea',
+    'CR-88 item 3: with the site’s own Ethereum address file the row holds all four marks, in order: X, Telegram, GMGN, OpenSea',
     order === 'X,Telegram,GMGN,OpenSea',
     order,
   );
@@ -2677,40 +2684,93 @@ async function cr84cr87cr88() {
       tg.href === TELEGRAM_URL &&
       tg.target === '_blank' &&
       tg.rel === 'noopener noreferrer' &&
-      tg.aria === 'UpTown on Telegram (opens in a new tab)',
+      tg.aria === 'UpTown on Telegram (opens in a new tab)' &&
+      // CR-101 changes only the mark that is not a link: the links keep their `title`.
+      x.title === 'UpTown on X' &&
+      tg.title === 'UpTown on Telegram',
     `X ${JSON.stringify({ ...x, fills: undefined, paths: undefined })} | Telegram ${JSON.stringify({ ...tg, fills: undefined, paths: undefined })}`,
   );
 
   const sea = seen(own, 'OpenSea');
   check(
-    'CR-84, CR-87 OpenSea is unchanged: not a link, leads nowhere, and says "soon" — for the eye and for a screen reader',
-    sea.tag === 'span' && sea.href === null && sea.word === 'soon' && sea.says === 'OpenSea: soon' && sea.title === 'OpenSea: soon' && sea.tabindex === '0',
+    'CR-101 OpenSea is still not a link and leads nowhere, and its one message is the owner’s words, "Uptowners collection soon" — for the eye, and "OpenSea: Uptowners collection soon" for a screen reader',
+    sea.tag === 'span' &&
+      sea.href === null &&
+      sea.word === 'Uptowners collection soon' &&
+      sea.says === 'OpenSea: Uptowners collection soon' &&
+      sea.tabindex === '0',
     JSON.stringify({ ...sea, fills: undefined, paths: undefined }),
   );
+  // CR-101: exactly one message. The browser draws its own hover label from a `title`, beside the
+  // site's bubble, so the mark that is not a link carries none — nor does anything inside it — and
+  // nothing else gives it a second name or description. A screen reader meets the words once: the
+  // bubble is hidden from it, and the hidden text is the only text it reads.
+  {
+    const m = mark(own, 'OpenSea');
+    const titled = [m, ...m.querySelectorAll('*')].filter((e) => e.hasAttribute('title') || e.tagName.toLowerCase() === 'title').length;
+    const named = ['aria-label', 'aria-labelledby', 'aria-describedby', 'aria-description'].filter((a) => m.hasAttribute(a));
+    const bubbles = [...m.querySelectorAll('.place-word')] as HTMLElement[];
+    // What a screen reader reads: every text node that is not inside something hidden from it.
+    const heard = (() => {
+      const out: string[] = [];
+      const walk = (n: Node) => {
+        if (n.nodeType === Node.TEXT_NODE) out.push(n.textContent ?? '');
+        else if (n instanceof Element && n.getAttribute('aria-hidden') !== 'true') n.childNodes.forEach(walk);
+      };
+      walk(m);
+      return out.join('').replace(/\s+/g, ' ').trim();
+    })();
+    const seenText = bubbles.map((b) => b.textContent).join(' | ');
+    const times = (s: string, w: string) => s.split(w).length - 1;
+    check(
+      'CR-101 the OpenSea mark shows one message only: no `title` on it or in it (so no browser label beside the bubble), no second name or description, one bubble hidden from screen readers, and a screen reader hears "OpenSea: Uptowners collection soon" exactly once',
+      sea.title === null &&
+        titled === 0 &&
+        named.length === 0 &&
+        bubbles.length === 1 &&
+        bubbles[0].getAttribute('aria-hidden') === 'true' &&
+        seenText === 'Uptowners collection soon' &&
+        heard === 'OpenSea: Uptowners collection soon' &&
+        times(heard, 'Uptowners collection soon') === 1 &&
+        !/\bsoon\b/.test(heard.replace('Uptowners collection soon', '')) &&
+        m.getAttribute('role') === 'note',
+      `title ${JSON.stringify(sea.title)}; elements with a title in the mark: ${titled}; naming attributes: ${named.join(', ') || 'none'}; bubbles: ${bubbles.length} ("${seenText}", aria-hidden ${bubbles[0]?.getAttribute('aria-hidden')}); a screen reader hears "${heard}"`,
+    );
+  }
 
-  // CR-88 item 3: GMGN is shown from today, with exactly OpenSea's treatment and its own word. This
-  // replaces F9q's hiding rule, so the row never has three marks again.
+  // CR-88 item 3: GMGN is shown always, and follows the chain-1 address file: a link to its TOWN
+  // page once the file names TOWN (it does since mainnet phase 1, 15 October 2026), and otherwise
+  // the same treatment as OpenSea with its own word. Both states are checked whatever the file
+  // holds today: the file's own state here, the "no address" state with `null` passed in.
   const gm = seen(own, 'GMGN');
+  const fileTown = mainnetTownAddress();
   check(
-    'CR-88 item 3: with no TOWN address on Ethereum the GMGN mark is still shown — at full strength, not a link, with no href, saying "at launch" for the eye and for a screen reader',
-    gm.tag === 'span' &&
-      gm.href === null &&
-      gm.word === 'at launch' &&
-      gm.says === 'GMGN: at launch' &&
-      gm.title === 'GMGN: at launch' &&
-      gm.tabindex === '0' &&
-      Number(gm.glyphOpacity) === 1 &&
-      own.querySelectorAll('[href*="gmgn"]').length === 0 &&
-      mainnetTownAddress() === null,
-    `${JSON.stringify({ ...gm, fills: undefined, paths: undefined })}; mainnetTownAddress() ${mainnetTownAddress()}`,
+    'CR-84, CR-88 the GMGN mark follows the Ethereum address file whatever network the build is for (this build: chain 31337): a link to gmgn.ai/eth/token/<TOWN> when the file names TOWN, "at launch" when it does not',
+    NETWORK.chainId === 31337 &&
+      NETWORK.deployment !== null &&
+      (fileTown
+        ? gm.tag === 'a' && gm.href === `https://gmgn.ai/eth/token/${fileTown}` && gm.href === gmgnUrl(fileTown) && gm.target === '_blank' && gm.word === null
+        : gm.tag === 'span' && gm.href === null && gm.word === 'at launch'),
+    `build chain ${NETWORK.chainId}, deployed ${NETWORK.deployment !== null}; the chain-1 file names TOWN ${fileTown ?? 'nowhere'}; GMGN ${JSON.stringify({ tag: gm.tag, href: gm.href, word: gm.word })}`,
   );
-  // The build under test is the local chain's, which does have a deployment: GMGN still has no
-  // address, because it follows the chain-1 file and not the chain this build is for.
-  check(
-    'CR-84 the GMGN mark follows the Ethereum address file whatever network the build is for (this build: chain 31337, contracts deployed, GMGN still without a link)',
-    NETWORK.chainId === 31337 && NETWORK.deployment !== null && seen(own, 'GMGN').href === null,
-    `build chain ${NETWORK.chainId}, deployed ${NETWORK.deployment !== null}`,
-  );
+  {
+    const none = row(null);
+    const g0 = seen(none, 'GMGN');
+    check(
+      'CR-88 item 3, CR-101: with no TOWN address on Ethereum the GMGN mark is still shown — at full strength, not a link, with no href, saying "at launch" for the eye and "GMGN: at launch" for a screen reader, with no `title` beside it',
+      g0.tag === 'span' &&
+        g0.href === null &&
+        g0.word === 'at launch' &&
+        g0.says === 'GMGN: at launch' &&
+        g0.title === null &&
+        g0.tabindex === '0' &&
+        Number(g0.glyphOpacity) === 1 &&
+        none.querySelectorAll('[href*="gmgn"]').length === 0 &&
+        seen(none, 'OpenSea').word === 'Uptowners collection soon',
+      JSON.stringify({ ...g0, fills: undefined, paths: undefined }),
+    );
+    row();
+  }
 
   // The same row with a TOWN address in the file's place: the mark becomes the link, built from it.
   const TOWN: Address = '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984';
@@ -2733,8 +2793,12 @@ async function cr84cr87cr88() {
     `${filledOrder} | ${JSON.stringify({ ...gmLive, fills: undefined, paths: undefined })}`,
   );
   check(
-    'CR-84 the other marks are unchanged when the address file is filled: X and Telegram still link, OpenSea still leads nowhere and says "soon"',
-    seen(filled, 'X').href === X_URL && seen(filled, 'Telegram').href === TELEGRAM_URL && seen(filled, 'OpenSea').tag === 'span' && seen(filled, 'OpenSea').word === 'soon',
+    'CR-84 the other marks are unchanged when the address file is filled: X and Telegram still link, OpenSea still leads nowhere and says "Uptowners collection soon" (CR-101), with no `title`',
+    seen(filled, 'X').href === X_URL &&
+      seen(filled, 'Telegram').href === TELEGRAM_URL &&
+      seen(filled, 'OpenSea').tag === 'span' &&
+      seen(filled, 'OpenSea').word === 'Uptowners collection soon' &&
+      seen(filled, 'OpenSea').title === null,
     `OpenSea ${JSON.stringify({ ...seen(filled, 'OpenSea'), fills: undefined, paths: undefined })}`,
   );
 
@@ -2869,12 +2933,14 @@ async function cr84cr87cr88() {
     `viewBox "${(mark(own, 'GMGN').querySelector('svg') as SVGSVGElement).getAttribute('viewBox')}", drawn at ${sized[2].drawnAt} in a 32 px box with a 1 px border (30 px inside), so each 2-unit block is ${(16 / 32) * 2} screen pixel(s)`,
   );
 
-  // Both marks that lead nowhere: a keyboard reaches each, and its word is hidden until then.
+  // Both marks that lead nowhere: a keyboard reaches each, and its word is hidden until then. The
+  // row is rendered with no TOWN address, so GMGN is in its "at launch" form whatever the chain-1
+  // file holds today.
   {
-    const el = row();
+    const el = row(null);
     const found: string[] = [];
     for (const [place, word] of [
-      ['OpenSea', 'soon'],
+      ['OpenSea', 'Uptowners collection soon'],
       ['GMGN', 'at launch'],
     ]) {
       const m = mark(el, place);
@@ -2903,6 +2969,20 @@ async function cr84cr87cr88() {
       'CR-84, CR-87, CR-88 a keyboard reaches both marks that lead nowhere, each word is hidden until then, and the stylesheet shows it on focus',
       found.length === 0 && rule,
       `the page holds the window’s focus: ${document.hasFocus()}; the rule ".place-soon:focus .place-word { opacity: 1 }" is in the stylesheet: ${rule}; anything wrong: ${found.join('; ') || 'nothing'}`,
+    );
+    // CR-101: the same one message on hover, and the bubble at the row's end lined up with its
+    // mark's right edge, growing to the left, so the longer words stay inside the footer. The pointer
+    // is a real one only in the review driver (scripts/f12b-shots.mjs), which photographs it; here
+    // the rules themselves are read back.
+    const hoverRule = cssRules.some((r) => r instanceof CSSStyleRule && /\.place-soon:hover \.place-word/.test(r.selectorText) && r.style.opacity === '1');
+    const endRule = cssRules.find((r): r is CSSStyleRule => r instanceof CSSStyleRule && r.selectorText === '.place-row > li:last-child .place-word');
+    const sea0 = mark(el, 'OpenSea').querySelector('.place-word') as HTMLElement;
+    const lastIsSea = (el.querySelector('.place-row > li:last-child [data-place]') as HTMLElement | null)?.dataset.place === 'OpenSea';
+    const cs = getComputedStyle(sea0);
+    check(
+      'CR-101 the stylesheet shows the bubble on hover as well as on focus, and OpenSea’s bubble (the row’s last) is lined up with its mark’s right edge, so it grows to the left',
+      hoverRule && !!endRule && lastIsSea && cs.right === '0px' && cs.transform === 'none' && cs.whiteSpace === 'nowrap',
+      `hover rule: ${hoverRule}; last-mark rule: ${!!endRule}; the row's last mark is OpenSea: ${lastIsSea}; OpenSea's bubble right ${cs.right}, transform ${cs.transform}, white-space ${cs.whiteSpace}`,
     );
   }
 
@@ -3003,7 +3083,7 @@ async function cr84cr87cr88() {
       stage.append(h, d);
       render(town === undefined ? <PlaceRow /> : <PlaceRow town={town} />, d);
     };
-    keep('cr84-today', 'CR-88: the footer row today, with no TOWN address on Ethereum (GMGN says "at launch")');
+    keep('cr84-today', 'CR-88, CR-101: the footer row with no TOWN address on Ethereum (GMGN says "at launch")', null);
     keep('cr84-filled', 'CR-88: the footer row with a TOWN address on Ethereum (GMGN is a link)', TOWN);
   }
 
