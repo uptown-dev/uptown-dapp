@@ -47,6 +47,12 @@ export interface ChainInfo {
   contracts: ChainContracts | null;
   /** True only for the private local copy of mainnet (anvil): test wallets without keys. */
   local: boolean;
+  /**
+   * The Chainlink ETH/USD feed TownStaking is deployed with on this chain (F12a): the address
+   * script checks a mainnet deployment file's `ethUsdFeed` against it. The site itself reads the
+   * feed from TownStaking (`feed()`, `priceStatus()`), never from here. Null where it is not checked.
+   */
+  ethUsdFeed: `0x${string}` | null;
 }
 
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
@@ -75,6 +81,8 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
       stateView: '0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227',
     },
     local: false,
+    // R1b A1 (table, row 1): Chainlink's mainnet ETH/USD feed, description() "ETH / USD", CONFIRMED.
+    ethUsdFeed: '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419',
   },
   11155111: {
     chainId: 11155111,
@@ -106,6 +114,8 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
       stateView: '0xE1Dd9c3fA50EDB962E442f60DfBc432e24537E4C',
     },
     local: false,
+    // Not checked for Sepolia: F9a's checks of a Sepolia file are unchanged.
+    ethUsdFeed: null,
   },
   31337: {
     chainId: 31337,
@@ -118,6 +128,7 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
     // Mainnet's, read from the local address file (it is a fork of mainnet).
     contracts: null,
     local: true,
+    ethUsdFeed: null,
   },
 };
 

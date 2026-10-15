@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tests scripts/addresses.mjs (CR-63, F9a). Runs the script as the Deployer's rehearsal does and as
+// Tests scripts/addresses.mjs (CR-63, F9a; chain 1 since F12a, CR-86). Runs the script as the Deployer's rehearsal does and as
 // `npm run dev` does, with sample Sepolia deployment files written to a temporary folder outside
 // the project. No network, no chain, nothing sent.
 //
@@ -144,9 +144,9 @@ try {
     check('the rehearsal\'s exact command (skipped: script/deployments/11155111.json exists)', true);
   }
 
-  // 5. Refused chains.
+  // 5. Refused chains. (Chain 1 is accepted since F12a: its own checks are in part 8.)
   r = run([SCRIPT, '--chain', '1', a]);
-  check('--chain 1 is refused (exit 1, milestone 12 named, mainnet file unchanged)', r.code === 1 && /milestone 12/.test(r.out) && bytes(MAINNET_FILE) === saved.get(MAINNET_FILE)?.toString('utf8'), r.out);
+  check('--chain 1 with a Sepolia file is refused (exit 1, Sepolia named, mainnet file unchanged)', r.code === 1 && /found 11155111 \(Sepolia's file\)/.test(r.out) && bytes(MAINNET_FILE) === saved.get(MAINNET_FILE)?.toString('utf8'), r.out);
   r = run([SCRIPT, '--chain', '5', a]);
   check('--chain 5 is refused (exit 1, no 5.json written)', r.code === 1 && /not supported/.test(r.out) && !existsSync(GOERLI_FILE), r.out);
   r = run([SCRIPT, '--chain', 'sepolia']);
@@ -174,6 +174,140 @@ try {
   check('--chain 31337 and no option give the same output and the same file', r.code === 0 && def.code === 0 && r.out === def.out && bytes(LOCAL_FILE) === def.file, `${def.out}\n${r.out}`);
   r = run([SCRIPT, join(tmp, 'missing.json')]);
   check('local chain without a source: "not deployed", exit 0 (as before)', r.code === 0 && /not deployed/.test(r.out) && JSON.parse(bytes(LOCAL_FILE)).contracts === null, r.out);
+
+  // 8. Ethereum mainnet (CR-86, CR-98, F12a): the file the mainnet command writes after phase 1, and
+  // after phase 2; then every file that must be refused, each leaving the committed mainnet file as it was.
+  const mainnetBefore = bytes(MAINNET_FILE);
+  const localBefore = bytes(LOCAL_FILE);
+  const restoreMainnet = () => {
+    const b = saved.get(MAINNET_FILE);
+    if (b === null) rmSync(MAINNET_FILE, { force: true });
+    else writeFileSync(MAINNET_FILE, b);
+  };
+  const M = CHAINS[1].contracts;
+  // Deploy.s.sol's broadcast file on chain 1 (UpTownScript._writeDeployment): the phase-1 record.
+  const phase1 = {
+    chainId: 1,
+    deployer: fake('d'),
+    deployerStartNonce: 3,
+    owner: fake('e'),
+    hookSalt: `0x${'00'.repeat(31)}2a`,
+    create2Deployer: '0x4e59b44847b379578588920cA78FbF26c0B4956C',
+    launcher: fake('1'),
+    townToken: fake('2'),
+    buyerRewards: fake('3'),
+    treasury: fake('4'),
+    townStaking: fake('5'),
+    lpVault: fake('6'),
+    townHook: fake('7'),
+    poolManager: M.poolManager,
+    positionManager: M.positionManager,
+    permit2: M.permit2,
+    weth: M.weth,
+    ethUsdFeed: CHAINS[1].ethUsdFeed,
+    lockDuration: 315360000,
+    dryRun: false,
+  };
+  // The same after phase 2: script/mainnet-file.mjs adds the launch time, the position, the pool ID and the explorer.
+  const POOL_ID = `0x${'ab'.repeat(32)}`;
+  const phase2 = { ...phase1, launchTime: 1792540800, positionTokenId: 123456, poolId: POOL_ID, explorer: 'https://etherscan.io' };
+  const expectedMainnet = (s, launch) =>
+    JSON.stringify(
+      {
+        chainId: 1,
+        source: 'script/deployments/1.json',
+        contracts: {
+          UpTownToken: s.townToken,
+          TownHook: s.townHook,
+          BuyerRewards: s.buyerRewards,
+          Treasury: s.treasury,
+          TownStaking: s.townStaking,
+          LPVault: s.lpVault,
+          Launcher: s.launcher,
+        },
+        owner: s.owner,
+        positionTokenId: launch ? String(s.positionTokenId) : null,
+        launchTime: launch ? String(s.launchTime) : null,
+        poolId: launch ? s.poolId : null,
+        uniswap: { ...M },
+        testWallets: [],
+      },
+      null,
+      2,
+    ) + '\n';
+
+  const p1 = sample('phase1-1.json', phase1);
+  r = run(['frontend/scripts/addresses.mjs', '--chain', '1', p1], PROJECT);
+  check('mainnet phase 1: from the project root, as script/mainnet-deploy.sh runs it, exit 0', r.code === 0, r.out);
+  check('mainnet phase 1: the seven contracts and the owner; no launch time, pool ID or position (null); the site\'s own Uniswap set', bytes(MAINNET_FILE) === expectedMainnet(phase1, false), bytes(MAINNET_FILE));
+  check('mainnet phase 1: the message says deployed, not launched, and lists what was checked (the Chainlink feed included)', /deployed, not launched yet/.test(r.out) && /poolManager, positionManager, permit2, weth, ethUsdFeed/.test(r.out), r.out);
+  check('mainnet phase 1 leaves Sepolia\'s and the local chain\'s files alone', bytes(SEPOLIA_FILE) === placeholder && bytes(LOCAL_FILE) === localBefore);
+  restoreMainnet();
+
+  const p2 = sample('phase2-1.json', phase2);
+  r = run([SCRIPT, '--chain=1', p2]);
+  check('mainnet phase 2: exit 0; launch time, pool ID and position copied', r.code === 0 && bytes(MAINNET_FILE) === expectedMainnet(phase2, true) && /launched: launch time, pool ID and position copied/.test(r.out), `${r.out}\n${bytes(MAINNET_FILE)}`);
+  restoreMainnet();
+
+  // A phase-2 file that also names the pool key and the local-style helper fields, all agreeing.
+  const p2key = sample('phase2-key-1.json', {
+    ...phase2,
+    poolCurrency0: '0x0000000000000000000000000000000000000000',
+    poolCurrency1: phase2.townToken,
+    poolFee: 5000,
+    poolTickSpacing: 60,
+    poolHooks: phase2.townHook,
+    v4Quoter: M.v4Quoter,
+    multicall3: M.multicall3,
+    stateView: M.stateView,
+    universalRouter_2_1_2: M.universalRouter,
+  });
+  r = run([SCRIPT, '--chain', '1', p2key]);
+  check('mainnet phase 2 with the pool key and every helper named: exit 0, same file', r.code === 0 && bytes(MAINNET_FILE) === expectedMainnet(phase2, true), r.out);
+  restoreMainnet();
+
+  // No source: nothing changes, says how the file is made.
+  r = run([SCRIPT, '--chain', '1', join(tmp, 'missing.json')]);
+  check('mainnet without a source file: exit 1, target unchanged, names the mainnet command', r.code === 1 && bytes(MAINNET_FILE) === mainnetBefore && /mainnet-deploy\.sh/.test(r.out), r.out);
+
+  // The real Sepolia and local deployment files, given as mainnet's.
+  for (const [label, file] of [
+    ['the real Sepolia deployment file (script/deployments/11155111.json)', join(PROJECT, 'script', 'deployments', '11155111.json')],
+    ['the local chain\'s deployment file (script/deployments/31337.json)', join(PROJECT, 'script', 'deployments', '31337.json')],
+  ]) {
+    if (!existsSync(file)) {
+      check(`refused as mainnet: ${label} (skipped: the file is not on this computer)`, true);
+      continue;
+    }
+    r = run([SCRIPT, '--chain', '1', file]);
+    check(`refused as mainnet: ${label} (exit 1, target unchanged)`, r.code === 1 && bytes(MAINNET_FILE) === mainnetBefore && /expected chainId 1/.test(r.out), r.out);
+  }
+
+  const sepoliaReal = existsSync(join(PROJECT, 'script', 'deployments', '11155111.json')) ? JSON.parse(readFileSync(join(PROJECT, 'script', 'deployments', '11155111.json'), 'utf8')) : { ...fullFile, explorer: 'https://sepolia.etherscan.io' };
+  const badMainnet = [
+    ['a file for another chain (chainId 5)', { ...phase1, chainId: 5 }],
+    ['a Sepolia file relabelled chainId 1', { ...sepoliaReal, chainId: 1 }],
+    ['a local-chain file relabelled chainId 1', { ...phase2, rpcUrl: 'http://127.0.0.1:8545', forkOfChainId: 1, forkBlock: '26146000', testWallets: [fake('9')] }],
+    ['a dry run', { ...phase1, dryRun: true }],
+    ['a file without "dryRun"', (({ dryRun, ...rest }) => rest)(phase1)],
+    ['a PoolManager other than the site\'s', { ...phase1, poolManager: fake('b') }],
+    ['a PositionManager other than the site\'s (Sepolia\'s)', { ...phase1, positionManager: CHAINS[11155111].contracts.positionManager }],
+    ['WETH other than the site\'s (Sepolia\'s)', { ...phase1, weth: CHAINS[11155111].contracts.weth }],
+    ['a 2.1.2 router other than the site\'s', { ...phase1, universalRouter_2_1_2: '0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af' }],
+    ['a StateView other than the site\'s', { ...phase1, stateView: fake('c') }],
+    ['a Chainlink feed other than the site\'s (Sepolia\'s)', { ...phase1, ethUsdFeed: '0x694AA1769357215DE4FAC081bf1f309aDC325306' }],
+    ['a contract that is not an address', { ...phase1, treasury: '0x1234' }],
+    ['no owner', (({ owner, ...rest }) => rest)(phase1)],
+    ['some launch facts but not all', { ...phase1, launchTime: 1792540800 }],
+    ['a zero pool ID', { ...phase2, poolId: `0x${'00'.repeat(32)}` }],
+    ['a pool key naming another hook', { ...phase2, poolHooks: fake('8') }],
+    ['Sepolia\'s explorer', { ...phase2, explorer: 'https://sepolia.etherscan.io' }],
+  ];
+  for (const [label, data] of badMainnet) {
+    r = run([SCRIPT, '--chain', '1', sample('bad-1.json', data)]);
+    check(`refused as mainnet: ${label} (exit 1, target unchanged)`, r.code === 1 && bytes(MAINNET_FILE) === mainnetBefore && /Nothing was changed/.test(r.out), r.out);
+  }
+  check('the "refused until milestone 12" message is gone from the script', !/milestone 12/.test(readFileSync(SCRIPT, 'utf8')));
 } finally {
   for (const [f, b] of saved) {
     if (b === null) rmSync(f, { force: true });
