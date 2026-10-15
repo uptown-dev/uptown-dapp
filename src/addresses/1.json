@@ -1,9 +1,28 @@
 {
   "chainId": 1,
-  "source": null,
-  "contracts": null,
-  "owner": null,
+  "source": "script/deployments/1.json",
+  "contracts": {
+    "UpTownToken": "0x994d362B403a5AbE6D815749f63c23B8e807fCF5",
+    "TownHook": "0xB52Bea2Db468BAf7c0038D356C166551212528cc",
+    "BuyerRewards": "0xd0BB9D1af5F99562B125a99FEA348303441B2B2F",
+    "Treasury": "0xC9aE47d9bf53C60C3955fE4e16EF9BA744918c35",
+    "TownStaking": "0x8EF0cdECA89fE09a217ca062c2102d94119dFD13",
+    "LPVault": "0x979Ae8EFC01D8f6d0c276D1f5e71B36059d4769d",
+    "Launcher": "0x9B8a662Cc3e9F8B49045d60a52af0770bDa92E33"
+  },
+  "owner": "0x2218d18213519b66863413bDCe5f9b9044c0928B",
   "positionTokenId": null,
-  "uniswap": null,
+  "launchTime": null,
+  "poolId": null,
+  "uniswap": {
+    "poolManager": "0x000000000004444c5dc75cB358380D2e3dE08A90",
+    "positionManager": "0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e",
+    "v4Quoter": "0x52F0E24D1c21C8A0cB1e5a5dD6198556BD9E1203",
+    "universalRouter": "0x23617e59A5925b2A4Bf75d73ff6711cD0b29De85",
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+    "weth": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "stateView": "0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227"
+  },
   "testWallets": []
 }
