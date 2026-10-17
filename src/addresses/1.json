@@ -1,19 +1,21 @@
 {
   "chainId": 1,
   "source": "script/deployments/1.json",
+  "tokenSymbol": "SKYLINE",
   "contracts": {
-    "UpTownToken": "0x994d362B403a5AbE6D815749f63c23B8e807fCF5",
-    "TownHook": "0xB52Bea2Db468BAf7c0038D356C166551212528cc",
-    "BuyerRewards": "0xd0BB9D1af5F99562B125a99FEA348303441B2B2F",
-    "Treasury": "0xC9aE47d9bf53C60C3955fE4e16EF9BA744918c35",
-    "TownStaking": "0x8EF0cdECA89fE09a217ca062c2102d94119dFD13",
-    "LPVault": "0x979Ae8EFC01D8f6d0c276D1f5e71B36059d4769d",
-    "Launcher": "0x9B8a662Cc3e9F8B49045d60a52af0770bDa92E33"
+    "UpTownToken": "0x9Ce79b2eB03fd83f3a8051234FF0b9fE4e654567",
+    "SkylineHook": "0x9f6a5D8712B62cA8f1f1CE3BCD5f8e020462E8Cc",
+    "BuyerRewards": "0x393e766A0DEe2eAfc5276C1e06ed64985Aceb41E",
+    "Treasury": "0xE125aa3fDdD71E18922B18A3d3d661402EF81D92",
+    "SkylineStaking": "0x72Ad36f381174d6eC9ce6862723825c70B561aE1",
+    "LPVault": "0xFdbCa9317BE5Edf2b224290A1F1C66F57f56d0fB",
+    "Launcher": "0x28f9b823feBf7595914F038f4C8694BD23f3889E"
   },
   "owner": "0x2218d18213519b66863413bDCe5f9b9044c0928B",
-  "positionTokenId": "462188",
-  "launchTime": "1792056563",
-  "poolId": "0x085d279a62ed35fec4bf1469d1c75efb1db20e1dbd3da2a70ecc071852bd6ddb",
+  "positionTokenId": null,
+  "secondPositionTokenId": null,
+  "launchTime": null,
+  "poolId": null,
   "uniswap": {
     "poolManager": "0x000000000004444c5dc75cB358380D2e3dE08A90",
     "positionManager": "0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e",
