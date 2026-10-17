@@ -267,7 +267,7 @@ export async function readAll(client: PublicClient, n: Network, account: Address
           functionName: 'allowance',
           args: [account, n.uniswap.permit2],
         }),
-        routerAllowance: a.add('Permit2.allowance(wallet, SKYLINE, router)', {
+        routerAllowance: a.add('Permit2.allowance(wallet, UpTownToken, router)', {
           address: n.uniswap.permit2,
           abi: PERMIT2_ABI,
           functionName: 'allowance',

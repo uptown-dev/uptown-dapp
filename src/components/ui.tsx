@@ -113,6 +113,22 @@ export function Card({
 }
 
 /**
+ * The token's unit as the site writes it (CR-105): "$SKYLINE". The on-chain symbol stays SKYLINE;
+ * only the shown text carries the "$".
+ */
+export const SYMBOL = '$SKYLINE';
+
+/**
+ * The price key behind a shown unit (CR-95, CR-105): ETH and WETH as written, and the token's shown
+ * unit "$SKYLINE" as `usdOf`'s 'SKYLINE'; null for any other unit (no dollar figure).
+ */
+export function pricedUnit(unit: string | undefined): Priced | null {
+  if (unit === 'ETH' || unit === 'WETH') return unit;
+  if (unit === SYMBOL) return 'SKYLINE';
+  return null;
+}
+
+/**
  * One figure: label above, value below, optional note. Figures sit in a `Figures` grid whose
  * rows are shared (CSS subgrid), so values in a row line up on one baseline even when one label
  * runs to two lines. `view` names the contract view the value comes from (kept as data-view).
@@ -137,7 +153,7 @@ export function Fig({
   /** The raw amount behind `value` (CR-95): with an ETH, WETH or SKYLINE unit, its dollar estimate shows under the value. */
   amount?: bigint | null;
 }) {
-  const priced = unit === 'ETH' || unit === 'WETH' || unit === 'SKYLINE' ? (unit as Priced) : null;
+  const priced = pricedUnit(unit);
   return (
     <div class={`fig${accent ? ' accent' : ''}${large ? ' large' : ''}`}>
       <dt>{label}</dt>
@@ -151,8 +167,8 @@ export function Fig({
   );
 }
 
-export function Figures({ children, cols }: { children: ComponentChildren; cols?: 2 | 3 | 4 }) {
-  return <dl class={`figs${cols ? ` cols-${cols}` : ''}`}>{children}</dl>;
+export function Figures({ children, cols, class: extra }: { children: ComponentChildren; cols?: 2 | 3 | 4; class?: string }) {
+  return <dl class={`figs${cols ? ` cols-${cols}` : ''}${extra ? ` ${extra}` : ''}`}>{children}</dl>;
 }
 
 /** A label and value on one line (value right-aligned, never wrapped). */
@@ -508,7 +524,7 @@ export function FieldError({ children }: { children: ComponentChildren }) {
  */
 export function Uses({ value, decimals = 18, unit, id }: { value: bigint | null; decimals?: number; unit: string; id?: string }) {
   if (value === null) return null;
-  const priced = decimals === 18 && (unit === 'ETH' || unit === 'WETH' || unit === 'SKYLINE') ? (unit as Priced) : null;
+  const priced = decimals === 18 ? pricedUnit(unit) : null;
   return (
     <span class="uses" id={id} data-uses={value.toString()} aria-live="polite">
       Uses <span class="num">{fmtExact(value, decimals)}</span> {unit}
@@ -553,7 +569,7 @@ export function Usd({
   const f = usdOf(chain, amount, unit);
   if (!f) return null;
   const shown = fmtUsd(f.usd, unitPrice);
-  const pool = unit === 'SKYLINE' ? ' and the pool’s current SKYLINE price' : '';
+  const pool = unit === 'SKYLINE' ? ' and the pool’s current $SKYLINE price' : '';
   const tip = `An estimate, at Chainlink’s ETH price of ${fmtUsd8(f.price)}${pool}.`;
   return (
     <span class={`usd${block ? ' block' : ''}`} data-usd={f.usd.toString()} title={tip}>

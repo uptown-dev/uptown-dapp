@@ -29,7 +29,7 @@ export function Rewards() {
     <div class="wrap page">
       <PageHead
         title="Rewards"
-        lead={`Every buy earns a SKYLINE rebate: ${fmtBps(r.low)} to ${fmtBps(r.high)} of the SKYLINE you bought, set each day by the last three days’ trading, less a ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee, claimable the next day within each day’s limit.`}
+        lead={`Every buy earns a $SKYLINE rebate: ${fmtBps(r.low)} to ${fmtBps(r.high)} of the $SKYLINE you bought, set each day by the last three days’ trading, less a ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee, claimable the next day within each day’s limit.`}
       />
       {reserveEmpty(chain) ? <ReserveEmpty /> : reserveNearlySpent(chain) && <ReserveLow />}
       <YourRebate />
@@ -52,10 +52,10 @@ function ReserveLow() {
   return (
     <Notice kind="warn" title="The rebate reserve is nearly spent">
       <p data-view="BuyerRewards.available">
-        <span class="num">{fmtTown(a)}</span> SKYLINE <Usd amount={a} unit="SKYLINE" paren /> remain, less than the next ten days’ limits (
-        <span class="num">{fmtTown(nextTenCaps(chain))}</span> SKYLINE <Usd amount={nextTenCaps(chain)} unit="SKYLINE" paren />). While the reserve is low, days
+        <span class="num">{fmtTown(a)}</span> $SKYLINE <Usd amount={a} unit="SKYLINE" paren /> remain, less than the next ten days’ limits (
+        <span class="num">{fmtTown(nextTenCaps(chain))}</span> $SKYLINE <Usd amount={nextTenCaps(chain)} unit="SKYLINE" paren />). While the reserve is low, days
         are paid in the order they are first claimed or finalised, so a day claimed late can get less or nothing. This site always claims your oldest days
-        first. SKYLINE that reaches the reserve later, from sell fees or from anyone who sends it, is added to what remains.
+        first. $SKYLINE that reaches the reserve later, from sell fees or from anyone who sends it, is added to what remains.
       </p>
     </Notice>
   );
@@ -67,9 +67,9 @@ function ReserveEmpty() {
   return (
     <Notice kind="warn" title="The rebate reserve is empty">
       <p data-view="BuyerRewards.available">
-        The reserve has no SKYLINE left for new rebates, so rebates pause until SKYLINE arrives: from {dayName(chain.hook.RESERVE_FEE_START)} part of the sell fee
-        goes to it, and anyone can send it SKYLINE. A day’s rebates are settled when the day is first claimed (or settled by anyone). A day settled while the
-        reserve is empty gets nothing, even if SKYLINE arrives later, so claiming such a day now settles it with nothing; SKYLINE that arrives pays the days
+        The reserve has no $SKYLINE left for new rebates, so rebates pause until $SKYLINE arrives: from {dayName(chain.hook.RESERVE_FEE_START)} part of the sell fee
+        goes to it, and anyone can send it $SKYLINE. A day’s rebates are settled when the day is first claimed (or settled by anyone). A day settled while the
+        reserve is empty gets nothing, even if $SKYLINE arrives later, so claiming such a day now settles it with nothing; $SKYLINE that arrives pays the days
         settled after it. Days already settled can still be claimed in full.
       </p>
     </Notice>
@@ -111,7 +111,7 @@ function YourRebate() {
         <Fig
           label={`Claimable now, after the ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} fee`}
           value={fmtTown(wallet.claimable)}
-          unit="SKYLINE"
+          unit="$SKYLINE"
           amount={wallet.claimable}
           view="BuyerRewards.claimable(wallet, readyCycles)"
           accent
@@ -119,7 +119,7 @@ function YourRebate() {
           note={
             ready.length ? (
               <>
-                About {fmtTown(fee)} SKYLINE <Usd amount={fee} unit="SKYLINE" paren /> goes to the treasury as the claim fee.
+                About {fmtTown(fee)} $SKYLINE <Usd amount={fee} unit="SKYLINE" paren /> goes to the treasury as the claim fee.
               </>
             ) : undefined
           }
@@ -137,7 +137,7 @@ function YourRebate() {
               void tx.run(
                 `Claim ${days.length === 1 ? 'day' : 'days'} ${listDays(days)}`,
                 () => claimRebatesTx(network, days),
-                () => `${fmtTown(net)} SKYLINE for ${days.length === 1 ? 'day' : 'days'} ${listDays(days)} went to your wallet, after the ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee.`,
+                () => `${fmtTown(net)} $SKYLINE for ${days.length === 1 ? 'day' : 'days'} ${listDays(days)} went to your wallet, after the ${fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee.`,
               );
             }}
           >
@@ -240,11 +240,11 @@ function Today() {
           note={capped ? `${fmtRate(afterFeeBps(chain, paying))} so far, with the limit shared.` : 'What reaches the buyer.'}
         />
         <YesterdaysLean />
-        <Fig label="Today’s limit" value={fmtCap(chain.rewards.cap[c] ?? 0n)} unit="SKYLINE" amount={chain.rewards.cap[c] ?? 0n} view="BuyerRewards.cap(currentCycle)" />
+        <Fig label="Today’s limit" value={fmtCap(chain.rewards.cap[c] ?? 0n)} unit="$SKYLINE" amount={chain.rewards.cap[c] ?? 0n} view="BuyerRewards.cap(currentCycle)" />
         <Fig
           label="Bought by everyone today"
           value={fmtTown(chain.hook.cycleTotal[c] ?? 0n)}
-          unit="SKYLINE"
+          unit="$SKYLINE"
           amount={chain.hook.cycleTotal[c] ?? 0n}
           view="SkylineHook.cycleTotal(currentCycle)"
         />
@@ -282,7 +282,7 @@ function YesterdaysLean() {
   if (l.days.length === 0) note = `${dayName(c)} has no earlier days, so its rate is the base rate.`;
   else if (l.bought === 0n && l.sold === 0n) note = `No trading over ${word} (${span}), so the rate is the base rate.`;
   else
-    note = `${l.lean > 0 ? 'More buying than selling' : l.lean < 0 ? 'More selling than buying' : 'Buying and selling balanced'} over ${word} (${span}): ${fmtTown(l.bought)} SKYLINE bought, ${fmtTown(l.sold)} sold.`;
+    note = `${l.lean > 0 ? 'More buying than selling' : l.lean < 0 ? 'More selling than buying' : 'Buying and selling balanced'} over ${word} (${span}): ${fmtTown(l.bought)} $SKYLINE bought, ${fmtTown(l.sold)} sold.`;
   return <Fig label="Yesterday’s lean" value={value} view={`BuyerRewards.lean(${c}); SkylineHook.cycleTotal, sold`} note={note} />;
 }
 
@@ -291,9 +291,9 @@ export function Rules({ rules: chain, before }: { rules: FixedRules; before?: bo
   const r = rateRange(chain);
   return (
     <ul class="plain-list">
-      <li>Every SKYLINE you receive on a buy earns one point for that day. Selling takes no points away.</li>
+      <li>Every $SKYLINE you receive on a buy earns one point for that day. Selling takes no points away.</li>
       <li>
-        A day’s pot is the day’s rate ({fmtBps(r.low)} to {fmtBps(r.high)}) of all SKYLINE bought that day, never more than the day’s limit, shared by
+        A day’s pot is the day’s rate ({fmtBps(r.low)} to {fmtBps(r.high)}) of all $SKYLINE bought that day, never more than the day’s limit, shared by
         points.
       </li>
       <li>
@@ -305,19 +305,19 @@ export function Rules({ rules: chain, before }: { rules: FixedRules; before?: bo
         shorter. A day can be claimed from midnight UTC, when the next day begins. Rebates never expire.
       </li>
       <li>
-        {fmtBps(chain.rewards.CLAIM_FEE_BPS)} of every claim goes to the treasury for the owner, in SKYLINE, so a buyer gets {fmtRate(afterFeeBps(chain, r.low))}{' '}
+        {fmtBps(chain.rewards.CLAIM_FEE_BPS)} of every claim goes to the treasury for the owner, in $SKYLINE, so a buyer gets {fmtRate(afterFeeBps(chain, r.low))}{' '}
         to {fmtRate(afterFeeBps(chain, r.high))} back.
       </li>
       <li>A limit is not a promise: a quiet day pays less, and what it does not use stays in the reserve.</li>
       <li>
-        The reserve can be topped up: from {dayName(chain.hook.RESERVE_FEE_START)} half of every sell fee paid in SKYLINE goes to it, at the burn floor 1% of
-        every sell does, and anyone can send it SKYLINE.
+        The reserve can be topped up: from {dayName(chain.hook.RESERVE_FEE_START)} half of every sell fee paid in $SKYLINE goes to it, at the burn floor 1% of
+        every sell does, and anyone can send it $SKYLINE.
       </li>
       <li>
         When the reserve runs low, days are paid in the order they are first claimed or finalised. While it is empty rebates pause, and a day settled then
-        gets nothing, even if SKYLINE arrives later.
+        gets nothing, even if $SKYLINE arrives later.
       </li>
-      <li>Only buys in the official SKYLINE pool count. Claiming costs gas; small rebates may cost more than they are worth.</li>
+      <li>Only buys in the official $SKYLINE pool count. Claiming costs gas; small rebates may cost more than they are worth.</li>
     </ul>
   );
 }
@@ -338,10 +338,10 @@ export function Schedule({ rules: chain, current }: { rules: FixedRules; current
   let cumulative = 0n;
   return (
     <>
-      <h3 class="details-title">Daily limit: halves every 100 days, then {fmtCap(tail)} SKYLINE a day</h3>
+      <h3 class="details-title">Daily limit: halves every 100 days, then {fmtCap(tail)} $SKYLINE a day</h3>
       <p class="small muted">
-        Half the 500,000,000 SKYLINE the reserve {current === null ? 'is funded with at the launch' : 'was funded with at launch'} is scheduled for the first 100 days. The limit halves every 100 days down to{' '}
-        {fmtCap(chain.rewards.cap[600] ?? 0n)} SKYLINE for days 601 to 700; from day 701 it is {fmtCap(tail)} SKYLINE a day for as long as the reserve has SKYLINE.
+        Half the 500,000,000 $SKYLINE the reserve {current === null ? 'is funded with at the launch' : 'was funded with at launch'} is scheduled for the first 100 days. The limit halves every 100 days down to{' '}
+        {fmtCap(chain.rewards.cap[600] ?? 0n)} $SKYLINE for days 601 to 700; from day 701 it is {fmtCap(tail)} $SKYLINE a day for as long as the reserve has $SKYLINE.
       </p>
       <div class="table-scroll">
       <table class="table compact">
@@ -381,9 +381,9 @@ export function Schedule({ rules: chain, current }: { rules: FixedRules; current
       </table>
       </div>
       <p class="small faint table-note">
-        Shares of the 500,000,000 SKYLINE launch funding, if every day used its whole limit. The reserve can be topped up: from{' '}
-        {dayName(chain.hook.RESERVE_FEE_START)} half of every sell fee paid in SKYLINE goes to it, at the burn floor 1% of every sell does, and anyone can send
-        it SKYLINE. What arrives pays the {fmtCap(tail)} SKYLINE days for longer.
+        Shares of the 500,000,000 $SKYLINE launch funding, if every day used its whole limit. The reserve can be topped up: from{' '}
+        {dayName(chain.hook.RESERVE_FEE_START)} half of every sell fee paid in $SKYLINE goes to it, at the burn floor 1% of every sell does, and anyone can send
+        it $SKYLINE. What arrives pays the {fmtCap(tail)} $SKYLINE days for longer.
       </p>
     </>
   );

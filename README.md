@@ -23,6 +23,8 @@ The dollar figures read Chainlink's ETH/USD feed directly, through the same netw
 
 A confirmed transaction's success message (its status and hash) clears itself 2 seconds after the confirmation; errors and refusals stay (CR-104). When the visitor switches account or network in the wallet, or disconnects there, every figure, form, message and the Owner page follow at once; a reply read for the previous account is dropped (CR-104).
 
+Everywhere a visitor can read the token symbol, the site writes it `$SKYLINE` (CR-105): page text, buttons, units, messages, Docs, the title and description. The token's on-chain symbol, the address files' `tokenSymbol` check and the contract names SkylineHook and SkylineStaking stay as they are. `node scripts/f13d-shots.mjs local|mainnet` reads every built page for a `SKYLINE` without its `$`.
+
 `npm run dev` starts a development server.
 
 ## Checks

@@ -1139,6 +1139,11 @@ main:focus {
   .figs.cols-3 > .fig:last-child:nth-child(odd) {
     grid-column: auto;
   }
+  /* CR-105: "$SKYLINE" is a character longer. The stake (its amount and unit) and the share's note
+     each keep one line; the earned WETH, the shortest figure, takes the narrower column. */
+  .figs.cols-3.your-stake-figs {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 0.8fr);
+  }
 }
 @container (min-width: 640px) {
   .figs.cols-4 {

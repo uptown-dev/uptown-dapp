@@ -401,7 +401,9 @@ function Down({ ax, y1, y2, kind, lines }: { ax: number; y1: number; y2: number;
 
 // The sell fee's box (CR-66): the owner's text only (CR-68: no floor line).
 const DYN = { x: 230, y: 134, w: 122 };
-const DYN_TEXT = ['charged in SKYLINE', 'and burnt from', 'day 1, switches', 'to ETH when a', 'previous day’s burn', 'exceeds rebates'];
+// CR-105: "charged in $SKYLINE" filled the box edge to edge, so the owner's words break over seven
+// lines instead of six; the words and their order are unchanged.
+const DYN_TEXT = ['charged in', '$SKYLINE and', 'burnt from day 1,', 'switches to ETH', 'when a previous', 'day’s burn', 'exceeds rebates'];
 
 export function FlowGraphic() {
   const dynBottom = DYN.y + nodeHeight(DYN_TEXT);
@@ -410,7 +412,7 @@ export function FlowGraphic() {
       viewBox="0 0 360 412"
       class="flow-graphic"
       role="img"
-      aria-label={`Flow: every trade in the SKYLINE pool passes through SkylineHook on Uniswap v4. On a buy SkylineHook sends 2% of the ETH to the treasury and records the SKYLINE bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in SKYLINE and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the SKYLINE they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
+      aria-label={`Flow: every trade in the $SKYLINE pool passes through SkylineHook on Uniswap v4. On a buy SkylineHook sends 2% of the ETH to the treasury and records the $SKYLINE bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in $SKYLINE and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the $SKYLINE they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -424,7 +426,7 @@ export function FlowGraphic() {
       {/* The hook, at the top (CR-69: no "Buy or sell SKYLINE" box above it) */}
       <rect x="8" y="8" width="344" height="64" class="fg-hook" />
       <text x="180" y="36" class="fg-hook-title" text-anchor="middle">SkylineHook</text>
-      <text x="180" y="56" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the SKYLINE pool</text>
+      <text x="180" y="56" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the $SKYLINE pool</text>
 
       {/* Hook to the tally, the treasury and the sell fee */}
       <Down ax={28} y1={76} y2={130} kind="data" lines={['records', 'each buy']} />
@@ -439,7 +441,7 @@ export function FlowGraphic() {
       <path d="M338 76V130" class="fg-town" marker-end="url(#fg-arrow-town)" />
 
       {/* CR-102: "SKYLINE per wallet," is wider than the box, so the owner's words break over three lines, unchanged. */}
-      <Node x={8} y={134} w={108} title="Buy tally" sub={['SKYLINE', 'per wallet,', 'per day']} />
+      <Node x={8} y={134} w={108} title="Buy tally" sub={['$SKYLINE', 'per wallet,', 'per day']} />
       <Node x={126} y={204} w={94} title="Treasury" sub={['90% to stakers', '10% owner']} />
 
       {/* The sell fee (CR-66) */}
@@ -466,7 +468,7 @@ export function FlowGraphic() {
       <path d="M16 364h22" class="fg-eth" />
       <text x="44" y="368" class="fg-sub">ETH, WETH</text>
       <path d="M16 384h22" class="fg-town" />
-      <text x="44" y="388" class="fg-sub">SKYLINE</text>
+      <text x="44" y="388" class="fg-sub">$SKYLINE</text>
       <path d="M16 404h22" class="fg-data" />
       <text x="44" y="408" class="fg-sub">record</text>
     </svg>

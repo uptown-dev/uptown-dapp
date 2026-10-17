@@ -26,10 +26,10 @@ import { showsOwnerLink } from './lib/owner';
 const NAV: { page: string; label: string; title: string }[] = [
   // The homepage keeps its entry for its address and title but has no item in the navigation bar:
   // the "UpTown" name at the top left is its link (CR-71).
-  { page: '', label: 'Home', title: 'UpTown (SKYLINE)' },
-  { page: 'trade', label: 'Trade', title: 'Trade SKYLINE · UpTown' },
+  { page: '', label: 'Home', title: 'UpTown ($SKYLINE)' },
+  { page: 'trade', label: 'Trade', title: 'Trade $SKYLINE · UpTown' },
   { page: 'rewards', label: 'Rewards', title: 'Buyer rebates · UpTown' },
-  { page: 'stake', label: 'Stake', title: 'Stake SKYLINE · UpTown' },
+  { page: 'stake', label: 'Stake', title: 'Stake $SKYLINE · UpTown' },
   { page: 'stats', label: 'Stats', title: 'Treasury and stats · UpTown' },
   { page: 'docs', label: 'Docs', title: 'Docs · UpTown' },
   // Shown in the navigation only to the owner wallet (CR-64); anyone else who opens it sees a notice.
@@ -320,7 +320,7 @@ export function PlaceRow({ token = mainnetSkylineAddress() }: { token?: Address 
           <TelegramMark />
         </PlaceMark>
         {/* Always shown (CR-88 item 3): "at launch" until the chain-1 address file names SKYLINE, then a link. */}
-        <PlaceMark name="GMGN" what="SKYLINE on GMGN" href={gmgn} word="at launch">
+        <PlaceMark name="GMGN" what="$SKYLINE on GMGN" href={gmgn} word="at launch">
           <GmgnMark />
         </PlaceMark>
         {/* One message, the owner's words exactly (CR-101). */}
@@ -697,7 +697,7 @@ export function App({ network = NETWORK, read = readAll }: { network?: Network; 
   }, []);
 
   useEffect(() => {
-    document.title = NAV.find((n) => n.page === page)?.title ?? 'UpTown (SKYLINE)';
+    document.title = NAV.find((n) => n.page === page)?.title ?? 'UpTown ($SKYLINE)';
     setNavOpen(false);
     if (firstRender.current) {
       firstRender.current = false;
@@ -881,7 +881,7 @@ export function App({ network = NETWORK, read = readAll }: { network?: Network; 
                 <SkylineMark />
                 <span>UpTown</span>
               </a>
-              <p>UpTown Token (SKYLINE), an experiment on Ethereum.</p>
+              <p>UpTown Token ($SKYLINE), an experiment on Ethereum.</p>
               {/* CR-102: the one short notice on the site that the first deployment, TOWN, is retired. */}
               <RetiredNotice where="footer" />
               <nav aria-label="Footer">

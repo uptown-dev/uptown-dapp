@@ -226,7 +226,7 @@ try {
   say(`   the message: "${stake.words}"`);
   say(`   "Done." (with its list) was on the page for ${stake.ms} ms, then removed by the site itself`);
   await shot('2b-stake-gone', '.stake-go');
-  expect(stake.words.includes('1,000 SKYLINE is staked'), 'the stake message is not the success message');
+  expect(stake.words.includes('1,000 $SKYLINE is staked'), 'the stake message is not the success message');
   expect(stake.ms >= 1_950 && stake.ms <= 2_300, `the stake message lasted ${stake.ms} ms`);
 
   // ---- 3. An error stays ----

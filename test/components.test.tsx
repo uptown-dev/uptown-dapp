@@ -302,13 +302,13 @@ async function run() {
   );
   const replacedOn = Date.UTC(2027, 2, 1, 14, 5) / 1000;
   const [old] = await readStakes(client, [{ address: k.SkylineStaking, replacedOn }], W1);
-  check('CR-50 Test wallet 1 has a stake in the listed contract (read live)', old.stake > 0n, `${old.stake} SKYLINE units staked, earned ${old.earned}`);
+  check('CR-50 Test wallet 1 has a stake in the listed contract (read live)', old.stake > 0n, `${old.stake} $SKYLINE units staked, earned ${old.earned}`);
   {
     const el = await mount(<OldStakeCard old={old} />, base, wallet, 'Test wallet 1’s stake, SkylineStaking listed as replaced on 1 Mar 2027');
     const t = text(el);
     check('CR-50 replaced contract: "Replaced on 1 Mar 2027: no new rewards; unstake and claim only"', t.includes('Replaced on 1 Mar 2027: no new rewards; unstake and claim only'), t.slice(0, 160));
     check('CR-50 replaced contract: Claim and Unstake are offered and on', button(el, 'Claim')?.disabled === (old.earned === 0n) && button(el, 'Unstake all')?.disabled === false, `claim ${button(el, 'Claim')?.disabled}, unstake ${button(el, 'Unstake all')?.disabled}`);
-    check('CR-50 replaced contract: no new stake offered there', !/Stake SKYLINE|Approve and stake/.test(t));
+    check('CR-50 replaced contract: no new stake offered there', !/Stake \$SKYLINE|Approve and stake/.test(t));
   }
   {
     const el = await mount(<Stake />, base, { ...wallet, oldStakes: [old] }, 'Stake page with that stake');
@@ -378,13 +378,13 @@ async function run() {
     const mode = SELL_FEE_HEADLINE[sellFeeState(base.hook.sellFeeShares)]; // F9u: the state from sellFeeShares() (CR-93)
     check(
       'CR-57 Trade (live): the mode line names today’s mode and yesterday’s two figures from the chain',
-      line.startsWith(`Today’s sell fee: ${mode}`) && line.includes(`burned ${fmtTown(b)} SKYLINE and paid ${fmtTown(p)} SKYLINE in rebates`),
+      line.startsWith(`Today’s sell fee: ${mode}`) && line.includes(`burned ${fmtTown(b)} $SKYLINE and paid ${fmtTown(p)} $SKYLINE in rebates`),
       line,
     );
     const st = await mount(<Stats />, base, wallet, `Stats page, live (${dayName(c)})`);
     const t = text(st);
     check(
-      'CR-57 Stats (live): "Sell fee today", "SKYLINE burned yesterday" = burned(c−1), "Rebates paid out yesterday" = emissionEstimate(c−1)',
+      'CR-57 Stats (live): "Sell fee today", "$SKYLINE burned yesterday" = burned(c−1), "Rebates paid out yesterday" = emissionEstimate(c−1)',
       t.includes(`Sell fee today ${mode}`) &&
         figText(st, `SkylineHook.burned(${y})`) === fmtTown(b) &&
         figText(st, `BuyerRewards.emissionEstimate(${y})`) === fmtTown(p),
@@ -407,7 +407,7 @@ async function run() {
     check(
       'CR-57 ETH mode (fixture): "2% in ETH, to the treasury", with the reason',
       line.startsWith('Today’s sell fee: 2% in ETH, to the treasury') &&
-        line.includes('burned 750,000 SKYLINE and paid 600,000 SKYLINE in rebates: it burned more than it paid, so today the fee is in ETH.'),
+        line.includes('burned 750,000 $SKYLINE and paid 600,000 $SKYLINE in rebates: it burned more than it paid, so today the fee is in ETH.'),
       line,
     );
     const rows = text(el.querySelector('#trade-panel-sell .swap-rows') as HTMLElement);
@@ -425,9 +425,9 @@ async function run() {
     const el = await mount(<Trade sell />, chain, wallet, 'Trade page, Sell, at the burn floor (fixture)');
     const line = text(el.querySelector('.sell-mode') as HTMLElement);
     check(
-      'CR-93 at the floor (fixture): split, "the burn floor is reached" with 200,000,000, 1% in SKYLINE to the reserve and 1% in ETH',
-      line.startsWith('Today’s sell fee: 1% in SKYLINE to the rebate reserve, 1% in ETH to the treasury') &&
-        line.includes('The burn floor is reached: the supply is at 200,000,000 SKYLINE, so nothing more is burned'),
+      'CR-93 at the floor (fixture): split, "the burn floor is reached" with 200,000,000, 1% in $SKYLINE to the reserve and 1% in ETH',
+      line.startsWith('Today’s sell fee: 1% in $SKYLINE to the rebate reserve, 1% in ETH to the treasury') &&
+        line.includes('The burn floor is reached: the supply is at 200,000,000 $SKYLINE, so nothing more is burned'),
       line,
     );
   }
@@ -442,8 +442,8 @@ async function run() {
     const el = await mount(<Trade sell />, chain, wallet, 'Trade page, Sell, rebate reserve spent (fixture)');
     const line = text(el.querySelector('.sell-mode') as HTMLElement);
     check(
-      'CR-57 reserve spent (fixture): SKYLINE, "the rebate reserve is spent"',
-      line.startsWith('Today’s sell fee: 2% in SKYLINE, burned') && line.includes('The rebate reserve is spent'),
+      'CR-57 reserve spent (fixture): $SKYLINE, "the rebate reserve is spent"',
+      line.startsWith('Today’s sell fee: 2% in $SKYLINE, burned') && line.includes('The rebate reserve is spent'),
       line,
     );
   }
@@ -457,7 +457,7 @@ async function run() {
     const st = await mount(<Stats />, chain, wallet, 'Stats page, day 1 (fixture)');
     const t = text(st);
     // F9u (CR-94): cycle 0, the launch day, is shown as Day 1.
-    check('CR-57 the launch day (fixture): SKYLINE, "Day 1 has no day before it"; yesterday’s figures "—"', t.includes('Sell fee today 2% in SKYLINE, burned') && t.includes('Day 1 has no day before it') && t.includes('SKYLINE burned yesterday —'), t.match(/Sell fee today.*?Rebates emitted/)?.[0] ?? '');
+    check('CR-57 the launch day (fixture): $SKYLINE, "Day 1 has no day before it"; yesterday’s figures "—"', t.includes('Sell fee today 2% in $SKYLINE, burned') && t.includes('Day 1 has no day before it') && t.includes('$SKYLINE burned yesterday —'), t.match(/Sell fee today.*?Rebates emitted/)?.[0] ?? '');
   }
 
   // ---- CR-80: the owner’s words on a burning day, and the tie -------------------------------
@@ -478,20 +478,20 @@ async function run() {
       const el = await mount(<Trade sell />, chain, wallet, label);
       return text(el.querySelector('.sell-mode') as HTMLElement);
     };
-    const above = await sellMode(townDay(0n, 667_925n * SKYLINE), 'Trade page, Sell, SKYLINE mode (fixture: burned 0, rebates 667,925)');
+    const above = await sellMode(townDay(0n, 667_925n * SKYLINE), 'Trade page, Sell, $SKYLINE mode (fixture: burned 0, rebates 667,925)');
     check(
       'CR-80 rebates above the burn: "…in rebates: inflation exceeded deflation, so today the fee is burned." — the old clause gone, and no "it" left in front of the new one',
-      above.includes('burned 0 SKYLINE and paid 667,925 SKYLINE in rebates: inflation exceeded deflation, so today the fee is burned.') &&
+      above.includes('burned 0 $SKYLINE and paid 667,925 $SKYLINE in rebates: inflation exceeded deflation, so today the fee is burned.') &&
         !above.includes('did not burn more than it paid') &&
         !above.includes('it inflation'),
       above,
     );
-    const tie = await sellMode(townDay(400_000n * SKYLINE, 400_000n * SKYLINE), 'Trade page, Sell, SKYLINE mode (fixture: a tie, 400,000 each)');
-    const quiet = await sellMode(townDay(0n, 0n), 'Trade page, Sell, SKYLINE mode (fixture: a quiet day, both 0)');
+    const tie = await sellMode(townDay(400_000n * SKYLINE, 400_000n * SKYLINE), 'Trade page, Sell, $SKYLINE mode (fixture: a tie, 400,000 each)');
+    const quiet = await sellMode(townDay(0n, 0n), 'Trade page, Sell, $SKYLINE mode (fixture: a quiet day, both 0)');
     check(
       'CR-80 the two exactly equal: "inflation matched deflation", on a tie and on a quiet day with both at zero',
-      tie.includes('burned 400,000 SKYLINE and paid 400,000 SKYLINE in rebates: inflation matched deflation, so today the fee is burned.') &&
-        quiet.includes('burned 0 SKYLINE and paid 0 SKYLINE in rebates: inflation matched deflation, so today the fee is burned.') &&
+      tie.includes('burned 400,000 $SKYLINE and paid 400,000 $SKYLINE in rebates: inflation matched deflation, so today the fee is burned.') &&
+        quiet.includes('burned 0 $SKYLINE and paid 0 $SKYLINE in rebates: inflation matched deflation, so today the fee is burned.') &&
         !tie.includes('exceeded') &&
         !quiet.includes('exceeded'),
       `${tie} || ${quiet}`,
@@ -504,11 +504,11 @@ async function run() {
     const eth = await sellMode(ethChain, 'Trade page, Sell, ETH mode (fixture: burned 750,000 > pot 600,000)');
     check(
       'CR-80 the burn above the rebates: the ETH day is unchanged — "it burned more than it paid, so today the fee is in ETH.", with no inflation or deflation in it',
-      eth.includes('burned 750,000 SKYLINE and paid 600,000 SKYLINE in rebates: it burned more than it paid, so today the fee is in ETH.') && !/inflation|deflation/.test(eth),
+      eth.includes('burned 750,000 $SKYLINE and paid 600,000 $SKYLINE in rebates: it burned more than it paid, so today the fee is in ETH.') && !/inflation|deflation/.test(eth),
       eth,
     );
     // sellFeeWords is one function, so the Stats figure "Sell fee today" carries the same clause.
-    const st = await mount(<Stats />, townDay(0n, 667_925n * SKYLINE), wallet, 'Stats page, SKYLINE mode (fixture: burned 0, rebates 667,925)');
+    const st = await mount(<Stats />, townDay(0n, 667_925n * SKYLINE), wallet, 'Stats page, $SKYLINE mode (fixture: burned 0, rebates 667,925)');
     check(
       'CR-80 Stats: the same clause beside "Sell fee today" (one wording, one function)',
       text(st).includes('in rebates: inflation exceeded deflation, so today the fee is burned.'),
@@ -539,18 +539,18 @@ async function run() {
         shown.soldToday === fmtTown(st),
       `block ${base.blockNumber}, day ${c}: shown ${JSON.stringify(shown)}; views cycleTotal(${c - 1}) ${by}, sold(${c - 1}) ${sy}, cycleTotal(${c}) ${bt}, sold(${c}) ${st}`,
     );
-    const t = plain(() => text(el)).replace(/(\d)SKYLINE/g, '$1 SKYLINE'); // unstyled, the value and its unit touch
+    const t = plain(() => text(el)).replace(/(\d)\$SKYLINE/g, '$1 $$SKYLINE'); // unstyled, the value and its unit touch
     check(
       'CR-61 Stats (live): today is marked as still counting, and the line says what the figures are',
-      t.includes(`Bought today so far ${fmtTown(bt)} SKYLINE ${dayName(c)}, still counting`) &&
-        t.includes(`Sold today so far ${fmtTown(st)} SKYLINE ${dayName(c)}, still counting`) &&
-        t.includes('Bought is the SKYLINE buyers received from the pool; sold is the SKYLINE sellers gave up, before the 2% sell fee.') &&
+      t.includes(`Bought today so far ${fmtTown(bt)} $SKYLINE ${dayName(c)}, still counting`) &&
+        t.includes(`Sold today so far ${fmtTown(st)} $SKYLINE ${dayName(c)}, still counting`) &&
+        t.includes('Bought is the $SKYLINE buyers received from the pool; sold is the $SKYLINE sellers gave up, before the 2% sell fee.') &&
         !/ETH/.test(t.replace(/[Vv]erify[^]*$/, '')),
       t,
     );
     const page = await mount(<Stats />, base, wallet, 'Stats page with the trading volume (live)');
     const cards = [...page.querySelectorAll('.card-title')].map((h) => h.textContent);
-    check('CR-61 Stats page: the block sits after the Treasury card, before the ETH, Staking and SKYLINE cards', cards.slice(0, 5).join(' | ') === 'Treasury | Trading volume, in SKYLINE | ETH in and out, since launch | Staking | SKYLINE', cards.join(' | '));
+    check('CR-61 Stats page: the block sits after the Treasury card, before the ETH, Staking and $SKYLINE cards', cards.slice(0, 5).join(' | ') === 'Treasury | Trading volume, in $SKYLINE | ETH in and out, since launch | Staking | $SKYLINE', cards.join(' | '));
   }
   {
     // Day 0: no yesterday.
@@ -560,13 +560,13 @@ async function run() {
       rewards: { ...base.rewards, currentCycle: 0 },
     };
     const el = await mount(<TradingVolume />, chain, wallet, 'Stats trading volume on day 1 (fixture)');
-    const t = plain(() => text(el)).replace(/(\d)SKYLINE/g, '$1 SKYLINE');
+    const t = plain(() => text(el)).replace(/(\d)\$SKYLINE/g, '$1 $$SKYLINE');
     check(
       'CR-61 the launch day, Day 1 since CR-94 (fixture): yesterday reads "None yet"; today 5,000,000 bought and 1,000,000 sold, still counting',
       t.includes('Bought yesterday None yet Day 1 has no day before it') &&
         t.includes('Sold yesterday None yet Day 1 has no day before it') &&
-        t.includes('Bought today so far 5,000,000 SKYLINE Day 1, still counting') &&
-        t.includes('Sold today so far 1,000,000 SKYLINE Day 1, still counting'),
+        t.includes('Bought today so far 5,000,000 $SKYLINE Day 1, still counting') &&
+        t.includes('Sold today so far 1,000,000 $SKYLINE Day 1, still counting'),
       t,
     );
   }
@@ -610,7 +610,7 @@ async function run() {
       check(
         'CR-64 Trade: no "Sell on Uniswap" button, no sentence about it, no link to app.uniswap.org',
         !all.includes('Sell on Uniswap') && !all.includes('second way to trade') && !all.includes('Uniswap app') && !el.querySelector('a[href*="uniswap.org"]'),
-        all.match(/Other SKYLINE pools[^.]*\./)?.[0] ?? '',
+        all.match(/Other \$SKYLINE pools[^.]*\./)?.[0] ?? '',
       );
     }
 
@@ -834,14 +834,14 @@ async function run() {
     const mark = header.querySelector('a.wordmark') as HTMLAnchorElement | null;
     const labels = navLinks().map((a) => `${a.textContent!.trim()}=${a.getAttribute('href')}`);
     check(
-      'CR-71 header: no "Home" link; the "UpTown" name links to #/ with an accessible name; nothing marked current on the homepage; title "UpTown (SKYLINE)"',
+      'CR-71 header: no "Home" link; the "UpTown" name links to #/ with an accessible name; nothing marked current on the homepage; title "UpTown ($SKYLINE)"',
       labels.join(', ') === 'Trade=#/trade, Rewards=#/rewards, Stake=#/stake, Stats=#/stats, Docs=#/docs' &&
         !navLinks().some((a) => /home/i.test(a.textContent!) || a.getAttribute('href') === '#/') &&
         mark?.getAttribute('href') === '#/' &&
         mark.textContent!.trim() === 'UpTown' &&
         /home/i.test(mark.getAttribute('aria-label') ?? '') &&
         current().length === 0 &&
-        document.title === 'UpTown (SKYLINE)',
+        document.title === 'UpTown ($SKYLINE)',
       `${labels.join(', ')} | name: ${mark?.getAttribute('href')} "${mark?.getAttribute('aria-label')}" | current: ${current().join(',') || 'none'} | ${document.title}`,
     );
 
@@ -854,7 +854,7 @@ async function run() {
     const back = `${location.hash} | ${current().join(',') || 'none'} | ${document.title} | ${box.querySelector('main h1')?.textContent?.trim() ?? 'no h1'}`;
     check(
       'CR-71 on Trade, "Trade" is marked current and the title is unchanged; clicking the name opens the homepage',
-      onTrade === 'Trade | Trade SKYLINE · UpTown' && back.startsWith('#/ | none | UpTown (SKYLINE) | '),
+      onTrade === 'Trade | Trade $SKYLINE · UpTown' && back.startsWith('#/ | none | UpTown ($SKYLINE) | '),
       `${onTrade} || after the click: ${back}`,
     );
 
@@ -874,9 +874,10 @@ async function run() {
   await cr92(base, wallet);
   await cr95(base, wallet);
   await f9u(base, wallet);
-  await f12a(base, wallet, live.owner, live);
+  const notLaunchedExtra = await f12a(base, wallet, live.owner, live);
   await f13a(base, wallet, live.owner);
   await f13b(base, wallet, live.owner);
+  await f13d(base, wallet, notLaunchedExtra);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -908,7 +909,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
   {
     check('CR-72 item 1: the local list holds SkylineStaking (the address file’s), and not the stand-in', listedStaking(NETWORK, k.SkylineStaking) === k.SkylineStaking && listedStaking(NETWORK, FAKE) === null);
     const tries: [string, () => unknown][] = [
-      ['approve SKYLINE for staking', () => approveTx(NETWORK, FAKE, 1n)],
+      ['approve $SKYLINE for staking', () => approveTx(NETWORK, FAKE, 1n)],
       ['stake', () => stakeTx(NETWORK, FAKE, 1n)],
       ['unstake', () => unstakeTx(NETWORK, FAKE, 1n)],
       ['claim', () => claimWethTx(NETWORK, FAKE)],
@@ -932,7 +933,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     const toFake = { ...claimWethTx(NETWORK, k.SkylineStaking), address: FAKE };
     const approveFake = { ...approveTx(NETWORK, k.SkylineStaking, 1n), args: [FAKE, 1n] };
     check(
-      'CR-72 item 1: the send check refuses a call to an unlisted address, and a SKYLINE approval naming one; allows the site’s own',
+      'CR-72 item 1: the send check refuses a call to an unlisted address, and a $SKYLINE approval naming one; allows the site’s own',
       !!targetProblem(NETWORK, toFake) && !!targetProblem(NETWORK, approveFake)?.startsWith(UNLISTED_STAKING) && targetProblem(NETWORK, claimWethTx(NETWORK, k.SkylineStaking)) === null && targetProblem(NETWORK, approvePermit2Tx(NETWORK)) === null,
       `${targetProblem(NETWORK, toFake)} | ${targetProblem(NETWORK, approveFake)}`,
     );
@@ -958,7 +959,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     );
     check(
       'CR-72 item 1: no stake, unstake or claim offered for the unlisted contract',
-      !!mine && !/Stake SKYLINE|Unstake SKYLINE|Claim /.test(text(mine)) && mine.querySelectorAll('button').length === 0,
+      !!mine && !/Stake \$SKYLINE|Unstake \$SKYLINE|Claim /.test(text(mine)) && mine.querySelectorAll('button').length === 0,
       mine ? text(mine).slice(0, 200) : 'no stake card',
     );
     check(
@@ -969,7 +970,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     check('CR-72 item 1: no "replaced, stakes only in it" notice for an unlisted contract', !t.includes('this page stakes only in it'));
     // The live state: nothing changes for the listed contract.
     const normal = await mount(<Stake />, base, wallet, 'Stake page, live: SkylineStaking is listed');
-    check('CR-72 item 1 (live): with SkylineStaking listed, no notice, and the staking actions are offered', !text(normal).includes(UNLISTED_STAKING) && !!button(normal, 'Stake SKYLINE'));
+    check('CR-72 item 1 (live): with SkylineStaking listed, no notice, and the staking actions are offered', !text(normal).includes(UNLISTED_STAKING) && !!button(normal, 'Stake $SKYLINE'));
   }
 
   // ---- 2. A point as the decimal mark -------------------------------------------------------------
@@ -1007,7 +1008,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     typeIn(sell, '#sell-town', '1,000.5');
     await settle();
     const usedSell = usesIn(sellBox.querySelector('.swap-box'));
-    check('CR-72 item 2: Trade sell amount: "2,5" refused with the sentence; "1,000.5" shows "Uses 1,000.5 SKYLINE"', refusedSell && usedSell === 'Uses 1,000.5 SKYLINE', `${refusedSell} | ${usedSell}`);
+    check('CR-72 item 2: Trade sell amount: "2,5" refused with the sentence; "1,000.5" shows "Uses 1,000.5 $SKYLINE"', refusedSell && usedSell === 'Uses 1,000.5 $SKYLINE', `${refusedSell} | ${usedSell}`);
     typeIn(sell, '#sell-min', '0,001');
     await settle();
     const refusedMin = text(sellBox).includes(COMMA_MESSAGE);
@@ -1025,8 +1026,8 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     typeIn(buy, '#buy-min', '150,000');
     await settle();
     check(
-      'CR-72 item 2: Trade buy amount "2,5" and minimum "1,00" refused; minimum "150,000" shows "Uses 150,000 SKYLINE"',
-      refusedBuy && refusedBuyMin && usesIn(buyBox.querySelector('.row-control')) === 'Uses 150,000 SKYLINE',
+      'CR-72 item 2: Trade buy amount "2,5" and minimum "1,00" refused; minimum "150,000" shows "Uses 150,000 $SKYLINE"',
+      refusedBuy && refusedBuyMin && usesIn(buyBox.querySelector('.row-control')) === 'Uses 150,000 $SKYLINE',
       `${refusedBuy} ${refusedBuyMin} ${usesIn(buyBox.querySelector('.row-control'))}`,
     );
 
@@ -1035,7 +1036,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     const st = await mount(<Stake />, base, noStake, 'Stake, "2,5" typed (fixture)');
     typeIn(st, '#stake-amount', '2,5');
     await settle();
-    const stStake = text(st).includes(COMMA_MESSAGE) && button(st, 'Stake SKYLINE')?.disabled !== false && button(st, 'Approve and stake')?.disabled !== false;
+    const stStake = text(st).includes(COMMA_MESSAGE) && button(st, 'Stake $SKYLINE')?.disabled !== false && button(st, 'Approve and stake')?.disabled !== false;
     typeIn(st, '#stake-amount', '1,000.5');
     await settle();
     const stStakeUses = usesIn(st.querySelector('#panel-stake .field'));
@@ -1044,12 +1045,12 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     await settle();
     typeIn(st2, '#unstake-amount', '0,5');
     await settle();
-    const stUn = text(st2).includes(COMMA_MESSAGE) && button(st2, 'Unstake SKYLINE')?.disabled === true;
+    const stUn = text(st2).includes(COMMA_MESSAGE) && button(st2, 'Unstake $SKYLINE')?.disabled === true;
     typeIn(st2, '#unstake-amount', '2.5');
     await settle();
     check(
       'CR-72 item 2: Stake "2,5" and Unstake "0,5" refused (buttons off); "1,000.5" and "2.5" show the amount used',
-      stStake && stStakeUses === 'Uses 1,000.5 SKYLINE' && stUn && usesIn(st2.querySelector('#panel-unstake .field')) === 'Uses 2.5 SKYLINE',
+      stStake && stStakeUses === 'Uses 1,000.5 $SKYLINE' && stUn && usesIn(st2.querySelector('#panel-unstake .field')) === 'Uses 2.5 $SKYLINE',
       `${stStake} ${stStakeUses} ${stUn} ${usesIn(st2.querySelector('#panel-unstake .field'))}`,
     );
 
@@ -1067,7 +1068,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     await settle();
     const usedOwner = [usesIn(inAction(ow, 'withdrawOwnerEth')), usesIn(inAction(ow, 'setSpendRate'))];
     check(
-      'CR-72 item 2: Owner ETH "0,001", SKYLINE "1,00" and rate "2,5" refused; "0.001" and "12.5" show the amount used',
+      'CR-72 item 2: Owner ETH "0,001", $SKYLINE "1,00" and rate "2,5" refused; "0.001" and "12.5" show the amount used',
       all3.every(Boolean) && usedOwner.join(' | ') === 'Uses 0.001 ETH | Uses 12.5 %',
       `${all3.join(',')} | ${usedOwner.join(' | ')}`,
     );
@@ -1087,7 +1088,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     const el = await mount(<Trade />, base, wallet, 'Trade, Buy, minimum 0 then 6% below the estimate (live estimate)');
     const box = el.querySelector('#trade-panel-buy') as HTMLElement;
     for (let i = 0; i < 100 && !/\d/.test((box.querySelector('.swap-output') as HTMLElement).innerText); i++) await settle(100);
-    const buyBtn = () => button(box, 'Buy SKYLINE');
+    const buyBtn = () => button(box, 'Buy $SKYLINE');
     const onAuto = buyBtn()?.disabled === false && !text(box).includes('More than 5% below');
     typeIn(el, '#buy-min', '0');
     await settle();
@@ -1106,7 +1107,7 @@ async function cr72(base: ChainState, wallet: WalletState, o: OwnerState) {
     check(
       'CR-72 item 3 (live estimate): the 1% default passes; 0 refused (Buy off); 94% warned "a bot can take the difference" (Buy on); 96% quiet; above warned',
       onAuto && zero && warned && quiet && above,
-      `estimate ${fmtTown(live)} SKYLINE; default ${onAuto}, zero ${zero}, 94% ${warned}, 96% ${quiet}, above ${above}`,
+      `estimate ${fmtTown(live)} $SKYLINE; default ${onAuto}, zero ${zero}, 94% ${warned}, 96% ${quiet}, above ${above}`,
     );
     // The sell form: 0 refused too.
     const s = await mount(<Trade sell />, base, wallet, 'Trade, Sell, minimum 0 (fixture)');
@@ -1603,8 +1604,8 @@ async function cr76() {
 // --------------------------------------------------------------------------------------------------
 const CR77 = {
   why1: 'Most projects that distribute revenue have no systems that ensure sustained revenue generation. Attention fades after launch, trading slows, and the project fades with it.',
-  why2: "UpTown's sophisticated flywheel is built on top of the pool. Every trade in the SKYLINE pool passes through SkylineHook, a contract no one controls, and it turns trading into reasons to participate: buyers claim SKYLINE rebates at the end of trading days, stakers receive a daily share of the ETH the treasury collects, and on every sale 2% is either charged in $SKYLINE and burned or charged in ETH and sent to the treasury. The rules are written into the contracts and cannot be changed.",
-  rebates: "of SKYLINE bought every day, claimable in $SKYLINE, minus a 2% claim fee, claimable the next day. The rate moves between 5% and 5.5%, decided using data from the last three days' trading activity.",
+  why2: "UpTown's sophisticated flywheel is built on top of the pool. Every trade in the $SKYLINE pool passes through SkylineHook, a contract no one controls, and it turns trading into reasons to participate: buyers claim $SKYLINE rebates at the end of trading days, stakers receive a daily share of the ETH the treasury collects, and on every sale 2% is either charged in $SKYLINE and burned or charged in ETH and sent to the treasury. The rules are written into the contracts and cannot be changed.",
+  rebates: "of $SKYLINE bought every day, claimable in $SKYLINE, minus a 2% claim fee, claimable the next day. The rate moves between 5% and 5.5%, decided using data from the last three days' trading activity.",
   stakers: 'charged in ETH, sent to the treasury; 90% of it streams to stakers as WETH',
   rules: 'never more. Zero dev allocation. No upgrades; trading never pauses; liquidity locked for a minimum of ten years.',
 };
@@ -1675,11 +1676,11 @@ async function cr77(base: ChainState, wallet: WalletState) {
       section.querySelector('.income-list') === null &&
       !GLOBAL_CSS.includes('.income-list') &&
       !t.includes('ETH reserve, not yet withdrawn') &&
-      !t.includes('SKYLINE claim fees, not yet withdrawn') &&
+      !t.includes('$SKYLINE claim fees, not yet withdrawn') &&
       !t.includes('ETH withdrawn so far') &&
-      !t.includes('SKYLINE withdrawn so far') &&
+      !t.includes('$SKYLINE withdrawn so far') &&
       !t.includes('The pool fees the owner collects are not shown'),
-    `"What the owner earns": ${t.includes('What the owner earns')}; .income-list: ${section.querySelectorAll('.income-list').length}; the four figures and the pool-fee note: ${['ETH reserve, not yet withdrawn', 'ETH withdrawn so far', 'SKYLINE claim fees, not yet withdrawn', 'SKYLINE withdrawn so far', 'The pool fees the owner collects are not shown'].filter((s) => t.includes(s)).join(', ') || 'none'}`,
+    `"What the owner earns": ${t.includes('What the owner earns')}; .income-list: ${section.querySelectorAll('.income-list').length}; the four figures and the pool-fee note: ${['ETH reserve, not yet withdrawn', 'ETH withdrawn so far', '$SKYLINE claim fees, not yet withdrawn', '$SKYLINE withdrawn so far', 'The pool fees the owner collects are not shown'].filter((s) => t.includes(s)).join(', ') || 'none'}`,
   );
   check(
     'CR-77 item 7: the powers table is unchanged — every row of the spec’s list, with the worst-case column, and the owner’s address still shown',
@@ -1687,7 +1688,7 @@ async function cr77(base: ChainState, wallet: WalletState) {
       heads.join(' | ') === 'Power | Contract | Delay | Worst case if misused' &&
       t.includes('What the owner can do: the complete list') &&
       t.includes(shortAddress(OWNER)) &&
-      t.includes('The owner cannot mint SKYLINE'),
+      t.includes('The owner cannot mint $SKYLINE'),
     `${rows.length} rows, all identical to the content module: ${JSON.stringify(rows) === JSON.stringify(want)}; columns: ${heads.join(' | ')}; the owner’s address ${shortAddress(OWNER)} shown: ${t.includes(shortAddress(OWNER))}`,
   );
 
@@ -2075,7 +2076,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
       const st = await finished(box);
       check(
         'CR-82 first sell: before the press the button reads "Approve and sell" and the form says the sale takes 3 transactions and that the wallet asks to confirm each one',
-        label === 'Approve and sell' && before.includes('This sale takes 3 transactions: approve SKYLINE, then allow the router, then sell SKYLINE.') && before.includes('Your wallet asks you to confirm each one'),
+        label === 'Approve and sell' && before.includes('This sale takes 3 transactions: approve $SKYLINE, then allow the router, then sell $SKYLINE.') && before.includes('Your wallet asks you to confirm each one'),
         `${label} | ${before.match(/This sale takes[^.]*\.[^.]*\./)?.[0] ?? 'no plan line'}`,
       );
       const want = ['check approve', 'send approve', 'mined approve', 'check allow', 'send allow', 'mined allow', 'check sell', 'send sell', 'mined sell'];
@@ -2086,7 +2087,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
       );
       check(
         'CR-82 first sell: while the router permission waits for the wallet, the status shows step 2 of 3, step 1 confirmed and step 3 next',
-        x.seen.allow.startsWith('Sell SKYLINE: step 2 of 3') && x.seen.allow.includes('Approve SKYLINE: confirmed') && x.seen.allow.includes('Allow the router: confirm it in your wallet') && x.seen.allow.includes('Sell SKYLINE: next'),
+        x.seen.allow.startsWith('Sell $SKYLINE: step 2 of 3') && x.seen.allow.includes('Approve $SKYLINE: confirmed') && x.seen.allow.includes('Allow the router: confirm it in your wallet') && x.seen.allow.includes('Sell $SKYLINE: next'),
         x.seen.allow,
       );
       check(
@@ -2100,7 +2101,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
         x.sent.sell[0] === ONE_K && x.sent.sell[1] === autoMin(x.quote) && Number(x.sent.sell[2]) === NOW + 20 * 60,
         `amount ${x.sent.sell[0]}, minimum ${x.sent.sell[1]} (shown ${autoMin(x.quote)}), deadline now + ${Number(x.sent.sell[2]) - NOW} s`,
       );
-      check('CR-82 first sell: the finished status lists the three transactions, each confirmed, and says what was sold', (st?.dataset.hashes ?? '').split(',').length === 3 && text(st!).includes('Done. You sold 1,000 SKYLINE'), text(st!));
+      check('CR-82 first sell: the finished status lists the three transactions, each confirmed, and says what was sold', (st?.dataset.hashes ?? '').split(',').length === 3 && text(st!).includes('Done. You sold 1,000 $SKYLINE'), text(st!));
     }
 
     // ---- 2. Only the router permission missing (expired): two transactions ----
@@ -2113,7 +2114,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
       const st = await finished(box);
       check(
         'CR-82 router permission expired: "Renew and sell", "This sale takes 2 transactions", then allow and sell only, in order',
-        label === 'Renew and sell' && before.includes('This sale takes 2 transactions: allow the router, then sell SKYLINE.') && x.log.join(' > ') === 'check allow > send allow > mined allow > check sell > send sell > mined sell' && st?.dataset.run === 'done',
+        label === 'Renew and sell' && before.includes('This sale takes 2 transactions: allow the router, then sell $SKYLINE.') && x.log.join(' > ') === 'check allow > send allow > mined allow > check sell > send sell > mined sell' && st?.dataset.run === 'done',
         `${label} | ${x.log.join(' > ')}`,
       );
     }
@@ -2121,8 +2122,8 @@ async function cr82(base: ChainState, wallet: WalletState) {
     // ---- 3. A rejection at each step stops the run ----
     for (const [step, done] of [
       ['approve', ''],
-      ['allow', 'Approve SKYLINE'],
-      ['sell', 'Approve SKYLINE, Allow the router'],
+      ['allow', 'Approve $SKYLINE'],
+      ['sell', 'Approve $SKYLINE, Allow the router'],
     ] as const) {
       const x = fresh({ reject: new Set([step]) });
       const box = await sellForm(x, '1000', `CR-82: rejected at ${step}`);
@@ -2167,7 +2168,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
       const st = await finished(box);
       check(
         'CR-82 the amount changed while the first approval was on its way: once it is confirmed nothing more is sent, and the status says the amount changed',
-        sends(x).join(',') === 'approve' && x.log.includes('mined approve') && st?.dataset.run === 'stopped' && text(st).includes('The amount changed.') && text(st).includes('Done before it stopped: Approve SKYLINE.'),
+        sends(x).join(',') === 'approve' && x.log.includes('mined approve') && st?.dataset.run === 'stopped' && text(st).includes('The amount changed.') && text(st).includes('Done before it stopped: Approve $SKYLINE.'),
         `${x.log.join(' > ')} | ${st ? text(st) : ''}`,
       );
     }
@@ -2197,12 +2198,12 @@ async function cr82(base: ChainState, wallet: WalletState) {
     // ---- 7. CR-83: older, smaller approvals below the amount are asked for again ----
     {
       const x = fresh({ toPermit2: 500n * E, router: { amount: 500n * E, expiration: NOW + 10 * 86_400 } });
-      const box = await sellForm(x, '1000', 'CR-83: older approvals of 500 SKYLINE, selling 1,000');
+      const box = await sellForm(x, '1000', 'CR-83: older approvals of 500 $SKYLINE, selling 1,000');
       const label = (box.querySelector('.sell-go') as HTMLButtonElement).textContent!.trim();
       press(box);
       const st = await finished(box);
       check(
-        'CR-83 a wallet whose older approvals (500 SKYLINE each) are below the amount (1,000 SKYLINE) is asked for both again, without a limit this time, then sells',
+        'CR-83 a wallet whose older approvals (500 $SKYLINE each) are below the amount (1,000 $SKYLINE) is asked for both again, without a limit this time, then sells',
         label === 'Approve and sell' && sends(x).join(',') === 'approve,allow,sell' && x.sent.approve[1] === MAX_UINT256 && x.sent.allow[2] === MAX_UINT160 && st?.dataset.run === 'done',
         `${label} | ${x.log.join(' > ')}`,
       );
@@ -2211,14 +2212,14 @@ async function cr82(base: ChainState, wallet: WalletState) {
     // ---- 8. CR-83: unlimited approvals, the router's permission unexpired, more SKYLINE bought: one transaction ----
     {
       const x = fresh({ balance: 9_000_000n * E, toPermit2: MAX_UINT256, router: { amount: MAX_UINT160 - 1_000n * E, expiration: NOW + 20 * 86_400 } });
-      const box = await sellForm(x, '5,000,000', 'CR-83: unlimited approvals, more SKYLINE bought since');
+      const box = await sellForm(x, '5,000,000', 'CR-83: unlimited approvals, more $SKYLINE bought since');
       const before = text(box);
       const label = (box.querySelector('.sell-go') as HTMLButtonElement).textContent!.trim();
       press(box);
       const st = await finished(box);
       check(
-        'CR-83 a wallet with the unlimited approvals and an unexpired router permission, holding more SKYLINE after a buy, sells with one transaction: "Sell SKYLINE", no plan line, no approval',
-        label === 'Sell SKYLINE' && !before.includes('This sale takes') && x.log.join(' > ') === 'check sell > send sell > mined sell' && x.sent.sell[0] === 5_000_000n * E && st?.dataset.run === 'done',
+        'CR-83 a wallet with the unlimited approvals and an unexpired router permission, holding more $SKYLINE after a buy, sells with one transaction: "Sell $SKYLINE", no plan line, no approval',
+        label === 'Sell $SKYLINE' && !before.includes('This sale takes') && x.log.join(' > ') === 'check sell > send sell > mined sell' && x.sent.sell[0] === 5_000_000n * E && st?.dataset.run === 'done',
         `${label} | ${x.log.join(' > ')}`,
       );
     }
@@ -2229,7 +2230,7 @@ async function cr82(base: ChainState, wallet: WalletState) {
     {
       const x = fresh();
       f = x;
-      const el = await mount(<Stake />, chain, walletOf(x, noStake), 'CR-82, CR-102: approve, then stake 1,000 SKYLINE', extra);
+      const el = await mount(<Stake />, chain, walletOf(x, noStake), 'CR-82, CR-102: approve, then stake 1,000 $SKYLINE', extra);
       statusBox = el;
       typeIn(el, '#stake-amount', '1000');
       await settle();
@@ -2238,16 +2239,16 @@ async function cr82(base: ChainState, wallet: WalletState) {
       press(el, '.stake-go');
       const st = await finished(el);
       check(
-        'CR-102 stake: "Approve and stake SKYLINE", "This takes 2 transactions"; one press sends the exact-amount approval to the listed SkylineStaking, then, once confirmed, stake(1,000)',
-        label === 'Approve and stake SKYLINE' &&
-          before.includes('This takes 2 transactions: approve exactly 1,000 SKYLINE for the staking contract, then stake it.') &&
+        'CR-102 stake: "Approve and stake $SKYLINE", "This takes 2 transactions"; one press sends the exact-amount approval to the listed SkylineStaking, then, once confirmed, stake(1,000)',
+        label === 'Approve and stake $SKYLINE' &&
+          before.includes('This takes 2 transactions: approve exactly 1,000 $SKYLINE for the staking contract, then stake it.') &&
           x.log.join(' > ') === 'check stake-approve > send stake-approve > mined stake-approve > check stake > send stake > mined stake' &&
           same(x.sent['stake-approve'][0], STAKING) &&
           x.sent['stake-approve'][1] === ONE_K &&
           x.sent.stake[0] === ONE_K &&
           x.value.stake === undefined &&
           st?.dataset.run === 'done' &&
-          text(st).includes('1,000 SKYLINE is staked'),
+          text(st).includes('1,000 $SKYLINE is staked'),
         `${label} | ${x.log.join(' > ')} | approve ${x.sent['stake-approve']?.[1]} | stake ${x.sent.stake?.[0]} | ${st ? text(st) : ''}`,
       );
       check(
@@ -2268,8 +2269,8 @@ async function cr82(base: ChainState, wallet: WalletState) {
       press(el, '.stake-go');
       const st = await finished(el);
       check(
-        'CR-102 stake with an approval already covering the amount: "Stake SKYLINE", no plan line, one transaction',
-        label === 'Stake SKYLINE' && !before.includes('This takes') && x.log.join(' > ') === 'check stake > send stake > mined stake' && st?.dataset.run === 'done',
+        'CR-102 stake with an approval already covering the amount: "Stake $SKYLINE", no plan line, one transaction',
+        label === 'Stake $SKYLINE' && !before.includes('This takes') && x.log.join(' > ') === 'check stake > send stake > mined stake' && st?.dataset.run === 'done',
         `${label} | ${x.log.join(' > ')}`,
       );
     }
@@ -2297,20 +2298,20 @@ async function cr82(base: ChainState, wallet: WalletState) {
       await settle();
       typeIn(el, '#unstake-amount', '9000');
       await settle();
-      const tooMuch = (el.querySelector('.unstake-go') as HTMLButtonElement).disabled && text(el).includes('That is more SKYLINE than this wallet has staked.');
+      const tooMuch = (el.querySelector('.unstake-go') as HTMLButtonElement).disabled && text(el).includes('That is more $SKYLINE than this wallet has staked.');
       typeIn(el, '#unstake-amount', '1,234.5');
       await settle();
       press(el, '.unstake-go');
       let status: HTMLElement | null = null;
       for (let i = 0; i < 100 && !(status = el.querySelector('.tx-status[data-phase="done"], .tx-status[data-phase="failed"]')); i++) await settle(50);
       check(
-        'CR-102 unstake any amount: more than the stake is refused (button off); 1,234.5 of 5,000 sends unstake(1,234.5 SKYLINE), one transaction, with the 700,000 gas limit; earned WETH stays claimable',
+        'CR-102 unstake any amount: more than the stake is refused (button off); 1,234.5 of 5,000 sends unstake(1,234.5 $SKYLINE), one transaction, with the 700,000 gas limit; earned WETH stays claimable',
         tooMuch &&
           x.log.join(' > ') === 'check unstake > send unstake > mined unstake' &&
           x.sent.unstake[0] === 1_234_500n * 10n ** 15n &&
           x.gas.unstake === 700_000n &&
           status?.dataset.phase === 'done' &&
-          text(status).includes('1,234.5 SKYLINE came back to your wallet. Earned WETH stays claimable.'),
+          text(status).includes('1,234.5 $SKYLINE came back to your wallet. Earned WETH stays claimable.'),
         `too much refused ${tooMuch} | ${x.log.join(' > ')} | ${x.sent.unstake?.[0]} | gas ${x.gas.unstake} | ${status ? text(status) : 'no status'}`,
       );
     }
@@ -2663,7 +2664,7 @@ async function cr84cr87cr88() {
       gmLive.href === gmgnUrl(SKYLINE) &&
       gmLive.target === '_blank' &&
       gmLive.rel === 'noopener noreferrer' &&
-      gmLive.aria === 'SKYLINE on GMGN (opens in a new tab)' &&
+      gmLive.aria === '$SKYLINE on GMGN (opens in a new tab)' &&
       gmLive.word === null &&
       gmLive.says === null &&
       Number(gmLive.glyphOpacity) === 1 &&
@@ -2893,7 +2894,7 @@ async function cr84cr87cr88() {
         afterLinks &&
         places === 'X,Telegram,GMGN,OpenSea' &&
         head === 'Official Links' &&
-        brand === 'UpTown Token (SKYLINE), an experiment on Ethereum.' &&
+        brand === 'UpTown Token ($SKYLINE), an experiment on Ethereum.' &&
         contracts === 7 &&
         links === 'Trade,Rewards,Stake,Stats,Docs',
       `${rows.length} row(s), in the footer: ${inFooter}, in the brand block: ${inBrand} (right after its text: ${afterLinks}), in the contracts block: ${inContracts}, marks ${places}, head "${head}", page links ${links}, ${contracts} contracts`,
@@ -2991,7 +2992,7 @@ async function cr92(base: ChainState, wallet: WalletState) {
   const WORD = '0x000000000000000000000000' + '1234567890abcdef1234567890abcdef12345678';
   const WANT =
     'For wallets, aggregators and bots. ' +
-    'If you route SKYLINE buys for other people, pass the buyer’s address as the swap’s hookData, exactly 32 bytes: the address left-padded with zeros, as abi.encode(buyer) gives it. ' +
+    'If you route $SKYLINE buys for other people, pass the buyer’s address as the swap’s hookData, exactly 32 bytes: the address left-padded with zeros, as abi.encode(buyer) gives it. ' +
     'SkylineHook then credits the buy, and its rebate, to that address, whatever its code; that address claims the rebate itself. ' +
     'Any other hookData (another length, a zero address, anything in the first 12 bytes) is ignored. ' +
     'Without a valid one, the hook credits the router’s msgSender() when that is an ordinary wallet (no code, or an EIP-7702 delegation), else the transaction’s sender (tx.origin), so for a solver, a bundler or a contract wallet the rebate goes to the wrong place. ' +
@@ -3104,7 +3105,7 @@ async function cr95(base: ChainState, wallet: WalletState) {
     const weth = usdOf(feed, E18 / 2n, 'WETH');
     const big = usdOf(feed, 1_234_500n * 10n ** 15n, 'ETH'); // 1,234.5 ETH
     check(
-      'CR-95 arithmetic: sqrtPriceX96 = 2^96 × 10^4 (10^8 SKYLINE per ETH, 10 gwei per SKYLINE) and ETH at $2,700.00 give, exactly in integers, 1 SKYLINE = $0.000027, 1,000,000 SKYLINE = $27.00, 1 ETH = $2,700.00, 0.5 WETH = $1,350.00, 1,234.5 ETH = $3,333,150.00',
+      'CR-95 arithmetic: sqrtPriceX96 = 2^96 × 10^4 (10^8 $SKYLINE per ETH, 10 gwei per $SKYLINE) and ETH at $2,700.00 give, exactly in integers, 1 $SKYLINE = $0.000027, 1,000,000 $SKYLINE = $27.00, 1 ETH = $2,700.00, 0.5 WETH = $1,350.00, 1,234.5 ETH = $3,333,150.00',
       one?.usd === 27_000_000_000_000n &&
         million?.usd === 27n * E18 &&
         eth?.usd === 2_700n * E18 &&
@@ -3112,10 +3113,10 @@ async function cr95(base: ChainState, wallet: WalletState) {
         big?.usd === 3_333_150n * E18 &&
         skylinePriceWei(feed) === 10_000_000_000n &&
         one.price === ETH_USD,
-      `1 SKYLINE ${one?.usd}, 1,000,000 SKYLINE ${million?.usd}, 1 ETH ${eth?.usd}, 0.5 WETH ${weth?.usd}, 1,234.5 ETH ${big?.usd} (dollars × 10^18); ${skylinePriceWei(feed)} wei per SKYLINE`,
+      `1 $SKYLINE ${one?.usd}, 1,000,000 $SKYLINE ${million?.usd}, 1 ETH ${eth?.usd}, 0.5 WETH ${weth?.usd}, 1,234.5 ETH ${big?.usd} (dollars × 10^18); ${skylinePriceWei(feed)} wei per $SKYLINE`,
     );
     check(
-      'CR-95 format: one helper; two decimals with thousands separators, "< $0.01" below a cent, "$0.00" for nothing; SKYLINE’s unit price with three significant digits below a dollar',
+      'CR-95 format: one helper; two decimals with thousands separators, "< $0.01" below a cent, "$0.00" for nothing; $SKYLINE’s unit price with three significant digits below a dollar',
       fmtUsd(million!.usd) === '$27.00' &&
         fmtUsd(big!.usd) === '$3,333,150.00' &&
         fmtUsd(10n ** 15n) === '< $0.01' &&
@@ -3134,9 +3135,9 @@ async function cr95(base: ChainState, wallet: WalletState) {
     const w = skylinePriceWei(start)!;
     const u = usdOf(start, ONE_SKYLINE, 'SKYLINE')!;
     check(
-      'CR-95 arithmetic at the spec’s launch price (sqrtPriceX96 ≈ 7.916474 × 10^32): 10.016 gwei per SKYLINE, about $0.000027 per SKYLINE at ETH $2,700',
+      'CR-95 arithmetic at the spec’s launch price (sqrtPriceX96 ≈ 7.916474 × 10^32): 10.016 gwei per $SKYLINE, about $0.000027 per $SKYLINE at ETH $2,700',
       w >= 10_015_000_000n && w <= 10_017_000_000n && fmtUsd(u.usd, true) === '$0.000027',
-      `${w} wei per SKYLINE; ${fmtUsd(u.usd, true)}`,
+      `${w} wei per $SKYLINE; ${fmtUsd(u.usd, true)}`,
     );
   }
 
@@ -3163,9 +3164,9 @@ async function cr95(base: ChainState, wallet: WalletState) {
     const float = Number(ETH_USD) / 1e8 / (r * r);
     const exact = one ? Number(one.usd) / 1e18 : NaN;
     check(
-      'CR-95 the pool’s price is read through StateView.getSlot0(poolId) with the other figures, at the same block; the dollar price of one SKYLINE at a fresh $2,700.00 agrees with a floating-point reading of the same numbers',
+      'CR-95 the pool’s price is read through StateView.getSlot0(poolId) with the other figures, at the same block; the dollar price of one $SKYLINE at a fresh $2,700.00 agrees with a floating-point reading of the same numbers',
       sqrt > 0n && base.pool.sqrtPriceX96 === sqrt && !!one && Math.abs(exact - float) / float < 1e-6,
-      `StateView ${sv}, poolId ${poolId(NETWORK)}, block ${base.blockNumber}: sqrtPriceX96 ${sqrt}; 1 SKYLINE ${one ? fmtUsd(one.usd, true) : 'none'} (${exact} against ${float})`,
+      `StateView ${sv}, poolId ${poolId(NETWORK)}, block ${base.blockNumber}: sqrtPriceX96 ${sqrt}; 1 $SKYLINE ${one ? fmtUsd(one.usd, true) : 'none'} (${exact} against ${float})`,
     );
   }
 
@@ -3217,7 +3218,7 @@ async function cr95(base: ChainState, wallet: WalletState) {
         bal?.querySelector('.unit')?.textContent === 'ETH' &&
         got(bal) === wantBal &&
         sup?.querySelector('.num')?.textContent === fmtTown(base.token.totalSupply) &&
-        sup?.querySelector('.unit')?.textContent === 'SKYLINE' &&
+        sup?.querySelector('.unit')?.textContent === '$SKYLINE' &&
         got(sup) === wantSup &&
         getComputedStyle(bal!.querySelector('.usd')!).color === getComputedStyle(bal!.querySelector('.unit')!).color &&
         parseFloat(getComputedStyle(bal!.querySelector('.usd')!).fontSize) < parseFloat(getComputedStyle(bal!.querySelector('.num')!).fontSize),
@@ -3229,8 +3230,8 @@ async function cr95(base: ChainState, wallet: WalletState) {
     const lt = line ? text(line) : '';
     const balUsd = trade.querySelector('#trade-panel-buy .swap-box-top .usd') as HTMLElement | null;
     check(
-      'CR-95 Trade shows SKYLINE’s price in dollars, from the pool’s price and Chainlink’s ETH price: "SKYLINE price ≈ $0.000027 10 gwei per SKYLINE in the pool at ETH $2,700.00, Chainlink’s price"; the wallet’s balance carries its estimate',
-      lt === 'SKYLINE price ≈ $0.000027 10 gwei per SKYLINE in the pool at ETH $2,700.00, Chainlink’s price' &&
+      'CR-95 Trade shows $SKYLINE’s price in dollars, from the pool’s price and Chainlink’s ETH price: "$SKYLINE price ≈ $0.000027 10 gwei per $SKYLINE in the pool at ETH $2,700.00, Chainlink’s price"; the wallet’s balance carries its estimate',
+      lt === '$SKYLINE price ≈ $0.000027 10 gwei per $SKYLINE in the pool at ETH $2,700.00, Chainlink’s price' &&
         balUsd?.innerText.trim() === `(≈ ${fmtUsd(usdOf(feed, wallet.ethBalance, 'ETH')!.usd)})`,
       `${lt} | balance: ${balUsd?.innerText.trim()}`,
     );
@@ -3251,7 +3252,7 @@ async function cr95(base: ChainState, wallet: WalletState) {
     const lt = text(trade.querySelector('.price-line') as HTMLElement);
     check(
       'CR-102 stale: with Chainlink’s answer 4 hours old (a usable price still reported), no dollar figure appears on any page (Home, Trade buy and sell, Rewards, Stake, Stats, Owner); Trade says why',
-      r.total === 0 && lt === 'SKYLINE price 10 gwei per SKYLINE in the pool Chainlink’s ETH price was last updated 4 h ago, more than 3 hours, so no dollar figures are shown.',
+      r.total === 0 && lt === '$SKYLINE price 10 gwei per $SKYLINE in the pool Chainlink’s ETH price was last updated 4 h ago, more than 3 hours, so no dollar figures are shown.',
       `${r.found.join(', ')} | "${lt}"`,
     );
     const live = ethUsdPrice(base);
@@ -3282,8 +3283,8 @@ async function cr95(base: ChainState, wallet: WalletState) {
     check(
       'CR-102 hidden: with an answer of 0, a negative answer, or no answer at all, no dollar figure appears on any page, not even a stale one; Trade says why',
       total === 0 &&
-        zeroLine === 'SKYLINE price 10 gwei per SKYLINE in the pool Chainlink’s ETH price feed reports no usable price, so no dollar figures are shown.' &&
-        noneLine === 'SKYLINE price 10 gwei per SKYLINE in the pool No ETH price is reported, so no dollar figures are shown.',
+        zeroLine === '$SKYLINE price 10 gwei per $SKYLINE in the pool Chainlink’s ETH price feed reports no usable price, so no dollar figures are shown.' &&
+        noneLine === '$SKYLINE price 10 gwei per $SKYLINE in the pool No ETH price is reported, so no dollar figures are shown.',
       found.join(' | ') || `none anywhere; "${zeroLine}" | "${noneLine}"`,
     );
 
@@ -3293,9 +3294,9 @@ async function cr95(base: ChainState, wallet: WalletState) {
     const tokenFig = el.querySelector('[data-view="UpTownToken.totalSupply"] .usd');
     const tr = await mount(<Trade />, noPool, wallet, 'CR-95: Trade with the pool’s price unread (fixture)');
     check(
-      'CR-95 hidden: without the pool’s price the SKYLINE figures have no dollar estimate (and Trade no SKYLINE price line) while the ETH figures keep theirs',
+      'CR-95 hidden: without the pool’s price the $SKYLINE figures have no dollar estimate (and Trade no $SKYLINE price line) while the ETH figures keep theirs',
       !!ethFig && !tokenFig && !tr.querySelector('.price-line'),
-      `ETH figure: ${!!ethFig}; SKYLINE figure: ${!!tokenFig}; price line: ${!!tr.querySelector('.price-line')}`,
+      `ETH figure: ${!!ethFig}; $SKYLINE figure: ${!!tokenFig}; price line: ${!!tr.querySelector('.price-line')}`,
     );
   }
 
@@ -3514,35 +3515,35 @@ async function f9u(base: ChainState, wallet: WalletState) {
     return { line: text(box), state: box.dataset.state, view: box.dataset.view };
   };
   const S1 = 'From Day 401 half of the fee is burned and the other half refills the rebate reserve, which pays the buyers’ rebates.';
-  const S2 = 'The burn floor is reached: the supply is at 200,000,000 SKYLINE, so nothing more is burned and every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the treasury.';
+  const S2 = 'The burn floor is reached: the supply is at 200,000,000 $SKYLINE, so nothing more is burned and every sell pays 1% in $SKYLINE to the rebate reserve and 1% in ETH to the treasury.';
   {
     const a = await sellLine(state(S.burn), 'Trade, Sell: (200, 0, 0), burned (fixture)');
     const b = await sellLine(state(S.half, { cycle: D }), 'Trade, Sell: (100, 100, 0), from Day 401 (fixture: Day 451)');
     const e = await sellLine(state(S.eth, { burned: 750_000n * E18, pot: 600_000n * E18 }), 'Trade, Sell: (0, 0, 200), in ETH (fixture)');
     const f = await sellLine(state(S.split, { supply: base.hook.BURN_FLOOR }), 'Trade, Sell: (0, 100, 100), at the burn floor (fixture)');
     check(
-      'CR-93 Trade, (200, 0, 0): "2% in SKYLINE, burned" and the owner’s CR-80 sentence, word for word, with no day-401 sentence',
+      'CR-93 Trade, (200, 0, 0): "2% in $SKYLINE, burned" and the owner’s CR-80 sentence, word for word, with no day-401 sentence',
       a.state === 'burn' &&
-        a.line === `Today’s sell fee: 2% in SKYLINE, burned Yesterday (${dayName(y)}) burned 0 SKYLINE and paid 667,925 SKYLINE in rebates: inflation exceeded deflation, so today the fee is burned.`,
+        a.line === `Today’s sell fee: 2% in $SKYLINE, burned Yesterday (${dayName(y)}) burned 0 $SKYLINE and paid 667,925 $SKYLINE in rebates: inflation exceeded deflation, so today the fee is burned.`,
       a.line,
     );
     check(
-      'CR-93 Trade, (100, 100, 0) from Day 401: "2% in SKYLINE: half burned, half to the rebate reserve", the CR-80 figures, "so today the fee is in SKYLINE", and the new day-401 sentence',
+      'CR-93 Trade, (100, 100, 0) from Day 401: "2% in $SKYLINE: half burned, half to the rebate reserve", the CR-80 figures, "so today the fee is in $SKYLINE", and the new day-401 sentence',
       b.state === 'burn-reserve' &&
         b.line ===
-          `Today’s sell fee: 2% in SKYLINE: half burned, half to the rebate reserve Yesterday (Day 450) burned 0 SKYLINE and paid 667,925 SKYLINE in rebates: inflation exceeded deflation, so today the fee is in SKYLINE. ${S1}` &&
+          `Today’s sell fee: 2% in $SKYLINE: half burned, half to the rebate reserve Yesterday (Day 450) burned 0 $SKYLINE and paid 667,925 $SKYLINE in rebates: inflation exceeded deflation, so today the fee is in $SKYLINE. ${S1}` &&
         reserveShareSentence(state(S.half, { cycle: D })) === S1,
       b.line,
     );
     check(
       'CR-93 Trade, (0, 0, 200): "2% in ETH, to the treasury" and the CR-80 ETH sentence, word for word',
       e.state === 'eth' &&
-        e.line === `Today’s sell fee: 2% in ETH, to the treasury Yesterday (${dayName(y)}) burned 750,000 SKYLINE and paid 600,000 SKYLINE in rebates: it burned more than it paid, so today the fee is in ETH.`,
+        e.line === `Today’s sell fee: 2% in ETH, to the treasury Yesterday (${dayName(y)}) burned 750,000 $SKYLINE and paid 600,000 $SKYLINE in rebates: it burned more than it paid, so today the fee is in ETH.`,
       e.line,
     );
     check(
-      'CR-93 Trade, (0, 100, 100) at the floor: "1% in SKYLINE to the rebate reserve, 1% in ETH to the treasury" and the new floor sentence; the message reads sellFeeShares()',
-      f.state === 'split' && f.line === `Today’s sell fee: 1% in SKYLINE to the rebate reserve, 1% in ETH to the treasury ${S2}` && (f.view ?? '').startsWith('SkylineHook.sellFeeShares;'),
+      'CR-93 Trade, (0, 100, 100) at the floor: "1% in $SKYLINE to the rebate reserve, 1% in ETH to the treasury" and the new floor sentence; the message reads sellFeeShares()',
+      f.state === 'split' && f.line === `Today’s sell fee: 1% in $SKYLINE to the rebate reserve, 1% in ETH to the treasury ${S2}` && (f.view ?? '').startsWith('SkylineHook.sellFeeShares;'),
       `${f.line} || data-view ${f.view}`,
     );
     // The split state comes from sellFeeShares(), not from sellFeeInEth(), which is no longer true at the floor (CR-93).
@@ -3552,19 +3553,19 @@ async function f9u(base: ChainState, wallet: WalletState) {
     const r1 = await sellLine(state(S.burn, { burned: 10n ** 30n, exhausted: true }), 'reserve spent, before Day 401');
     const r2 = await sellLine(state(S.half, { cycle: D, burned: 10n ** 30n, exhausted: true }), 'reserve spent, from Day 401');
     check(
-      'CR-93 the reserve-spent case: before Day 401 the CR-80 sentence word for word; from Day 401 "the fee is in SKYLINE" and the day-401 sentence',
-      r1.line.endsWith('The rebate reserve is spent, so the fee is burned until the supply reaches 200,000,000 SKYLINE.') &&
-        r2.line.endsWith(`The rebate reserve is spent, so the fee is in SKYLINE until the supply reaches 200,000,000 SKYLINE. ${S1}`),
+      'CR-93 the reserve-spent case: before Day 401 the CR-80 sentence word for word; from Day 401 "the fee is in $SKYLINE" and the day-401 sentence',
+      r1.line.endsWith('The rebate reserve is spent, so the fee is burned until the supply reaches 200,000,000 $SKYLINE.') &&
+        r2.line.endsWith(`The rebate reserve is spent, so the fee is in $SKYLINE until the supply reaches 200,000,000 $SKYLINE. ${S1}`),
       `${r1.line} || ${r2.line}`,
     );
     const first = await sellLine({ ...state(S.burn, { cycle: 0 }), hook: { ...state(S.burn, { cycle: 0 }).hook, burned: { 0: 0n } }, rewards: { ...state(S.burn, { cycle: 0 }).rewards, emissionEstimate: {} } }, 'the launch day');
-    check('CR-93 the first-day case, word for word: "Day 1 has no day before it, so the fee is burned."', first.line === 'Today’s sell fee: 2% in SKYLINE, burned Day 1 has no day before it, so the fee is burned.', first.line);
+    check('CR-93 the first-day case, word for word: "Day 1 has no day before it, so the fee is burned."', first.line === 'Today’s sell fee: 2% in $SKYLINE, burned Day 1 has no day before it, so the fee is burned.', first.line);
     const st = await mount(<Stats />, state(S.split, { supply: base.hook.BURN_FLOOR }), wallet, 'Stats, at the floor (fixture)');
     const st2 = await mount(<Stats />, state(S.half, { cycle: D }), wallet, 'Stats, from Day 401 (fixture)');
     check(
       'CR-93 Stats "Sell fee today": the same headline and sentence (one function), from SkylineHook.sellFeeShares',
-      squash(text(st)).includes(squash(`Sell fee today 1% in SKYLINE to the rebate reserve, 1% in ETH to the treasury ${S2}`)) &&
-        squash(text(st2)).includes(squash(`Sell fee today 2% in SKYLINE: half burned, half to the rebate reserve`)) &&
+      squash(text(st)).includes(squash(`Sell fee today 1% in $SKYLINE to the rebate reserve, 1% in ETH to the treasury ${S2}`)) &&
+        squash(text(st2)).includes(squash(`Sell fee today 2% in $SKYLINE: half burned, half to the rebate reserve`)) &&
         text(st2).includes(S1) &&
         !!st.querySelector('[data-view="SkylineHook.sellFeeShares"]'),
       text(st).match(/Sell fee today.*?treasury\./)?.[0] ?? '',
@@ -3590,18 +3591,18 @@ async function f9u(base: ChainState, wallet: WalletState) {
       }
       return { rows: plain(() => text(el.querySelector('#trade-panel-sell .swap-rows') as HTMLElement)), out: (el.querySelector('#trade-panel-sell .swap-output') as HTMLElement).textContent!.trim() };
     };
-    const a = await rowsFor(state(S.burn), 'sell 1,000,000 SKYLINE, (200, 0, 0)');
-    const b = await rowsFor(state(S.half, { cycle: D }), 'sell 1,000,000 SKYLINE, (100, 100, 0)');
-    const e = await rowsFor(state(S.eth), 'sell 1,000,000 SKYLINE, (0, 0, 200)');
-    const f = await rowsFor(state(S.split, { supply: base.hook.BURN_FLOOR }), 'sell 1,000,000 SKYLINE, (0, 100, 100)');
+    const a = await rowsFor(state(S.burn), 'sell 1,000,000 $SKYLINE, (200, 0, 0)');
+    const b = await rowsFor(state(S.half, { cycle: D }), 'sell 1,000,000 $SKYLINE, (100, 100, 0)');
+    const e = await rowsFor(state(S.eth), 'sell 1,000,000 $SKYLINE, (0, 0, 200)');
+    const f = await rowsFor(state(S.split, { supply: base.hook.BURN_FLOOR }), 'sell 1,000,000 $SKYLINE, (0, 100, 100)');
     const ethFee2 = fmtEth((q * 200n) / 9_800n, 6);
     const ethFee1 = fmtEth((q * 100n) / 9_900n, 6);
     check(
-      'CR-93 the fee rows follow the state (1,000,000 SKYLINE sold): 20,000 SKYLINE burned; 20,000 SKYLINE, 10,000 burned and 10,000 to the reserve; ≈ 2% of the ETH; 10,000 SKYLINE to the reserve and ≈ 1% of the ETH. Pool fee on what the pool swaps: 4,900, 4,900, 5,000, 4,950 SKYLINE',
-      a.rows.includes('Sell fee (2%, burned) 20,000 SKYLINE Pool fee (0.5%, to the locked liquidity) 4,900 SKYLINE') &&
-        b.rows.includes('Sell fee (2%: half burned, half to the rebate reserve) 20,000 SKYLINE 10,000 burned, 10,000 to the reserve Pool fee (0.5%, to the locked liquidity) 4,900 SKYLINE') &&
-        e.rows.includes(`Sell fee (2% of the ETH, to the treasury) ≈ ${ethFee2} ETH Pool fee (0.5%, to the locked liquidity) 5,000 SKYLINE`) &&
-        f.rows.includes(`Sell fee in SKYLINE (1%, to the rebate reserve) 10,000 SKYLINE Sell fee in ETH (1% of the ETH, to the treasury) ≈ ${ethFee1} ETH Pool fee (0.5%, to the locked liquidity) 4,950 SKYLINE`) &&
+      'CR-93 the fee rows follow the state (1,000,000 $SKYLINE sold): 20,000 $SKYLINE burned; 20,000 $SKYLINE, 10,000 burned and 10,000 to the reserve; ≈ 2% of the ETH; 10,000 $SKYLINE to the reserve and ≈ 1% of the ETH. Pool fee on what the pool swaps: 4,900, 4,900, 5,000, 4,950 $SKYLINE',
+      a.rows.includes('Sell fee (2%, burned) 20,000 $SKYLINE Pool fee (0.5%, to the locked liquidity) 4,900 $SKYLINE') &&
+        b.rows.includes('Sell fee (2%: half burned, half to the rebate reserve) 20,000 $SKYLINE 10,000 burned, 10,000 to the reserve Pool fee (0.5%, to the locked liquidity) 4,900 $SKYLINE') &&
+        e.rows.includes(`Sell fee (2% of the ETH, to the treasury) ≈ ${ethFee2} ETH Pool fee (0.5%, to the locked liquidity) 5,000 $SKYLINE`) &&
+        f.rows.includes(`Sell fee in $SKYLINE (1%, to the rebate reserve) 10,000 $SKYLINE Sell fee in ETH (1% of the ETH, to the treasury) ≈ ${ethFee1} ETH Pool fee (0.5%, to the locked liquidity) 4,950 $SKYLINE`) &&
         !/burned/.test(e.rows + f.rows),
       [a.rows, b.rows, e.rows, f.rows].map((r) => r.replace(/ Minimum received.*$/, '')).join(' || '),
     );
@@ -3613,7 +3614,7 @@ async function f9u(base: ChainState, wallet: WalletState) {
     const sp = sellFees(state(S.split, { supply: base.hook.BURN_FLOOR }), amount, 990_000n);
     const et = sellFees(state(S.eth), amount, 980_000n);
     check(
-      'CR-93 sellFees(): the sell that reaches the floor pays its whole 2% in SKYLINE (5,000 burned, 15,000 to the reserve, before and from Day 401); an odd fee sends its last unit to the reserve; split 1% + 1% (received 990,000 → 10,000 of ETH); ETH 2% (received 980,000 → 20,000)',
+      'CR-93 sellFees(): the sell that reaches the floor pays its whole 2% in $SKYLINE (5,000 burned, 15,000 to the reserve, before and from Day 401); an odd fee sends its last unit to the reserve; split 1% + 1% (received 990,000 → 10,000 of ETH); ETH 2% (received 980,000 → 20,000)',
       x1.townFee === 20_000n * E18 && x1.burned === 5_000n * E18 && x1.toReserve === 15_000n * E18 && x1.reachesFloor && x1.ethFee === 0n &&
         x2.townFee === 20_000n * E18 && x2.burned === 5_000n * E18 && x2.toReserve === 15_000n * E18 && x2.reachesFloor &&
         odd.townFee === 3n && odd.burned === 1n && odd.toReserve === 2n &&
@@ -3621,10 +3622,10 @@ async function f9u(base: ChainState, wallet: WalletState) {
         et.townFee === 0n && et.ethFee === 20_000n && et.poolFee === 5_000n * E18,
       JSON.stringify({ x1, x2, odd, sp, et }, (_, v) => (typeof v === 'bigint' ? v.toString() : v)),
     );
-    const cross = await rowsFor(nearFloor(S.burn), 'sell 1,000,000 SKYLINE with 5,000 SKYLINE left above the floor');
+    const cross = await rowsFor(nearFloor(S.burn), 'sell 1,000,000 $SKYLINE with 5,000 $SKYLINE left above the floor');
     check(
-      'CR-93 the sell that reaches the floor is shown: "Sell fee (2%, in SKYLINE) 20,000 SKYLINE 5,000 burned, 15,000 to the reserve: this sale reaches the burn floor"',
-      cross.rows.includes('Sell fee (2%, in SKYLINE) 20,000 SKYLINE 5,000 burned, 15,000 to the reserve: this sale reaches the burn floor'),
+      'CR-93 the sell that reaches the floor is shown: "Sell fee (2%, in $SKYLINE) 20,000 $SKYLINE 5,000 burned, 15,000 to the reserve: this sale reaches the burn floor"',
+      cross.rows.includes('Sell fee (2%, in $SKYLINE) 20,000 $SKYLINE 5,000 burned, 15,000 to the reserve: this sale reaches the burn floor'),
       cross.rows.replace(/ Minimum received.*$/, ''),
     );
 
@@ -3655,7 +3656,7 @@ async function f9u(base: ChainState, wallet: WalletState) {
     check(
       'CR-93 the estimate is right in every state (read-only overrides on the real contracts): at the floor sellFeeShares() is (0, 100, 100) and the quoter takes 1% of the ETH off; 400 days on it is (100, 100, 0) and the estimate is the same as before Day 401',
       supplyAtSlot && sh[0] === '200,0,0' && sh[1] === '100,100,0' && sh[2] === '0,100,100' && splitQ === burnQ - (burnQ * 100n) / 10_000n && laterQ === burnQ,
-      `slot 2 holds totalSupply: ${supplyAtSlot}; shares now ${sh[0]}, +400 days ${sh[1]}, at the floor ${sh[2]}; 990,000 SKYLINE now ${burnQ} wei; 980,000 SKYLINE at the floor ${splitQ} wei (want ${burnQ - (burnQ * 100n) / 10_000n}); 990,000 SKYLINE +400 days ${laterQ} wei`,
+      `slot 2 holds totalSupply: ${supplyAtSlot}; shares now ${sh[0]}, +400 days ${sh[1]}, at the floor ${sh[2]}; 990,000 $SKYLINE now ${burnQ} wei; 980,000 $SKYLINE at the floor ${splitQ} wei (want ${burnQ - (burnQ * 100n) / 10_000n}); 990,000 $SKYLINE +400 days ${laterQ} wei`,
     );
   }
 
@@ -3666,24 +3667,24 @@ async function f9u(base: ChainState, wallet: WalletState) {
     const live = await mount(<Rewards />, base, wallet, 'Rewards (live)');
     const lt = text(live);
     check(
-      'CR-93 Rewards (live): BuyerRewards.available() is read with the other figures; with ' + fmtTown(liveAvail) + ' SKYLINE available neither reserve notice shows',
+      'CR-93 Rewards (live): BuyerRewards.available() is read with the other figures; with ' + fmtTown(liveAvail) + ' $SKYLINE available neither reserve notice shows',
       r.available === liveAvail && !lt.includes('The rebate reserve is nearly spent') && !lt.includes('The rebate reserve is empty'),
       `available ${r.available} (read again: ${liveAvail}); reserveExhausted ${r.reserveExhausted}`,
     );
-    const low = await mount(<Rewards />, { ...base, rewards: { ...r, available: 1_000_000n * E18 } }, wallet, 'Rewards, 1,000,000 SKYLINE available (fixture)');
+    const low = await mount(<Rewards />, { ...base, rewards: { ...r, available: 1_000_000n * E18 } }, wallet, 'Rewards, 1,000,000 $SKYLINE available (fixture)');
     const lowT = plain(() => text(low));
     check(
-      'CR-93 low reserve (fixture): "nearly spent" with the SKYLINE available() reports',
-      lowT.includes('The rebate reserve is nearly spent 1,000,000 SKYLINE remain, less than the next ten days’ limits') && !!low.querySelector('.notice [data-view="BuyerRewards.available"]'),
+      'CR-93 low reserve (fixture): "nearly spent" with the $SKYLINE available() reports',
+      lowT.includes('The rebate reserve is nearly spent 1,000,000 $SKYLINE remain, less than the next ten days’ limits') && !!low.querySelector('.notice [data-view="BuyerRewards.available"]'),
       lowT.match(/The rebate reserve is nearly spent.*?first\./)?.[0] ?? lowT.slice(0, 200),
     );
     const empty = await mount(<Rewards />, { ...base, rewards: { ...r, available: 0n, reserveExhausted: true } }, wallet, 'Rewards, the reserve empty (fixture)');
     const et = text(empty);
     check(
-      'CR-93 empty reserve (fixture): its own notice — rebates pause until SKYLINE arrives; a day settled while it is empty gets nothing; no "nearly spent"',
+      'CR-93 empty reserve (fixture): its own notice — rebates pause until $SKYLINE arrives; a day settled while it is empty gets nothing; no "nearly spent"',
       et.includes('The rebate reserve is empty') &&
-        et.includes('so rebates pause until SKYLINE arrives') &&
-        et.includes('A day settled while the reserve is empty gets nothing, even if SKYLINE arrives later') &&
+        et.includes('so rebates pause until $SKYLINE arrives') &&
+        et.includes('A day settled while the reserve is empty gets nothing, even if $SKYLINE arrives later') &&
         !et.includes('nearly spent'),
       et.match(/The rebate reserve is empty.*?full\./)?.[0] ?? et.slice(0, 300),
     );
@@ -3708,11 +3709,11 @@ async function f9u(base: ChainState, wallet: WalletState) {
       JSON.stringify(rows),
     );
     check(
-      'CR-93 the schedule’s heading and notes: "halves every 100 days, then 25,000 SKYLINE a day", the launch funding, and that the reserve can be topped up',
-      body.includes('Daily limit: halves every 100 days, then 25,000 SKYLINE a day') &&
-        body.includes('Half the 500,000,000 SKYLINE the reserve was funded with at launch is scheduled for the first 100 days.') &&
+      'CR-93 the schedule’s heading and notes: "halves every 100 days, then 25,000 $SKYLINE a day", the launch funding, and that the reserve can be topped up',
+      body.includes('Daily limit: halves every 100 days, then 25,000 $SKYLINE a day') &&
+        body.includes('Half the 500,000,000 $SKYLINE the reserve was funded with at launch is scheduled for the first 100 days.') &&
         body.includes('Launch funding used by the end') &&
-        body.includes('The reserve can be topped up: from Day 401 half of every sell fee paid in SKYLINE goes to it, at the burn floor 1% of every sell does, and anyone can send it SKYLINE.'),
+        body.includes('The reserve can be topped up: from Day 401 half of every sell fee paid in $SKYLINE goes to it, at the burn floor 1% of every sell does, and anyone can send it $SKYLINE.'),
       body.slice(body.indexOf('Daily limit'), body.indexOf('Daily limit') + 420),
     );
     check(
@@ -3727,7 +3728,7 @@ async function f9u(base: ChainState, wallet: WalletState) {
   // ---- 8. Stats: the reserve available, the next payout at a midnight, the day's end ----
   {
     const st = await mount(<Stats />, base, wallet, 'Stats (live)');
-    const t = plain(() => text(st)).replace(/(\d)SKYLINE/g, '$1 SKYLINE');
+    const t = plain(() => text(st)).replace(/(\d)\$SKYLINE/g, '$1 $$SKYLINE');
     const avail = figText(st, 'BuyerRewards.available');
     check(
       'CR-93 Stats: "Rebate reserve available" is BuyerRewards.available(); "Rebates emitted" stays; the floor note names the split',
@@ -3735,7 +3736,7 @@ async function f9u(base: ChainState, wallet: WalletState) {
         t.includes('Rebate reserve available') &&
         !t.includes('Rebate reserve remaining') &&
         figText(st, 'BuyerRewards.totalEmitted') === fmtTown(base.rewards.totalEmitted) &&
-        t.includes('from there every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the treasury.'),
+        t.includes('from there every sell pays 1% in $SKYLINE to the rebate reserve and 1% in ETH to the treasury.'),
       `available ${avail}`,
     );
     const target = nextDayStart(base.hook.launchTime, c);
@@ -3754,18 +3755,18 @@ async function f9u(base: ChainState, wallet: WalletState) {
     const item = (id: string) => text(el.querySelector(`[data-item="${id}"]`) as HTMLElement);
     check(
       'CR-93, CR-94 Docs, rebates: the reserve and its top-ups, calendar days with a shorter launch day, the 39,062.5 and 25,000 limits, the empty reserve',
-      item('reserve').includes('500,000,000 SKYLINE at launch') &&
-        item('reserve').includes('from Day 401 half of every sell fee paid in SKYLINE, at the burn floor 1% of every sell, and any SKYLINE anyone sends it') &&
+      item('reserve').includes('500,000,000 $SKYLINE at launch') &&
+        item('reserve').includes('from Day 401 half of every sell fee paid in $SKYLINE, at the burn floor 1% of every sell, and any $SKYLINE anyone sends it') &&
         item('days').startsWith('Days are calendar days in UTC: each runs from midnight to midnight UTC. Day 1, the launch day, began at launch, so it was shorter than 24 hours.') &&
-        item('limit').includes('halving every 100 days down to 39,062.5 for days 601 to 700, then 25,000 SKYLINE a day from day 701') &&
+        item('limit').includes('halving every 100 days down to 39,062.5 for days 601 to 700, then 25,000 $SKYLINE a day from day 701') &&
         item('empty').includes('a day settled while it is empty gets nothing'),
       ['reserve', 'days', 'limit', 'empty'].map(item).join(' || '),
     );
     check(
       'CR-93 Docs, the sell fee: burned; from Day 401 half to the reserve; the ETH day; the floor (the sell that reaches it, then 1% + 1%)',
-      item('sell-fee') === 'Every sell pays a 2% fee, in SKYLINE, and it is burned. From Day 401 half of it is burned and the other half goes to the rebate reserve, so sells help pay later rebates.' &&
-        item('eth-day').startsWith('On a day after one that burned more SKYLINE than it paid out in rebates, the whole 2% goes to the treasury in ETH instead') &&
-        item('floor').includes('The sell that reaches the floor pays its whole 2% in SKYLINE: what fits above the floor is burned and the rest goes to the rebate reserve. From then on every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the treasury.'),
+      item('sell-fee') === 'Every sell pays a 2% fee, in $SKYLINE, and it is burned. From Day 401 half of it is burned and the other half goes to the rebate reserve, so sells help pay later rebates.' &&
+        item('eth-day').startsWith('On a day after one that burned more $SKYLINE than it paid out in rebates, the whole 2% goes to the treasury in ETH instead') &&
+        item('floor').includes('The sell that reaches the floor pays its whole 2% in $SKYLINE: what fits above the floor is burned and the rest goes to the rebate reserve. From then on every sell pays 1% in $SKYLINE to the rebate reserve and 1% in ETH to the treasury.'),
       ['sell-fee', 'eth-day', 'floor'].map(item).join(' || '),
     );
   }
@@ -3810,7 +3811,7 @@ const epochIndexOf = (cycle: number) => Math.min(7, Math.floor(cycle / 100));
 // same switch the site uses for every page, so the state decides the page exactly as on the site.
 // A network fixture with Etherscan stands for mainnet, so the explorer links and the note beside
 // them can be seen (the local chain has no explorer).
-async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: { prelaunch: unknown }) {
+async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: { prelaunch: unknown }): Promise<Partial<AppState>> {
   check('F12a launched: the live read has every figure and no "before the launch" figures (prelaunch null)', live.prelaunch === null && base.hook.launchTime > 0);
 
   const prelaunch: PrelaunchState = {
@@ -3862,7 +3863,7 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
   const PAGES = ['', 'trade', 'rewards', 'stake', 'stats', 'docs', 'owner'];
   const pageName = (p: string) => p || 'home';
   const ownerAccount = { ...wallet, address: OWNER };
-  const zeros = (t: string) => t.match(/(?:^|[^\d.,])0(?:\.0+)? (?:SKYLINE|ETH|WETH)\b/g) ?? [];
+  const zeros = (t: string) => t.match(/(?:^|[^\d.,])0(?:\.0+)? (?:\$SKYLINE|ETH|WETH)\b/g) ?? [];
 
   // 1. Not deployed: every live page says so; Home and the footer too; nothing of the launch states.
   {
@@ -3897,7 +3898,7 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
       const t = text(el);
       anyUsd ||= !!el.querySelector('.usd') || /≈ \$/.test(t);
       anyZero = anyZero.concat(zeros(t).map((z) => `${pageName(p)}:${z.trim()}`));
-      anyPrice ||= !!el.querySelector('.price-line') || /SKYLINE price/.test(t);
+      anyPrice ||= !!el.querySelector('.price-line') || /\$SKYLINE price/.test(t);
       anyDay ||= /Day \d[\d,]* ·|\bDay \d[\d,]* \d+h/.test(t) || !!el.querySelector('.day-chip, .day-line');
       // Every explorer link block carries the note beside it, between the phases.
       const verifies = [...el.querySelectorAll('.verify:not(.off)')];
@@ -3921,7 +3922,7 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
             figText(el, 'UpTownToken.totalSupply') === '1,000,000,000' &&
             figText(el, 'UpTownToken.balanceOf(Launcher)') === '1,000,000,000' &&
             !t.includes('So far') &&
-            !t.includes('SKYLINE rebated to buyers') &&
+            !t.includes('$SKYLINE rebated to buyers') &&
             !!el.querySelector('.hero-cta a[href="#/docs"]') &&
             !el.querySelector('.hero-cta a[href="#/trade"]'),
           `${line} | ${list.length} contracts, linked ${linked}`,
@@ -3930,13 +3931,13 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
       const off = [...el.querySelectorAll('.off-action')].map((x) => ({ id: (x as HTMLElement).dataset.off, disabled: !!x.querySelector('button')?.disabled, why: x.querySelector('p')?.textContent ?? '' }));
       if (p === 'trade')
         check(
-          'F12a not launched, Trade: buying and selling are off, each with its sentence; no price, no quote form; the warning that no SKYLINE is traded anywhere yet, with SKYLINE’s address; the fees from SkylineHook’s constants',
+          'F12a not launched, Trade: buying and selling are off, each with its sentence; no price, no quote form; the warning that no $SKYLINE is traded anywhere yet, with $SKYLINE’s address; the fees from SkylineHook’s constants',
           off.map((x) => x.id).join() === 'buy,sell' &&
             off.every((x) => x.disabled) &&
             off[0].why === 'Buying starts when the pool opens at the launch.' &&
             off[1].why === 'Selling starts when the pool opens at the launch.' &&
             !el.querySelector('input') &&
-            t.includes('No SKYLINE is traded anywhere yet') &&
+            t.includes('No $SKYLINE is traded anywhere yet') &&
             t.includes(k.UpTownToken) &&
             t.includes(`Buy. ${fmtBps(base.hook.BUY_FEE_BPS)} of the ETH, to the treasury, from the first second of trading.`) &&
             !t.includes('90%') &&
@@ -3965,11 +3966,11 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
           off.length === 1 &&
             off[0].id === 'stake' &&
             off[0].disabled &&
-            off[0].why === 'Staking opens at the launch, when SKYLINE can first be bought.' &&
+            off[0].why === 'Staking opens at the launch, when $SKYLINE can first be bought.' &&
             facts === 'free,share,nft' &&
             t.includes(STAKE_LEAD) &&
             !t.includes('Streaming now') &&
-            !t.includes('SKYLINE staked') &&
+            !t.includes('$SKYLINE staked') &&
             !el.querySelector('table'),
           `${facts} | ${off.map((x) => x.why).join(' | ')}`,
         );
@@ -4006,7 +4007,7 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
     }
     check('F12a not launched: no dollar figure on any page (Home, Trade, Rewards, Stake, Stats, Docs, Owner)', !anyUsd);
     check('F12a not launched: no price and no day number or countdown on any page', !anyPrice && !anyDay);
-    check('F12a not launched: no figure shown as 0 SKYLINE, 0 ETH or 0 WETH on any page (absent, not zero)', anyZero.length === 0, anyZero.join(', '));
+    check('F12a not launched: no figure shown as 0 $SKYLINE, 0 ETH or 0 WETH on any page (absent, not zero)', anyZero.length === 0, anyZero.join(', '));
     check('F12a not launched: beside every "Don’t trust, verify" link, "(source published shortly before the pool opens)" (CR-98 as amended)', sourceEverywhere, results.join(' | '));
     const foot = await mount(<FooterContracts />, null, null, 'F12a not launched (Ethereum): footer', notLaunched(ETH_NET));
     const links = [...foot.querySelectorAll('a')].map((a) => (a as HTMLAnchorElement).href);
@@ -4041,7 +4042,7 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
     const trade = await mount(<PageView page="trade" />, base, wallet, 'F12a launched: Trade', { network: ETH_NET });
     const foot = await mount(<FooterContracts />, base, wallet, 'F12a launched: footer', { network: ETH_NET });
     ok &&= text(home).includes('So far') && !!home.querySelector('.hero-cta a[href="#/trade"]') && !!trade.querySelector('.price-line') && !!trade.querySelector('#trade-panel-buy') && !foot.querySelector('.source-note');
-    check('F12a launched: every page is the launched page (Home "So far" and "Buy SKYLINE", Trade’s price line and forms); no launch line, no switched-off action, no source note, in the footer neither', ok, seen.join(' | '));
+    check('F12a launched: every page is the launched page (Home "So far" and "Buy $SKYLINE", Trade’s price line and forms); no launch line, no switched-off action, no source note, in the footer neither', ok, seen.join(' | '));
   }
 
   // 4. The position's explorer link, when the address file was written before the launch (mainnet phase 1).
@@ -4055,6 +4056,8 @@ async function f12a(base: ChainState, wallet: WalletState, o: OwnerState, live: 
       String(fromChain),
     );
   }
+  // F13d (CR-105) reads every page in its before-the-launch form too.
+  return notLaunched(ETH_NET);
 }
 
 // ---- F13a (CR-102): the SKYLINE redeployment ------------------------------------------------------
@@ -4121,8 +4124,8 @@ async function f13a(base: ChainState, wallet: WalletState, o: OwnerState) {
     const trade = await mount(<Trade sell />, base, wallet, 'CR-102: Trade, the floor in Details');
     trade.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''));
     check(
-      'CR-102 the floor is 200,000,000 SKYLINE wherever it is explained (Home "How it works", the Trade details)',
-      text(home).includes('Once only 200,000,000 SKYLINE remain') && (trade.textContent ?? '').includes('once the supply is down to 200,000,000 SKYLINE'),
+      'CR-102 the floor is 200,000,000 $SKYLINE wherever it is explained (Home "How it works", the Trade details)',
+      text(home).includes('Once only 200,000,000 $SKYLINE remain') && (trade.textContent ?? '').includes('once the supply is down to 200,000,000 $SKYLINE'),
     );
     const buy = await mount(<Trade />, base, wallet, 'CR-102: Trade, the buy fee row');
     const row = [...buy.querySelectorAll('#trade-panel-buy .swap-rows .row dt')].map((d) => d.textContent ?? '');
@@ -4134,7 +4137,7 @@ async function f13a(base: ChainState, wallet: WalletState, o: OwnerState) {
     const el = await mount(<Stake />, base, wallet, 'CR-102: the Stake page (live)');
     const t = text(el);
     check(
-      'CR-102 Stake: the lead and the three plain facts — free staking, rewards by SKYLINE staked, and an NFT staking contract for the “Uptowners” collection replacing it later',
+      'CR-102 Stake: the lead and the three plain facts — free staking, rewards by $SKYLINE staked, and an NFT staking contract for the “Uptowners” collection replacing it later',
       t.includes(STAKE_LEAD) && t.includes(STAKE_FACTS.free) && t.includes(STAKE_FACTS.share) && t.includes(STAKE_FACTS.nft),
       t.slice(0, 400),
     );
@@ -4193,15 +4196,15 @@ async function f13a(base: ChainState, wallet: WalletState, o: OwnerState) {
     const docs = await mount(<Docs />, base, wallet, 'CR-102: Docs (live)');
     const items = (sel: string) => [...docs.querySelectorAll(sel)].map((li) => li.textContent ?? '').join(' ');
     check(
-      'CR-102 Docs: the launch buy (0.1 ETH, for the owner), the second position and its 14-day lock, the 2% buy fee from the first second, free staking by SKYLINE staked and the NFT staking to come, the 200,000,000 floor',
-      items('#docs-launch [data-item="launch-buy"]').includes('bought SKYLINE with 0.1 ETH') &&
+      'CR-102 Docs: the launch buy (0.1 ETH, for the owner), the second position and its 14-day lock, the 2% buy fee from the first second, free staking by $SKYLINE staked and the NFT staking to come, the 200,000,000 floor',
+      items('#docs-launch [data-item="launch-buy"]').includes('bought $SKYLINE with 0.1 ETH') &&
         items('#docs-launch [data-item="launch-buy"]').includes('for the owner wallet') &&
         items('#docs-launch [data-item="second-position"]').includes('locked in LPVault for 14 days') &&
         items('#docs-launch [data-item="no-launch-fee"]').includes('The buy fee is 2% from the first second') &&
         items('#docs-staking [data-item="free"]').includes('for free') &&
-        items('#docs-staking [data-item="share"]').includes('in proportion to the SKYLINE each address has staked') &&
+        items('#docs-staking [data-item="share"]').includes('in proportion to the $SKYLINE each address has staked') &&
         items('#docs-staking [data-item="nft"]').includes('An NFT staking contract') &&
-        items('#docs-burn [data-item="floor"]').includes('200,000,000 SKYLINE') &&
+        items('#docs-burn [data-item="floor"]').includes('200,000,000 $SKYLINE') &&
         items('#docs-liquidity [data-item="second-lock"]').includes('locked for 14 days from the launch'),
       items('#docs-launch li').slice(0, 300),
     );
@@ -4305,9 +4308,9 @@ async function f13a(base: ChainState, wallet: WalletState, o: OwnerState) {
     const docs = await mount(<Docs />, base, wallet, 'CR-102: Docs, the retired-TOWN notice');
     const inDocs = docs.querySelectorAll('.retired-note');
     check(
-      'CR-102 Docs: one short notice — TOWN (its address in full) was UpTown’s first deployment, launched on 15 October 2026 and retired; the project’s token is SKYLINE',
+      'CR-102 Docs: one short notice — TOWN (its address in full) was UpTown’s first deployment, launched on 15 October 2026 and retired; the project’s token is $SKYLINE',
       inDocs.length === 1 &&
-        RETIRED_NOTICE_TEXT === 'TOWN (0x994d362B403a5AbE6D815749f63c23B8e807fCF5) was UpTown’s first deployment, launched on 15 October 2026 and retired. The project’s token is SKYLINE.' &&
+        RETIRED_NOTICE_TEXT === 'TOWN (0x994d362B403a5AbE6D815749f63c23B8e807fCF5) was UpTown’s first deployment, launched on 15 October 2026 and retired. The project’s token is $SKYLINE.' &&
         text(inDocs[0] as HTMLElement) === RETIRED_NOTICE_TEXT,
       inDocs[0] ? text(inDocs[0] as HTMLElement) : 'no notice',
     );
@@ -4344,7 +4347,7 @@ async function f13a(base: ChainState, wallet: WalletState, o: OwnerState) {
     // the launch (spec "Frontend -> Official Links"): it is built from the file's SKYLINE address.
     const file = MAINNET_ADDRESS_FILE as { tokenSymbol?: string; contracts: Record<string, string> | null; launchTime: unknown; poolId: unknown; positionTokenId: unknown };
     check(
-      'CR-102 GMGN today: the committed chain-1 file is SKYLINE’s phase-1 record (deployed, not launched), so the mark links to SKYLINE’s page, gmgn.ai/eth/token/0x9Ce79b2eB03fd83f3a8051234FF0b9fE4e654567; a TOWN or symbol-less file still gives no address',
+      'CR-102 GMGN today: the committed chain-1 file is SKYLINE’s phase-1 record (deployed, not launched), so the mark links to $SKYLINE’s page, gmgn.ai/eth/token/0x9Ce79b2eB03fd83f3a8051234FF0b9fE4e654567; a TOWN or symbol-less file still gives no address',
       isSkylineFile(file) &&
         file.launchTime === null &&
         file.poolId === null &&
@@ -4361,12 +4364,12 @@ async function f13a(base: ChainState, wallet: WalletState, o: OwnerState) {
     const row = await mount(<PlaceRow />, base, wallet, 'CR-102: the footer’s places row, today');
     const gm = row.querySelector('[data-place="GMGN"]') as HTMLElement | null;
     check(
-      'CR-102 the GMGN mark today: a link to SKYLINE’s GMGN page, opening in a new tab, named for SKYLINE, with no "at launch"',
+      'CR-102 the GMGN mark today: a link to $SKYLINE’s GMGN page, opening in a new tab, named for $SKYLINE, with no "at launch"',
       !!gm &&
         gm.tagName === 'A' &&
         gm.getAttribute('href') === `https://gmgn.ai/eth/token/${SKYLINE_MAINNET}` &&
         gm.getAttribute('target') === '_blank' &&
-        gm.getAttribute('aria-label') === 'SKYLINE on GMGN (opens in a new tab)' &&
+        gm.getAttribute('aria-label') === '$SKYLINE on GMGN (opens in a new tab)' &&
         !text(gm).includes('at launch'),
       gm ? gm.outerHTML.slice(0, 200) : 'no mark',
     );
@@ -4581,7 +4584,7 @@ async function f13b(base: ChainState, wallet: WalletState, o: OwnerState) {
       const timersAfterApprovals = f.log.join(' > ');
       check(
         'CR-104 sell: the finished list (approve, allow, sell, each confirmed, with its hash) and "Done." stay while the timer runs; no timer was set by the two approvals, one of 2,000 ms after the last confirmation',
-        st?.dataset.run === 'done' && steps.join(',') === 'approve=done,allow=done,sell=done' && (st.dataset.hashes ?? '').split(',').length === 3 && text(st).includes('Done. You sold 1,000 SKYLINE') && timers.length === 1 && timers[0].ms === 2_000,
+        st?.dataset.run === 'done' && steps.join(',') === 'approve=done,allow=done,sell=done' && (st.dataset.hashes ?? '').split(',').length === 3 && text(st).includes('Done. You sold 1,000 $SKYLINE') && timers.length === 1 && timers[0].ms === 2_000,
         `${steps.join(',')} | timers ${timers.map((t) => t.ms).join(',')} | ${timersAfterApprovals}`,
       );
       check('CR-104 sell: the status box was a live region from the first approval on, and is the box that says "Done."', live(regionAtSend.approve) && regionAtSend.approve === st);
@@ -4604,7 +4607,7 @@ async function f13b(base: ChainState, wallet: WalletState, o: OwnerState) {
       const steps = [...(st?.querySelectorAll('.run-step') ?? [])].map((s) => `${(s as HTMLElement).dataset.step}=${(s as HTMLElement).dataset.state}`);
       check(
         'CR-104 stake: the two-step list (approve, stake: both confirmed) and its message stay until the timer, set once, after the stake’s confirmation',
-        st?.dataset.run === 'done' && steps.join(',') === 'approve=done,stake=done' && text(st).includes('1,000 SKYLINE is staked') && timers.length === 1 && timers[0].ms === 2_000,
+        st?.dataset.run === 'done' && steps.join(',') === 'approve=done,stake=done' && text(st).includes('1,000 $SKYLINE is staked') && timers.length === 1 && timers[0].ms === 2_000,
         `${steps.join(',')} | ${f.log.join(' > ')}`,
       );
       await advance(1_999);
@@ -4743,9 +4746,9 @@ async function f13b(base: ChainState, wallet: WalletState, o: OwnerState) {
   const W1W = w1.wallet!;
   const OWW = ow.wallet!;
   check(
-    'CR-104 the two local accounts differ where the page shows them (Test wallet 1 has a stake, the owner none; their SKYLINE balances differ)',
+    'CR-104 the two local accounts differ where the page shows them (Test wallet 1 has a stake, the owner none; their $SKYLINE balances differ)',
     W1W.stakeOf > 0n && OWW.stakeOf === 0n && W1W.townBalance !== OWW.townBalance && OWW.townBalance > 0n,
-    `W1 ${fmtTown(W1W.townBalance)} SKYLINE, staked ${fmtTown(W1W.stakeOf)}; owner ${fmtTown(OWW.townBalance)}, staked ${fmtTown(OWW.stakeOf)}`,
+    `W1 ${fmtTown(W1W.townBalance)} $SKYLINE, staked ${fmtTown(W1W.stakeOf)}; owner ${fmtTown(OWW.townBalance)}, staked ${fmtTown(OWW.stakeOf)}`,
   );
 
   // The gate: every read is the site's own readAll; a reply for an account in `hold` waits for `release`.
@@ -4792,9 +4795,9 @@ async function f13b(base: ChainState, wallet: WalletState, o: OwnerState) {
     (button(site, 'All of it') as HTMLButtonElement)?.click();
     await settle();
     const filled = (site.querySelector('#stake-amount') as HTMLInputElement | null)?.value ?? '';
-    const beforeSwitch = `${walletBtn(site)} | staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')} | your SKYLINE ${yourSkyline(site)} | amount ${filled} | owner link ${ownerLink(site)}`;
+    const beforeSwitch = `${walletBtn(site)} | staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')} | your $SKYLINE ${yourSkyline(site)} | amount ${filled} | owner link ${ownerLink(site)}`;
     check(
-      'CR-104 local menu, Test wallet 1 (live): its stake and SKYLINE are shown, "All of it" fills its balance, no Owner link',
+      'CR-104 local menu, Test wallet 1 (live): its stake and $SKYLINE are shown, "All of it" fills its balance, no Owner link',
       fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(W1W.stakeOf) && yourSkyline(site) === fmtTown(W1W.townBalance) && filled === formatUnits(W1W.townBalance, 18) && !ownerLink(site),
       beforeSwitch,
     );
@@ -4812,9 +4815,9 @@ async function f13b(base: ChainState, wallet: WalletState, o: OwnerState) {
     );
     release(OWNER);
     await until(() => fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf));
-    const afterRead = `staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')} | your SKYLINE ${yourSkyline(site)} | amount "${(site.querySelector('#stake-amount') as HTMLInputElement | null)?.value}"`;
+    const afterRead = `staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')} | your $SKYLINE ${yourSkyline(site)} | amount "${(site.querySelector('#stake-amount') as HTMLInputElement | null)?.value}"`;
     check(
-      'CR-104 local menu: the owner’s reply lands at once (no 15-second wait): its stake and SKYLINE are shown, and the stake form is empty (nothing filled from Test wallet 1’s balance)',
+      'CR-104 local menu: the owner’s reply lands at once (no 15-second wait): its stake and $SKYLINE are shown, and the stake form is empty (nothing filled from Test wallet 1’s balance)',
       fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf) && yourSkyline(site) === fmtTown(OWW.townBalance) && (site.querySelector('#stake-amount') as HTMLInputElement | null)?.value === '',
       afterRead,
     );
@@ -4931,7 +4934,7 @@ async function f13b(base: ChainState, wallet: WalletState, o: OwnerState) {
       check(
         'CR-104 browser wallet, the late reply: the owner’s figures appear while Test wallet 1’s read is still held (the new account does not wait for it); when Test wallet 1’s reply lands afterwards it changes nothing: the owner’s stake and balance stay, the stake form stays empty',
         lateFor && ownerShown && w1StillHeld && fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf) && yourSkyline(site) === fmtTown(OWW.townBalance) && (site.querySelector('#stake-amount') as HTMLInputElement).value === '' && walletBtn(site).includes(shortAddress(OWNER)),
-        `${reads.join(' > ')} | after the late reply: staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')}, your SKYLINE ${yourSkyline(site)}`,
+        `${reads.join(' > ')} | after the late reply: staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')}, your $SKYLINE ${yourSkyline(site)}`,
       );
 
       // The sell form: 100% fills the owner's balance; switching to Test wallet 1 empties it at once.
@@ -5008,6 +5011,181 @@ async function f13b(base: ChainState, wallet: WalletState, o: OwnerState) {
       history.replaceState(null, '', location.pathname + location.search);
       document.title = savedTitle;
     }
+  }
+  if (!GALLERY) stage.replaceChildren();
+}
+
+// ---- F13d (CR-105): the token symbol is written $SKYLINE wherever a visitor can read it ----------
+// Every page, launched and before the launch, and the whole site (header, footer, page titles), read
+// as a visitor or a screen reader can: the text of every element (details opened, every tab shown)
+// and the attributes read aloud or shown on hover (aria-label, title, placeholder, alt). A "SKYLINE"
+// not preceded by "$" fails, and so does a doubled "$$SKYLINE". The contract names SkylineHook and
+// SkylineStaking are not the symbol and are not written in capitals, so they never match. What
+// stays SKYLINE is not shown: the on-chain symbol the address files are checked against.
+async function f13d(base: ChainState, wallet: WalletState, notLaunchedExtra: Partial<AppState>) {
+  const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+  const BARE = /(?<!\$)SKYLINE/g;
+  const ATTRS = ['aria-label', 'aria-description', 'title', 'placeholder', 'alt'];
+  /** Everything a visitor or a screen reader can read in `el`, one piece per text or attribute. */
+  const words = (el: Element): string[] => {
+    const out = [el.textContent ?? ''];
+    for (const n of el.querySelectorAll('*')) for (const a of ATTRS) if (n.getAttribute(a)) out.push(`[${a}] ${n.getAttribute(a)}`);
+    return out;
+  };
+  const bad: string[] = [];
+  let pieces = 0;
+  let dollars = 0;
+  const scan = (where: string, list: string[]) => {
+    for (const w of list) {
+      pieces++;
+      dollars += (w.match(/\$SKYLINE/g) ?? []).length;
+      for (const m of w.matchAll(BARE)) bad.push(`${where}: "…${w.slice(Math.max(0, m.index! - 40), m.index! + 20)}…"`);
+      if (w.includes('$$SKYLINE')) bad.push(`${where}: doubled "$$SKYLINE"`);
+    }
+  };
+  const read = (where: string, el: HTMLElement) => {
+    el.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''));
+    scan(where, words(el));
+  };
+  const ownerWallet = { ...wallet, address: OWNER };
+  // A fresh ETH price, so the dollar estimates (and their hover sentence naming the pool's price) are on the page too.
+  const fresh: ChainState = { ...base, ethUsd: { feed: NETWORK.ethUsdFeed!, answer: 270_000_000_000n, updatedAt: base.blockTimestamp - 60 } };
+
+  // ---- 1. every page, launched (the live chain, with a fresh ETH price) ----
+  {
+    const pages: [string, () => ComponentChildren, WalletState][] = [
+      ['Home', () => <Home />, wallet],
+      ['Trade, buy', () => <Trade />, wallet],
+      ['Trade, sell', () => <Trade sell />, wallet],
+      ['Rewards', () => <Rewards />, wallet],
+      ['Stats', () => <Stats />, wallet],
+      ['Docs', () => <Docs />, wallet],
+      ['Owner', () => <Owner />, ownerWallet],
+    ];
+    for (const [name, node, w] of pages) read(`launched ${name}`, await mount(node(), fresh, w, `CR-105: ${name} (live, fresh ETH price)`));
+    const st = await mount(<Stake />, fresh, wallet, 'CR-105: Stake (live, fresh ETH price), every tab');
+    read('launched Stake, Stake tab', st);
+    for (const tab of ['unstake', 'claim']) {
+      (st.querySelector(`#tab-${tab}`) as HTMLButtonElement | null)?.click();
+      await settle();
+      read(`launched Stake, ${tab} tab`, st);
+    }
+    // The forms with an amount typed: the amount used ("Uses …"), the minimum and its messages.
+    const typeIn = (el: HTMLElement, sel: string, v: string) => {
+      const input = el.querySelector(sel) as HTMLInputElement | null;
+      if (!input) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, v);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const sell = await mount(<Trade sell />, fresh, wallet, 'CR-105: Trade, sell, an amount typed');
+    typeIn(sell, '#sell-town', '1000.5');
+    await settle(400);
+    read('launched Trade, sell, 1,000.5 typed', sell);
+    const stake = await mount(<Stake />, fresh, wallet, 'CR-105: Stake, an amount typed');
+    typeIn(stake, '#stake-amount', '2,5');
+    await settle();
+    read('launched Stake, "2,5" typed (refused)', stake);
+  }
+
+  // ---- 2. every page before the launch (Ethereum, deployed, not launched) ----
+  for (const p of ['', 'trade', 'rewards', 'stake', 'stats', 'docs', 'owner']) {
+    const el = await mount(<PageView page={p} />, null, p === 'owner' ? ownerWallet : null, `CR-105: ${p || 'home'}, before the launch`, {
+      ...notLaunchedExtra,
+      account: p === 'owner' ? OWNER : null,
+    });
+    read(`not launched ${p || 'home'}`, el);
+  }
+  check(
+    'CR-105 every page (Home, Trade buy and sell, Rewards, Stake with its three tabs, Stats, Docs with its details open, Owner), launched and before the launch, writes the symbol $SKYLINE in its text and in every label read aloud or shown on hover; no bare SKYLINE, never $$SKYLINE',
+    bad.length === 0 && dollars > 200,
+    `${pieces} texts and labels read, $SKYLINE ${dollars} times; ${bad.length ? bad.slice(0, 8).join(' | ') : 'no bare SKYLINE'}`,
+  );
+
+  // ---- 3. the whole site: the header, the footer and every page's title ----
+  {
+    const savedTitle = document.title;
+    const site = document.createElement('div');
+    stage.append(site);
+    const siteBad: string[] = [];
+    const titles: string[] = [];
+    try {
+      render(<App />, site);
+      for (let i = 0; i < 150 && !(site.querySelector('.read-line') as HTMLElement | null)?.dataset.block; i++) await settle(100);
+      for (const p of ['', 'trade', 'rewards', 'stake', 'stats', 'docs']) {
+        location.hash = `#/${p}`;
+        await settle(150);
+        titles.push(document.title);
+        const before = bad.length;
+        read(`site #/${p}`, site);
+        scan(`site #/${p} title`, [document.title]);
+        siteBad.push(...bad.splice(before));
+      }
+      const header = text(site.querySelector('header.site-header') as HTMLElement);
+      const footer = site.querySelector('footer') as HTMLElement;
+      const brand = [...footer.querySelectorAll('p')].map((x) => x.textContent ?? '').find((x) => x.startsWith('UpTown Token')) ?? '';
+      const gmgn = footer.querySelector('[data-place="GMGN"], a[href^="https://gmgn.ai/"]') as HTMLElement | null;
+      check(
+        'CR-105 the whole site: the header, the footer and the page titles write $SKYLINE ("UpTown ($SKYLINE)", "Trade $SKYLINE · UpTown", "Stake $SKYLINE · UpTown"; the footer’s "UpTown Token ($SKYLINE), an experiment on Ethereum."); GMGN is named "$SKYLINE on GMGN"; no bare SKYLINE anywhere on the six pages',
+        siteBad.length === 0 &&
+          titles.join(' | ') === 'UpTown ($SKYLINE) | Trade $SKYLINE · UpTown | Buyer rebates · UpTown | Stake $SKYLINE · UpTown | Treasury and stats · UpTown | Docs · UpTown' &&
+          brand === 'UpTown Token ($SKYLINE), an experiment on Ethereum.' &&
+          (gmgn?.getAttribute('aria-label') ?? '').startsWith('$SKYLINE on GMGN') &&
+          !/SKYLINE/.test(header.replace(/\$SKYLINE/g, '')),
+        `${titles.join(' | ')} | footer: ${brand} | GMGN: ${gmgn?.getAttribute('aria-label')} | ${siteBad.slice(0, 6).join(' | ') || 'no bare SKYLINE'}`,
+      );
+    } finally {
+      render(null, site);
+      site.remove();
+      history.replaceState(null, '', location.pathname + location.search);
+      document.title = savedTitle;
+    }
+  }
+
+  // ---- 4. where the symbol is a label, a unit or a button ----
+  {
+    const buy = await mount(<Trade />, fresh, wallet, 'CR-105: Trade, the buy form');
+    const sell = await mount(<Trade sell />, fresh, wallet, 'CR-105: Trade, the sell form');
+    const pills = [...buy.querySelectorAll('.token-pill'), ...sell.querySelectorAll('.token-pill')].map((x) => x.textContent?.trim()).filter((x) => x !== 'ETH');
+    const stats = await mount(<Stats />, fresh, wallet, 'CR-105: Stats, the units');
+    const units = [...stats.querySelectorAll('.fig-value .unit')].map((x) => x.textContent?.trim()).filter((u) => u !== 'ETH' && u !== 'WETH' && u !== '%');
+    const unitUsd = stats.querySelector('[data-view="UpTownToken.totalSupply"] .usd') as HTMLElement | null;
+    const st = await mount(<Stake />, fresh, wallet, 'CR-105: Stake, the field');
+    const home = await mount(<Home />, fresh, wallet, 'CR-105: Home, the owner’s texts');
+    const h1 = home.querySelector('h1')?.textContent ?? '';
+    const why = [...home.querySelectorAll('h2')].map((x) => x.textContent?.trim()).find((x) => x?.startsWith('Why')) ?? '';
+    const priceLine = (buy.querySelector('.price-line') as HTMLElement | null)?.innerText.replace(/\s+/g, ' ').trim() ?? '';
+    check(
+      'CR-105 buttons, token badges, units, the input suffix and the price line read $SKYLINE: "Buy $SKYLINE", "Sell $SKYLINE", "Stake $SKYLINE", the badges, every non-ETH unit on Stats, the stake field’s suffix, "$SKYLINE price … gwei per $SKYLINE"; the dollar estimate is still worked out for a $SKYLINE amount and says it uses the pool’s current $SKYLINE price',
+      !!button(buy, 'Buy $SKYLINE') &&
+        !!button(sell, 'Sell $SKYLINE') &&
+        !!button(st, 'Stake $SKYLINE') &&
+        pills.length >= 2 &&
+        pills.every((x) => x === '$SKYLINE') &&
+        units.length > 5 &&
+        units.every((u) => u === '$SKYLINE') &&
+        !!unitUsd &&
+        (unitUsd.getAttribute('title') ?? '').endsWith('and the pool’s current $SKYLINE price.') &&
+        st.querySelector('#panel-stake .suffix, .suffix')?.textContent?.trim() === '$SKYLINE' &&
+        priceLine.startsWith('$SKYLINE price') &&
+        priceLine.includes('gwei per $SKYLINE in the pool'),
+      `pills ${pills.join(',')}; units ${[...new Set(units)].join(',')} (${units.length}); usd title "${unitUsd?.getAttribute('title')}"; price "${priceLine}"`,
+    );
+    check(
+      'CR-105 the owner’s texts: the hero heading "$SKYLINE, the first token that rewards buyers and stakers." and "Why $SKYLINE?" (kept, not doubled)',
+      h1 === '$SKYLINE, the first token that rewards buyers and stakers.' && why === 'Why $SKYLINE?',
+      `${h1} | ${why}`,
+    );
+  }
+
+  // ---- 5. what stays SKYLINE: the chain's symbol and the address files' check; the contract names ----
+  {
+    const sky = { tokenSymbol: 'SKYLINE', contracts: { UpTownToken: k.UpTownToken } };
+    const docs = await mount(<Docs />, base, wallet, 'CR-105: Docs, the contract names');
+    const dt = docs.textContent ?? '';
+    check(
+      'CR-105 what stays: an address file is read as SKYLINE’s only with "tokenSymbol": "SKYLINE" (not "$SKYLINE"), the token on chain is SKYLINE, and the contract names SkylineHook and SkylineStaking are written as before',
+      isSkylineFile(sky) && !isSkylineFile({ ...sky, tokenSymbol: '$SKYLINE' }) && dt.includes('SkylineHook') && dt.includes('SkylineStaking') && !dt.includes('$SkylineHook') && !dt.includes('$SkylineStaking'),
+    );
   }
   if (!GALLERY) stage.replaceChildren();
 }

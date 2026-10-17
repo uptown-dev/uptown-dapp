@@ -143,7 +143,7 @@ export function OwnerPage({ o, chain, access }: { o: OwnerState; chain: ChainSta
  * on the payouts, the money or the position, which start there), each switched off with one plain sentence. They appear above, with their settings, once the launch has run.
  */
 export const OFF_UNTIL_LAUNCH: { power: string; why: string }[] = [
-  { power: 'Withdraw the ETH owner reserve and the SKYLINE claim fees', why: 'The treasury receives nothing before the launch, so there is nothing to withdraw.' },
+  { power: 'Withdraw the ETH owner reserve and the $SKYLINE claim fees', why: 'The treasury receives nothing before the launch, so there is nothing to withdraw.' },
   { power: 'Change the daily payout rate', why: 'Payouts start at the launch; this page offers the change from then.' },
   { power: 'Replace the staking contract or pause the payouts', why: 'Both act on the treasury’s daily payouts, which start at the launch; this page offers them from then.' },
   { power: 'Collect the pool fees of both positions, extend the lock or withdraw a position', why: 'LPVault receives both positions at the launch.' },
@@ -564,7 +564,7 @@ function LauncherCard({ ctx }: { ctx: Ctx }) {
           label="Launch"
           actor={ctx.actor(o.launcher.owner, 'the Launcher’s owner')}
           build={() => ({ ok: true, value: { req: ownerTx(network, 'Launcher', 'launch', [], value), preview: `The launch would run, sent with ${fmtEth(value, 2)} ETH.` } })}
-          consequence={`In one transaction, sent with ${fmtEth(value, 2)} ETH: opens the SKYLINE pool, places the launch position and locks it in LPVault for 10 years, buys SKYLINE with 0.1 ETH for the owner wallet (paying the 2% buy fee), adds the second, full-range position with 0.03 ETH and locks it in LPVault for 14 days, sends the bought SKYLINE the second position does not use to the owner wallet, funds the rebate reserve and starts every clock. It runs once and cannot be repeated or undone, so it happens exactly when you send it.`}
+          consequence={`In one transaction, sent with ${fmtEth(value, 2)} ETH: opens the $SKYLINE pool, places the launch position and locks it in LPVault for 10 years, buys $SKYLINE with 0.1 ETH for the owner wallet (paying the 2% buy fee), adds the second, full-range position with 0.03 ETH and locks it in LPVault for 14 days, sends the bought $SKYLINE the second position does not use to the owner wallet, funds the rebate reserve and starts every clock. It runs once and cannot be repeated or undone, so it happens exactly when you send it.`}
           confirmWord="launch"
           done={() => 'UpTown is launched.'}
         />
@@ -714,13 +714,13 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
 
       <Power
         id="owner-town"
-        title="SKYLINE claim fees"
+        title="$SKYLINE claim fees"
         settings={
           <Setting
-            label="SKYLINE available"
+            label="$SKYLINE available"
             value={
               <>
-                {fmtTown(t.ownerTownAvailable)} SKYLINE <Usd amount={t.ownerTownAvailable} unit="SKYLINE" paren />
+                {fmtTown(t.ownerTownAvailable)} $SKYLINE <Usd amount={t.ownerTownAvailable} unit="SKYLINE" paren />
               </>
             }
             view="Treasury.ownerTownAvailable"
@@ -730,7 +730,7 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
       >
         <OwnerAction
           id="withdrawTown"
-          label="Withdraw SKYLINE"
+          label="Withdraw $SKYLINE"
           actor={ownerActor}
           dirty={townTo !== '' || townAmount !== ''}
           fields={
@@ -742,11 +742,11 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
                 value={townAmount}
                 onInput={setTownAmount}
                 placeholder="0"
-                suffix="SKYLINE"
-                uses={<Uses value={amountOrNull(townAmount, 18)} unit="SKYLINE" />}
+                suffix="$SKYLINE"
+                uses={<Uses value={amountOrNull(townAmount, 18)} unit="$SKYLINE" />}
                 hint={
                   <>
-                    Up to {fmtTown(t.ownerTownAvailable)} SKYLINE <Usd amount={t.ownerTownAvailable} unit="SKYLINE" paren />.{' '}
+                    Up to {fmtTown(t.ownerTownAvailable)} $SKYLINE <Usd amount={t.ownerTownAvailable} unit="SKYLINE" paren />.{' '}
                     <button type="button" class="link-btn" onClick={() => setTownAmount(formatUnits(t.ownerTownAvailable, 18))}>
                       All of it
                     </button>
@@ -758,12 +758,12 @@ function TreasuryCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
           build={() => {
             const to = checkAddress(townTo, { notZero: true });
             if (!to.ok) return to;
-            const amt = checkAmount(townAmount, 18, t.ownerTownAvailable, 'SKYLINE', fmtTown(t.ownerTownAvailable));
+            const amt = checkAmount(townAmount, 18, t.ownerTownAvailable, '$SKYLINE', fmtTown(t.ownerTownAvailable));
             if (!amt.ok) return amt;
-            return { ok: true, value: { req: tx('withdrawTown', [to.value, amt.value]), preview: `${fmtTown(amt.value)} SKYLINE would go from the treasury to ${fullAddress(to.value)}.` } };
+            return { ok: true, value: { req: tx('withdrawTown', [to.value, amt.value]), preview: `${fmtTown(amt.value)} $SKYLINE would go from the treasury to ${fullAddress(to.value)}.` } };
           }}
-          consequence="Sends SKYLINE claim fees held by the treasury. This is the owner’s income; no other token can be withdrawn."
-          done={() => 'The SKYLINE was sent from the treasury.'}
+          consequence="Sends $SKYLINE claim fees held by the treasury. This is the owner’s income; no other token can be withdrawn."
+          done={() => 'The $SKYLINE was sent from the treasury.'}
           onSent={() => setTownAmount('')}
         />
       </Power>
@@ -927,7 +927,7 @@ function VaultCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
         title="Trading fees of the locked position"
         settings={
           <>
-            <Setting label="Position" value={`#${v.tokenId.toString()}`} view="LPVault.tokenId" note="Its fees arrive as ETH from buys and SKYLINE from sells." />
+            <Setting label="Position" value={`#${v.tokenId.toString()}`} view="LPVault.tokenId" note="Its fees arrive as ETH from buys and $SKYLINE from sells." />
           </>
         }
       >
@@ -942,7 +942,7 @@ function VaultCard({ ctx, chain }: { ctx: Ctx; chain: ChainState }) {
             if (!a.ok) return a;
             return { ok: true, value: { req: tx('collectFees', [a.value]), preview: `The position’s trading fees would go to ${fullAddress(a.value)}.` } };
           }}
-          consequence="Sends the position’s accrued trading fees (ETH and SKYLINE) to this address. This is the owner’s income; the liquidity itself stays locked."
+          consequence="Sends the position’s accrued trading fees (ETH and $SKYLINE) to this address. This is the owner’s income; the liquidity itself stays locked."
           done={() => 'The fees were collected.'}
         />
       </Power>
@@ -1070,7 +1070,7 @@ export function SecondPositionPowers({
               label="Second position"
               value={`#${v.secondTokenId.toString()}`}
               view="LPVault.secondTokenId"
-              note="Full range, funded at the launch with 0.03 ETH and SKYLINE from the launch buy. Its fees arrive as ETH and SKYLINE."
+              note="Full range, funded at the launch with 0.03 ETH and $SKYLINE from the launch buy. Its fees arrive as ETH and $SKYLINE."
             />
           </>
         }
@@ -1087,7 +1087,7 @@ export function SecondPositionPowers({
             if (!a.ok) return a;
             return { ok: true, value: { req: tx('collectSecondFees', [a.value]), preview: `The second position’s trading fees would go to ${fullAddress(a.value)}.` } };
           }}
-          consequence="Sends the second position’s accrued trading fees (ETH and SKYLINE) to this address. This is the owner’s income; the position itself stays in LPVault."
+          consequence="Sends the second position’s accrued trading fees (ETH and $SKYLINE) to this address. This is the owner’s income; the position itself stays in LPVault."
           done={() => 'The second position’s fees were collected.'}
         />
       </Power>
@@ -1122,7 +1122,7 @@ export function SecondPositionPowers({
           consequence={`Takes the second position out of LPVault and sends it to ${(() => {
             const a = checkAddress(to, { notZero: true });
             return a.ok ? fullAddress(a.value) : 'this address';
-          })()}; its liquidity (the 0.03 ETH side and its SKYLINE, plus its share of the pool since) can then be removed. The launch position stays locked. This cannot be undone.`}
+          })()}; its liquidity (the 0.03 ETH side and its $SKYLINE, plus its share of the pool since) can then be removed. The launch position stays locked. This cannot be undone.`}
           confirmWord="withdraw the second position"
           done={() => 'The second position was withdrawn.'}
           onSent={() => setTo('')}

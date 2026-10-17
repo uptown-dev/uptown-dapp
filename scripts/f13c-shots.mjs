@@ -211,7 +211,7 @@ const PAGES = [
   ['stats', '#/stats'],
   ['docs', '#/docs'],
 ];
-const RETIRED_TEXT = `TOWN (${RETIRED}) was UpTown’s first deployment, launched on 15 October 2026 and retired. The project’s token is SKYLINE.`;
+const RETIRED_TEXT = `TOWN (${RETIRED}) was UpTown’s first deployment, launched on 15 October 2026 and retired. The project’s token is $SKYLINE.`;  // CR-105: the notice writes $SKYLINE
 
 try {
   for (const [width, theme] of [

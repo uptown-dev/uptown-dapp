@@ -25,7 +25,7 @@ export const OWNER_POWERS: OwnerPower[] = [
     contract: 'LPVault',
     delay: 'Only after 14 days from the launch',
     worstCase:
-      'The owner removes the full-range position (0.03 ETH and its SKYLINE at the launch) and takes its share of the pool; the launch position stays locked.',
+      'The owner removes the full-range position (0.03 ETH and its $SKYLINE at the launch) and takes its share of the pool; the launch position stays locked.',
   },
   {
     power: 'Change the daily payout rate, 1% to 25%',
@@ -35,7 +35,7 @@ export const OWNER_POWERS: OwnerPower[] = [
       'Payouts slow to 1% or speed up to 25% of the balance per day; the ETH still goes only to the current staking contract and the owner’s 10% reserve.',
   },
   { power: 'Withdraw the ETH owner reserve', contract: 'Treasury', delay: 'None', worstCase: 'Nothing beyond the 10% reserve; this is owner income.' },
-  { power: 'Withdraw the SKYLINE claim fees', contract: 'Treasury', delay: 'None', worstCase: 'None; this is owner income.' },
+  { power: 'Withdraw the $SKYLINE claim fees', contract: 'Treasury', delay: 'None', worstCase: 'None; this is owner income.' },
   {
     power: 'Replace the staking contract the Treasury pays',
     contract: 'Treasury',
@@ -62,14 +62,14 @@ export const OWNER_POWERS: OwnerPower[] = [
 
 /** What the owner cannot do (spec "Owner powers", last paragraph). */
 export const OWNER_CANNOT: string[] = [
-  'mint SKYLINE',
+  'mint $SKYLINE',
   'change any fee',
   'pause trading',
   'upgrade any contract',
-  'touch the 500,000,000 SKYLINE rebate reserve',
+  'touch the 500,000,000 $SKYLINE rebate reserve',
   'take treasury ETH beyond the 10% owner reserve',
   'withdraw the launch position before its 10 years',
-  'move anyone’s staked SKYLINE',
+  'move anyone’s staked $SKYLINE',
 ];
 
 /** Things to know: practical points only, one line each (CR-40). */
@@ -94,7 +94,7 @@ export const THINGS_TO_KNOW: { title: string; body: string }[] = [
   },
   {
     title: 'A launch buy and owner liquidity',
-    body: 'The launch transaction bought 0.1 ETH of SKYLINE for the owner wallet at the opening price, and put 0.03 ETH with part of those SKYLINE into a full-range position the owner can withdraw after 14 days; the rest went to the owner wallet. All of it is visible on chain.',
+    body: 'The launch transaction bought 0.1 ETH of $SKYLINE for the owner wallet at the opening price, and put 0.03 ETH with part of those $SKYLINE into a full-range position the owner can withdraw after 14 days; the rest went to the owner wallet. All of it is visible on chain.',
   },
   {
     title: 'No higher fee at the launch',
@@ -116,7 +116,7 @@ export const THINGS_TO_KNOW: { title: string; body: string }[] = [
 export const ROUTING_NOTE = {
   title: 'For wallets, aggregators and bots',
   body:
-    'If you route SKYLINE buys for other people, pass the buyer’s address as the swap’s `hookData`, exactly 32 bytes: the address left-padded with zeros, as `abi.encode(buyer)` gives it. ' +
+    'If you route $SKYLINE buys for other people, pass the buyer’s address as the swap’s `hookData`, exactly 32 bytes: the address left-padded with zeros, as `abi.encode(buyer)` gives it. ' +
     'SkylineHook then credits the buy, and its rebate, to that address, whatever its code; that address claims the rebate itself. ' +
     'Any other `hookData` (another length, a zero address, anything in the first 12 bytes) is ignored. ' +
     'Without a valid one, the hook credits the router’s `msgSender()` when that is an ordinary wallet (no code, or an EIP-7702 delegation), else the transaction’s sender (`tx.origin`), so for a solver, a bundler or a contract wallet the rebate goes to the wrong place.',
@@ -135,7 +135,7 @@ export const RETIRED_TOWN_ADDRESS = '0x994d362B403a5AbE6D815749f63c23B8e807fCF5'
 /** The notice, in two parts around the address: "TOWN (<address>) was UpTown's first deployment, ...". */
 export const RETIRED_NOTICE = {
   before: 'TOWN (',
-  after: ') was UpTown’s first deployment, launched on 15 October 2026 and retired. The project’s token is SKYLINE.',
+  after: ') was UpTown’s first deployment, launched on 15 October 2026 and retired. The project’s token is $SKYLINE.',
 } as const;
 
 /** The notice as one line of text (for tests and screen readers). */

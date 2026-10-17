@@ -61,15 +61,15 @@ export function Docs() {
           <Section id="hook">
             <ul class="doc-list">
               <li>
-                Every trade in the SKYLINE pool on Uniswap v4 passes through SkylineHook, the pool’s hook contract. It has no owner: nobody can change it or switch it off.{' '}
+                Every trade in the $SKYLINE pool on Uniswap v4 passes through SkylineHook, the pool’s hook contract. It has no owner: nobody can change it or switch it off.{' '}
                 <Verify inline links={[{ what: 'SkylineHook’s code', href: contractUrl(network, 'SkylineHook', 'code') }]} />
               </li>
               <li>
-                <strong>On a buy</strong> it takes 2% of the ETH for the treasury and records how much SKYLINE the buyer received that day. Rebates are paid from
+                <strong>On a buy</strong> it takes 2% of the ETH for the treasury and records how much $SKYLINE the buyer received that day. Rebates are paid from
                 this record.
               </li>
               <li>
-                <strong>On a sell</strong> it takes 2%: burned in SKYLINE, partly sent to the rebate reserve in SKYLINE, or sent to the treasury in ETH, as{' '}
+                <strong>On a sell</strong> it takes 2%: burned in $SKYLINE, partly sent to the rebate reserve in $SKYLINE, or sent to the treasury in ETH, as{' '}
                 <a href="#/docs/burn">The burn</a> explains.
               </li>
               <li data-item="no-launch-fee">
@@ -85,13 +85,13 @@ export function Docs() {
           <Section id="rebates">
             <ul class="doc-list">
               <li data-item="reserve">
-                BuyerRewards holds the rebate reserve: 500,000,000 SKYLINE at launch, half the supply. It counts what it holds, so SKYLINE that reaches it later
-                adds to it: from {fromDay} half of every sell fee paid in SKYLINE, at the burn floor 1% of every sell, and any SKYLINE anyone sends it. SKYLINE leaves
+                BuyerRewards holds the rebate reserve: 500,000,000 $SKYLINE at launch, half the supply. It counts what it holds, so $SKYLINE that reaches it later
+                adds to it: from {fromDay} half of every sell fee paid in $SKYLINE, at the burn floor 1% of every sell, and any $SKYLINE anyone sends it. $SKYLINE leaves
                 it only through claims.{' '}
                 <Verify
                   inline
                   links={[
-                    { label: 'SKYLINE balance', what: 'BuyerRewards’ SKYLINE balance', href: contractUrl(network, 'BuyerRewards') },
+                    { label: '$SKYLINE balance', what: 'BuyerRewards’ $SKYLINE balance', href: contractUrl(network, 'BuyerRewards') },
                     { label: 'running totals', what: 'BuyerRewards’ running totals', href: contractUrl(network, 'BuyerRewards', 'read') },
                   ]}
                 />
@@ -100,7 +100,7 @@ export function Docs() {
                 Days are calendar days in UTC: each runs from midnight to midnight UTC. Day 1, the launch day, began at launch, so it was shorter than 24
                 hours. The header shows today’s day and the time left until the next one begins.
               </li>
-              <li>For each day you buy, you can claim the day’s rate of the SKYLINE you bought, from the next day. Rebates never expire.</li>
+              <li>For each day you buy, you can claim the day’s rate of the $SKYLINE you bought, from the next day. Rebates never expire.</li>
               <li>
                 Each day’s rate is set when the day begins, from the last three days’ trading in the pool, and does not change during the day. It is{' '}
                 {fmtBps(r.low)} when buying and selling balance, rising in a straight line to {fmtBps(r.buyTop)} after days of only buying and to{' '}
@@ -111,12 +111,12 @@ export function Docs() {
                 reaches you.
               </li>
               <li data-item="limit">
-                Each day has a limit: 2,500,000 SKYLINE a day for the first 100 days, halving every 100 days down to 39,062.5 for days 601 to 700, then
-                25,000 SKYLINE a day from day 701 for as long as the reserve has SKYLINE. On a busy day everyone’s rate falls in proportion.
+                Each day has a limit: 2,500,000 $SKYLINE a day for the first 100 days, halving every 100 days down to 39,062.5 for days 601 to 700, then
+                25,000 $SKYLINE a day from day 701 for as long as the reserve has $SKYLINE. On a busy day everyone’s rate falls in proportion.
               </li>
               <li data-item="empty">
                 A day’s rebates are settled when the day is first claimed. When the reserve runs low, days are paid in the order they are settled. If it is
-                empty, rebates pause until SKYLINE arrives, and a day settled while it is empty gets nothing, even if SKYLINE arrives later.
+                empty, rebates pause until $SKYLINE arrives, and a day settled while it is empty gets nothing, even if $SKYLINE arrives later.
               </li>
             </ul>
           </Section>
@@ -124,13 +124,13 @@ export function Docs() {
           <Section id="staking">
             <ul class="doc-list">
               <li data-item="free">
-                Stake SKYLINE in SkylineStaking, for free: there is nothing to buy first and no fee, only the network’s gas.{' '}
+                Stake $SKYLINE in SkylineStaking, for free: there is nothing to buy first and no fee, only the network’s gas.{' '}
                 <Verify
                   inline
                   links={[{ what: 'the staking contract’s totals', href: chain ? readUrl(network, chain.staking.address) : contractUrl(network, 'SkylineStaking', 'read') }]}
                 />
               </li>
-              <li data-item="share">Each daily payout is shared by everyone staked, in proportion to the SKYLINE each address has staked: one pool.</li>
+              <li data-item="share">Each daily payout is shared by everyone staked, in proportion to the $SKYLINE each address has staked: one pool.</li>
               <li>The WETH streams to stakers over seven days; claim it any time. Unstake any amount at any time: there is no lock and no minimum.</li>
               <li data-item="nft">
                 SkylineStaking is temporary. An NFT staking contract for holders of the owner’s “Uptowners” collection replaces it later, through the
@@ -143,7 +143,7 @@ export function Docs() {
             <ul class="doc-list">
               <li>
                 The treasury receives SkylineHook’s 2% buy fee, its 2% sell fee on the days it is charged in ETH and 1% of every sell at the burn floor, and
-                the claim fees in SKYLINE.{' '}
+                the claim fees in $SKYLINE.{' '}
                 <Verify
                   inline
                   links={[
@@ -164,20 +164,20 @@ export function Docs() {
           <Section id="burn">
             <ul class="doc-list">
               <li>
-                1,000,000,000 SKYLINE were minted once; no one can mint more.{' '}
-                <Verify inline links={[{ what: 'SKYLINE’s total supply', href: tokenUrl(network, town) }]} />
+                1,000,000,000 $SKYLINE were minted once; no one can mint more.{' '}
+                <Verify inline links={[{ what: '$SKYLINE’s total supply', href: tokenUrl(network, town) }]} />
               </li>
               <li data-item="sell-fee">
-                Every sell pays a 2% fee, in SKYLINE, and it is burned. From {fromDay} half of it is burned and the other half goes to the rebate reserve, so
+                Every sell pays a 2% fee, in $SKYLINE, and it is burned. From {fromDay} half of it is burned and the other half goes to the rebate reserve, so
                 sells help pay later rebates.
               </li>
               <li data-item="eth-day">
-                On a day after one that burned more SKYLINE than it paid out in rebates, the whole 2% goes to the treasury in ETH instead, and nothing is burned
-                or sent to the reserve. While the rebate reserve is empty, the fee is in SKYLINE.
+                On a day after one that burned more $SKYLINE than it paid out in rebates, the whole 2% goes to the treasury in ETH instead, and nothing is burned
+                or sent to the reserve. While the rebate reserve is empty, the fee is in $SKYLINE.
               </li>
               <li data-item="floor">
-                The burn stops at the floor of {floor} SKYLINE of supply. The sell that reaches the floor pays its whole 2% in SKYLINE: what fits above the
-                floor is burned and the rest goes to the rebate reserve. From then on every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the
+                The burn stops at the floor of {floor} $SKYLINE of supply. The sell that reaches the floor pays its whole 2% in $SKYLINE: what fits above the
+                floor is burned and the rest goes to the rebate reserve. From then on every sell pays 1% in $SKYLINE to the rebate reserve and 1% in ETH to the
                 treasury.
               </li>
               <li>
@@ -193,13 +193,13 @@ export function Docs() {
               {/* Told in the past once UpTown has launched, in the future before (CR-86). */}
               <li data-item="launch-buy">
                 <strong>The launch buy.</strong> In the launch transaction, right after the launch position {chain ? 'was placed' : 'is placed'}, the Launcher{' '}
-                {chain ? 'bought' : 'buys'} SKYLINE with 0.1 ETH at the opening price for the owner wallet. It {chain ? 'paid' : 'pays'} the ordinary 2% buy fee
+                {chain ? 'bought' : 'buys'} $SKYLINE with 0.1 ETH at the opening price for the owner wallet. It {chain ? 'paid' : 'pays'} the ordinary 2% buy fee
                 and is counted for the owner like any buy, so it earns a rebate within the launch day’s limit.{' '}
                 <Verify inline links={[{ what: 'the Launcher’s launch-buy figures', href: contractUrl(network, 'Launcher', 'read') }]} />
               </li>
               <li data-item="second-position">
                 <strong>The owner’s second position.</strong> Right after the buy, the Launcher {chain ? 'added' : 'adds'} a second, full-range position with
-                0.03 ETH and as much of the bought SKYLINE as it {chain ? 'needed' : 'needs'}, locked in LPVault for 14 days; the rest of the bought SKYLINE{' '}
+                0.03 ETH and as much of the bought $SKYLINE as it {chain ? 'needed' : 'needs'}, locked in LPVault for 14 days; the rest of the bought $SKYLINE{' '}
                 {chain ? 'went' : 'goes'} to the owner wallet. After the 14 days the owner may withdraw that position. While it is in the pool, the price can dip
                 below the opening price by at most what its 0.03 ETH absorbs.
               </li>
@@ -212,7 +212,7 @@ export function Docs() {
 
           <Section id="liquidity">
             <ul class="doc-list">
-              <li>At launch the other 500,000,000 SKYLINE form the pool’s launch position.</li>
+              <li>At launch the other 500,000,000 $SKYLINE form the pool’s launch position.</li>
               <li>
                 LPVault holds that position, locked for at least 10 years
                 {chain && (
@@ -262,7 +262,7 @@ export function Docs() {
                 new staking contract, each after a 2-day public wait.
               </li>
               <li>The fees are fixed: 2% on buys, 2% on sells, the 0.5% pool fee and the {fmtBps(claimFeeBps(rules))} claim fee.</li>
-              <li>The supply, 1,000,000,000 SKYLINE, is fixed.</li>
+              <li>The supply, 1,000,000,000 $SKYLINE, is fixed.</li>
               <li>
                 UpTownToken, SkylineHook, BuyerRewards and SkylineStaking have no owner at all.{' '}
                 <Verify

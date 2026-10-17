@@ -353,17 +353,17 @@ export function TradingVolume() {
     <Fig
       label={label}
       value={y !== null ? fmtTown(h[what][y] ?? 0n) : 'None yet'}
-      unit={y !== null ? 'SKYLINE' : undefined}
+      unit={y !== null ? '$SKYLINE' : undefined}
       amount={y !== null ? (h[what][y] ?? 0n) : null}
       view={y !== null ? `SkylineHook.${what}(${y})` : `SkylineHook.${what}(c - 1)`}
       note={y !== null ? dayName(y) : `${dayName(0)} has no day before it`}
     />
   );
   const today = (what: 'cycleTotal' | 'sold', label: string) => (
-    <Fig label={label} value={fmtTown(h[what][c] ?? 0n)} unit="SKYLINE" amount={h[what][c] ?? 0n} view={`SkylineHook.${what}(${c})`} note={`${dayName(c)}, still counting`} />
+    <Fig label={label} value={fmtTown(h[what][c] ?? 0n)} unit="$SKYLINE" amount={h[what][c] ?? 0n} view={`SkylineHook.${what}(${c})`} note={`${dayName(c)}, still counting`} />
   );
   return (
-    <Card title="Trading volume, in SKYLINE" class="volume">
+    <Card title="Trading volume, in $SKYLINE" class="volume">
       <Figures cols={4}>
         {past('cycleTotal', 'Bought yesterday')}
         {past('sold', 'Sold yesterday')}
@@ -371,10 +371,10 @@ export function TradingVolume() {
         {today('sold', 'Sold today so far')}
       </Figures>
       <p class="small faint card-foot">
-        Bought is the SKYLINE buyers received from the pool; sold is the SKYLINE sellers gave up, before the 2% sell fee. Today’s figures keep counting until{' '}
+        Bought is the $SKYLINE buyers received from the pool; sold is the $SKYLINE sellers gave up, before the 2% sell fee. Today’s figures keep counting until{' '}
         {dayName(c)} ends on <span class="num">{fmtDateTime(endsAt)}</span>.
       </p>
-      <Verify links={[{ label: 'daily totals', what: 'SkylineHook’s SKYLINE bought and sold per day', href: contractUrl(network, 'SkylineHook', 'read') }]} />
+      <Verify links={[{ label: 'daily totals', what: 'SkylineHook’s $SKYLINE bought and sold per day', href: contractUrl(network, 'SkylineHook', 'read') }]} />
     </Card>
   );
 }
@@ -422,16 +422,16 @@ function TokenTotals() {
   const words = sellFeeWords(chain);
   const y = m.yesterday;
   return (
-    <Card title="SKYLINE">
+    <Card title="$SKYLINE">
       <Figures cols={2}>
-        <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="SKYLINE" amount={chain.token.totalSupply} view="UpTownToken.totalSupply" />
-        <Fig label="Burned" value={fmtTown(burned(chain))} unit="SKYLINE" amount={burned(chain)} view="1,000,000,000 - totalSupply" />
-        <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="SKYLINE" amount={leftToBurn(chain)} view="totalSupply - SkylineHook.BURN_FLOOR" />
+        <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="$SKYLINE" amount={chain.token.totalSupply} view="UpTownToken.totalSupply" />
+        <Fig label="Burned" value={fmtTown(burned(chain))} unit="$SKYLINE" amount={burned(chain)} view="1,000,000,000 - totalSupply" />
+        <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="$SKYLINE" amount={leftToBurn(chain)} view="totalSupply - SkylineHook.BURN_FLOOR" />
         <Fig label="Sell fee today" value={words.mode} view="SkylineHook.sellFeeShares" note={words.reason} accent />
         <Fig
-          label="SKYLINE burned yesterday"
+          label="$SKYLINE burned yesterday"
           value={m.burnedYesterday !== null ? fmtTown(m.burnedYesterday) : '—'}
-          unit={m.burnedYesterday !== null ? 'SKYLINE' : undefined}
+          unit={m.burnedYesterday !== null ? '$SKYLINE' : undefined}
           amount={m.burnedYesterday}
           view={y !== null ? `SkylineHook.burned(${y})` : 'SkylineHook.burned(c - 1)'}
           note={y !== null ? `by sell fees on ${dayName(y)}` : `${dayName(0)} has no day before it`}
@@ -439,32 +439,32 @@ function TokenTotals() {
         <Fig
           label="Rebates paid out yesterday"
           value={m.rebatesYesterday !== null ? fmtTown(m.rebatesYesterday) : '—'}
-          unit={m.rebatesYesterday !== null ? 'SKYLINE' : undefined}
+          unit={m.rebatesYesterday !== null ? '$SKYLINE' : undefined}
           amount={m.rebatesYesterday}
           view={y !== null ? `BuyerRewards.emissionEstimate(${y})` : 'BuyerRewards.emissionEstimate(c - 1)'}
           note={y !== null ? `${dayName(y)}’s rebate pot; the fee is in ETH today only if the burn was larger` : undefined}
         />
-        <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="SKYLINE" amount={r.totalEmitted} view="BuyerRewards.totalEmitted" />
+        <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="$SKYLINE" amount={r.totalEmitted} view="BuyerRewards.totalEmitted" />
         <Fig
           label="Rebate reserve available"
           value={fmtTown(r.available)}
-          unit="SKYLINE"
+          unit="$SKYLINE"
           amount={r.available}
           view="BuyerRewards.available"
           note="what the reserve holds, less rebates settled and not yet claimed"
         />
-        <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="SKYLINE" amount={r.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" accent />
-        <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="SKYLINE" amount={r.totalFeesToTreasury} view="BuyerRewards.totalFeesToTreasury" />
+        <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="$SKYLINE" amount={r.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" accent />
+        <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="$SKYLINE" amount={r.totalFeesToTreasury} view="BuyerRewards.totalFeesToTreasury" />
       </Figures>
       <p class="small faint card-foot">
-        Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> SKYLINE of supply;
-        from there every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the treasury.
+        Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> $SKYLINE of supply;
+        from there every sell pays 1% in $SKYLINE to the rebate reserve and 1% in ETH to the treasury.
       </p>
       <Verify
         links={[
-          { label: 'total supply', what: 'SKYLINE’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },
+          { label: 'total supply', what: '$SKYLINE’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },
           { label: 'sell fee', what: 'SkylineHook’s sell-fee mode and burn per day', href: contractUrl(network, 'SkylineHook', 'read') },
-          { label: 'reserve balance', what: 'BuyerRewards’ SKYLINE balance', href: contractUrl(network, 'BuyerRewards') },
+          { label: 'reserve balance', what: 'BuyerRewards’ $SKYLINE balance', href: contractUrl(network, 'BuyerRewards') },
           { label: 'rebate totals', what: 'BuyerRewards’ running totals', href: contractUrl(network, 'BuyerRewards', 'read') },
         ]}
       />
@@ -489,10 +489,10 @@ function Staking() {
         <code data-view="Treasury.staking" title={st.address}>
           {stakingReplaced(chain, network.deployment?.contracts.SkylineStaking) ? shortAddress(st.address) : 'SkylineStaking'}
         </code>
-        : free staking, one pool, rewards in proportion to the SKYLINE staked.
+        : free staking, one pool, rewards in proportion to the $SKYLINE staked.
       </p>
       <Figures cols={2}>
-        <Fig label="SKYLINE staked" value={fmtTown(st.totalStaked)} unit="SKYLINE" amount={st.totalStaked} view="SkylineStaking.totalStaked" />
+        <Fig label="$SKYLINE staked" value={fmtTown(st.totalStaked)} unit="$SKYLINE" amount={st.totalStaked} view="SkylineStaking.totalStaked" />
         <Fig
           label="Streaming now"
           value={perDay > 0n ? fmtEth(perDay, 6) : poolEmpty(chain) ? 'Paused' : 'None'}
@@ -551,8 +551,8 @@ function Liquidity() {
         />
       </Figures>
       <p class="small faint card-foot">
-        The launch position holds the 500,000,000 SKYLINE the pool opened with. The second position is the owner’s: full range, funded at the launch with{' '}
-        {fmtEth(chain.launch.SECOND_POSITION_ETH, 2)} ETH and part of the SKYLINE the launch buy received; the rest of that SKYLINE went to the owner wallet.
+        The launch position holds the 500,000,000 $SKYLINE the pool opened with. The second position is the owner’s: full range, funded at the launch with{' '}
+        {fmtEth(chain.launch.SECOND_POSITION_ETH, 2)} ETH and part of the $SKYLINE the launch buy received; the rest of that $SKYLINE went to the owner wallet.
         While the second position is in the pool, the price can dip below the opening price by at most what its ETH absorbs.
       </p>
       <Verify

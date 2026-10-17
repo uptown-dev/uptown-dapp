@@ -22,13 +22,13 @@ import { formatUnits } from 'viem';
 /** A SKYLINE amount typed (CR-72: a point for decimals, commas only between thousands), or null. */
 const parseSkyline = (s: string): bigint | null => amountOrNull(s, 18);
 /** The sentence for a SKYLINE amount that cannot be used, or null. */
-const skylineError = (s: string): string | null => amountError(s, 18, 'Enter an amount of SKYLINE, for example 1,000,000.');
+const skylineError = (s: string): string | null => amountError(s, 18, 'Enter an amount of $SKYLINE, for example 1,000,000.');
 
 /** The page's lead, and the three plain facts the spec asks the page to say (CR-102 amended). */
-export const STAKE_LEAD = 'Stake SKYLINE for free and earn a share of the ETH the treasury pays out every day, as WETH.';
+export const STAKE_LEAD = 'Stake $SKYLINE for free and earn a share of the ETH the treasury pays out every day, as WETH.';
 export const STAKE_FACTS = {
   free: 'Staking is free: there is nothing to buy first and no fee to stake, only the network’s gas.',
-  share: 'Rewards follow the SKYLINE each address has staked: every payout is shared by everyone staked, in proportion to their stake.',
+  share: 'Rewards follow the $SKYLINE each address has staked: every payout is shared by everyone staked, in proportion to their stake.',
   nft: 'This staking contract is temporary. An NFT staking contract for holders of the “Uptowners” collection replaces it later; the treasury announces the switch 2 days ahead, and a stake left here can still be unstaked and claimed.',
 } as const;
 
@@ -217,11 +217,11 @@ export function OldStakeCard({ old }: { old: OldStake }) {
         <code title={old.address}>{shortAddress(old.address)}</code>
       </p>
       <p class="small muted">
-        The treasury no longer pays this contract, so it receives no new payouts; WETH it received before keeps streaming over its seven days. Your SKYLINE
+        The treasury no longer pays this contract, so it receives no new payouts; WETH it received before keeps streaming over its seven days. Your $SKYLINE
         and earned WETH stay yours: unstake and claim them here. To earn from new payouts, stake in the current contract below.
       </p>
       <Figures cols={2}>
-        <Fig label="SKYLINE staked" value={fmtTown(old.stake)} unit="SKYLINE" amount={old.stake} view="stakeOf(wallet), replaced contract" />
+        <Fig label="$SKYLINE staked" value={fmtTown(old.stake)} unit="$SKYLINE" amount={old.stake} view="stakeOf(wallet), replaced contract" />
         <Fig label="Earned" value={fmtEth(old.earned)} unit="WETH" amount={old.earned} view="earned(wallet), replaced contract" accent />
       </Figures>
       <div class="btn-row">
@@ -238,10 +238,10 @@ export function OldStakeCard({ old }: { old: OldStake }) {
           class="btn btn-secondary"
           disabled={tx.busy || old.stake === 0n}
           onClick={() =>
-            void tx.run('Unstake', () => unstakeTx(network, old.address, old.stake), () => `${fmtTown(old.stake)} SKYLINE came back to your wallet. Earned WETH stays claimable.`)
+            void tx.run('Unstake', () => unstakeTx(network, old.address, old.stake), () => `${fmtTown(old.stake)} $SKYLINE came back to your wallet. Earned WETH stays claimable.`)
           }
         >
-          {`Unstake all ${fmtTown(old.stake)} SKYLINE`}
+          {`Unstake all ${fmtTown(old.stake)} $SKYLINE`}
         </button>
       </div>
       <TxStatus tx={tx} />
@@ -291,7 +291,7 @@ function PoolCard() {
         )}
       </p>
       <Figures cols={3}>
-        <Fig label="SKYLINE staked" value={fmtTown(st.totalStaked)} unit="SKYLINE" amount={st.totalStaked} view="SkylineStaking.totalStaked" note="by everyone, in one pool" />
+        <Fig label="$SKYLINE staked" value={fmtTown(st.totalStaked)} unit="$SKYLINE" amount={st.totalStaked} view="SkylineStaking.totalStaked" note="by everyone, in one pool" />
         <Fig
           label="Streaming now"
           value={perDay > 0n ? fmtEth(perDay, 6) : empty && unpaid > 0n ? 'Paused' : 'None'}
@@ -382,8 +382,8 @@ function YourStake() {
     <Card title="Your stake">
       <div class="split">
         <div>
-          <Figures cols={3}>
-            <Fig label="SKYLINE staked" value={fmtTown(wallet.stakeOf)} unit="SKYLINE" amount={wallet.stakeOf} view="SkylineStaking.stakeOf(wallet)" />
+          <Figures cols={3} class="your-stake-figs">
+            <Fig label="$SKYLINE staked" value={fmtTown(wallet.stakeOf)} unit="$SKYLINE" amount={wallet.stakeOf} view="SkylineStaking.stakeOf(wallet)" />
             <Fig label="Share of the pool" value={wallet.stakeOf > 0n ? fmtBps(share) : '—'} view="stakeOf(wallet) / totalStaked" note="of each payout while staked" />
             <Fig label="Earned" value={fmtEth(wallet.earned)} unit="WETH" amount={wallet.earned} view="SkylineStaking.earned(wallet)" accent />
           </Figures>
@@ -421,7 +421,7 @@ function YourStake() {
 
 /** Staking: the exact-amount approval when it is missing, then the stake (CR-82). */
 export function stakePlan(approve: boolean): { id: string; label: string }[] {
-  return [...(approve ? [{ id: 'approve', label: 'Approve SKYLINE' }] : []), { id: 'stake', label: 'Stake SKYLINE' }];
+  return [...(approve ? [{ id: 'approve', label: 'Approve $SKYLINE' }] : []), { id: 'stake', label: 'Stake $SKYLINE' }];
 }
 
 /** Before the press: how many transactions the stake takes, and that the wallet asks for each. */
@@ -429,7 +429,7 @@ function StakePlan({ amount }: { amount: bigint }) {
   const { network } = useApp();
   return (
     <p class="run-plan small" data-transactions="2">
-      <strong>This takes 2 transactions:</strong> approve exactly <span class="num">{fmtTown(amount)}</span> SKYLINE <Usd amount={amount} unit="SKYLINE" paren />{' '}
+      <strong>This takes 2 transactions:</strong> approve exactly <span class="num">{fmtTown(amount)}</span> $SKYLINE <Usd amount={amount} unit="SKYLINE" paren />{' '}
       for the staking contract, then stake it.{' '}
       {network.local
         ? 'Each is sent from the test wallet as soon as the one before is confirmed.'
@@ -449,7 +449,7 @@ export async function approveThenStake(r: Runner, ctx: { client: PublicClient; n
   const s = await read();
   const need = s.allowance < amount;
   r.plan(stakePlan(need));
-  if (s.balance < amount) throw new Stop(`This wallet holds ${fmtTown(s.balance)} SKYLINE, less than the ${fmtTown(amount)} SKYLINE typed, so nothing was sent.`, 'Balance', false);
+  if (s.balance < amount) throw new Stop(`This wallet holds ${fmtTown(s.balance)} $SKYLINE, less than the ${fmtTown(amount)} $SKYLINE typed, so nothing was sent.`, 'Balance', false);
   if (need) {
     await r.send('approve', () => approveTx(network, staking, amount));
     await readUntil(r, read, (x) => x.allowance >= amount, 'the stake');
@@ -469,15 +469,15 @@ function StakeForm({ tx, run }: { tx: Tx; run: Run }) {
     if (amt === null || !account) return;
     const a = amt;
     const staking = chain.staking.address;
-    void run.start('Stake SKYLINE', stakePlan(!approved), async (r) => {
+    void run.start('Stake $SKYLINE', stakePlan(!approved), async (r) => {
       await approveThenStake(r, { client, network, staking, from: account, amount: a });
-      return `${fmtExact(a)} SKYLINE is staked. It earns its share of every payout from now on.`;
+      return `${fmtExact(a)} $SKYLINE is staked. It earns its share of every payout from now on.`;
     });
   };
   return (
     <form class="action-form" onSubmit={(e) => e.preventDefault()}>
       <div class="field">
-        <label for="stake-amount">SKYLINE to stake</label>
+        <label for="stake-amount">$SKYLINE to stake</label>
         <div class="input-wrap">
           <input
             id="stake-amount"
@@ -489,12 +489,12 @@ function StakeForm({ tx, run }: { tx: Tx; run: Run }) {
             aria-invalid={skylineError(amount) !== null}
             onInput={(e) => setAmount((e.target as HTMLInputElement).value)}
           />
-          <span class="suffix">SKYLINE</span>
+          <span class="suffix">$SKYLINE</span>
         </div>
-        <Uses value={amt} unit="SKYLINE" />
+        <Uses value={amt} unit="$SKYLINE" />
         {skylineError(amount) && <FieldError>{skylineError(amount)}</FieldError>}
         <span class="hint">
-          Free: no fee, only gas. Your SKYLINE: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span>{' '}
+          Free: no fee, only gas. Your $SKYLINE: <span class="num">{fmtTown(wallet?.townBalance ?? 0n)}</span>{' '}
           <Usd amount={wallet?.townBalance} unit="SKYLINE" paren />
           {wallet && wallet.townBalance > 0n && (
             <>
@@ -508,7 +508,7 @@ function StakeForm({ tx, run }: { tx: Tx; run: Run }) {
           {wallet?.townBalance === 0n && (
             <>
               {' '}
-              · <a href="#/trade">Buy SKYLINE first</a>
+              · <a href="#/trade">Buy $SKYLINE first</a>
             </>
           )}
           {wallet && wallet.townAllowanceToStaking > 0n && (
@@ -518,13 +518,13 @@ function StakeForm({ tx, run }: { tx: Tx; run: Run }) {
             </>
           )}
         </span>
-        {tooMuch && <FieldError>That is more SKYLINE than this wallet holds.</FieldError>}
+        {tooMuch && <FieldError>That is more $SKYLINE than this wallet holds.</FieldError>}
       </div>
       {amt !== null && amt > 0n && !approved && !tooMuch && !tx.busy && <StakePlan amount={amt} />}
       <PausedTag />
       <div class="btn-row">
         <button type="button" class="btn btn-primary stake-go" disabled={tx.busy || amt === null || amt === 0n || tooMuch} onClick={stake}>
-          {approved || amt === null || amt === 0n ? 'Stake SKYLINE' : 'Approve and stake SKYLINE'}
+          {approved || amt === null || amt === 0n ? 'Stake $SKYLINE' : 'Approve and stake $SKYLINE'}
         </button>
       </div>
     </form>
@@ -541,7 +541,7 @@ function UnstakeForm({ tx }: { tx: Tx }) {
   return (
     <form class="action-form" onSubmit={(e) => e.preventDefault()}>
       <div class="field">
-        <label for="unstake-amount">SKYLINE to unstake</label>
+        <label for="unstake-amount">$SKYLINE to unstake</label>
         <div class="input-wrap">
           <input
             id="unstake-amount"
@@ -553,9 +553,9 @@ function UnstakeForm({ tx }: { tx: Tx }) {
             aria-invalid={skylineError(amount) !== null}
             onInput={(e) => setAmount((e.target as HTMLInputElement).value)}
           />
-          <span class="suffix">SKYLINE</span>
+          <span class="suffix">$SKYLINE</span>
         </div>
-        <Uses value={amt} unit="SKYLINE" />
+        <Uses value={amt} unit="$SKYLINE" />
         {skylineError(amount) && <FieldError>{skylineError(amount)}</FieldError>}
         <span class="hint">
           Any amount, at any time. Staked: <span class="num">{fmtTown(staked)}</span> <Usd amount={staked} unit="SKYLINE" paren />
@@ -569,9 +569,9 @@ function UnstakeForm({ tx }: { tx: Tx }) {
             </>
           )}
         </span>
-        {tooMuch && <FieldError>That is more SKYLINE than this wallet has staked.</FieldError>}
+        {tooMuch && <FieldError>That is more $SKYLINE than this wallet has staked.</FieldError>}
       </div>
-      <p class="small muted">The SKYLINE comes back to your wallet at once. Earned WETH stays claimable.</p>
+      <p class="small muted">The $SKYLINE comes back to your wallet at once. Earned WETH stays claimable.</p>
       <button
         type="button"
         class="btn btn-secondary unstake-go"
@@ -581,11 +581,11 @@ function UnstakeForm({ tx }: { tx: Tx }) {
           const a = amt;
           void tx.run('Unstake', () => unstakeTx(network, chain.staking.address, a), () => {
             setAmount('');
-            return `${fmtExact(a)} SKYLINE came back to your wallet. Earned WETH stays claimable.`;
+            return `${fmtExact(a)} $SKYLINE came back to your wallet. Earned WETH stays claimable.`;
           });
         }}
       >
-        Unstake SKYLINE
+        Unstake $SKYLINE
       </button>
     </form>
   );

@@ -34,7 +34,7 @@ export function launchLine(n: { name: string; local: boolean }): string {
 export const OFF = {
   buy: 'Buying starts when the pool opens at the launch.',
   sell: 'Selling starts when the pool opens at the launch.',
-  stake: 'Staking opens at the launch, when SKYLINE can first be bought.',
+  stake: 'Staking opens at the launch, when $SKYLINE can first be bought.',
   claim: 'Rebates are earned by buys in the pool, so there is nothing to claim before the launch.',
 } as const;
 
@@ -106,13 +106,13 @@ function SupplyFigures({ p }: { p: PrelaunchState }) {
   const all = p.launcherBalance === p.token.totalSupply;
   return (
     <Figures cols={2}>
-      <Fig label="Total supply" value={fmtTown(p.token.totalSupply)} unit="SKYLINE" view="UpTownToken.totalSupply" note="minted once, never more" />
+      <Fig label="Total supply" value={fmtTown(p.token.totalSupply)} unit="$SKYLINE" view="UpTownToken.totalSupply" note="minted once, never more" />
       <Fig
         label="Held by the Launcher"
         value={fmtTown(p.launcherBalance)}
-        unit="SKYLINE"
+        unit="$SKYLINE"
         view="UpTownToken.balanceOf(Launcher)"
-        note={all ? 'every SKYLINE, until the launch' : 'of the supply, until the launch'}
+        note={all ? 'every $SKYLINE, until the launch' : 'of the supply, until the launch'}
       />
     </Figures>
   );
@@ -124,15 +124,15 @@ export function HomeContracts({ p }: { p: PrelaunchState }) {
   return (
     <Card title={<span id="live-title">The contracts</span>}>
       <p class="small muted card-lead">
-        Deployed on {inSentence(network)} and waiting for the launch. At the launch, 500,000,000 SKYLINE go into the pool, locked for{' '}
-        {fmtYears(p.lpVault.lockDuration)}, and 500,000,000 SKYLINE into the rebate reserve. <LaunchFacts p={p} />
+        Deployed on {inSentence(network)} and waiting for the launch. At the launch, 500,000,000 $SKYLINE go into the pool, locked for{' '}
+        {fmtYears(p.lpVault.lockDuration)}, and 500,000,000 $SKYLINE into the rebate reserve. <LaunchFacts p={p} />
       </p>
       <SupplyFigures p={p} />
       <ContractList />
       <Verify
         links={[
-          { label: 'SKYLINE supply', what: 'SKYLINE’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },
-          { label: 'Launcher', what: 'the Launcher, which holds every SKYLINE until the launch', href: contractUrl(network, 'Launcher') },
+          { label: '$SKYLINE supply', what: '$SKYLINE’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },
+          { label: 'Launcher', what: 'the Launcher, which holds every $SKYLINE until the launch', href: contractUrl(network, 'Launcher') },
         ]}
       />
     </Card>
@@ -146,7 +146,7 @@ export function HomeContracts({ p }: { p: PrelaunchState }) {
 export function LaunchFacts({ p }: { p: FixedRules }) {
   return (
     <span data-view="Launcher.LAUNCH_BUY_ETH, SECOND_POSITION_ETH; LPVault.SECOND_LOCK">
-      In the same transaction the Launcher buys SKYLINE with {fmtEth(p.launch.LAUNCH_BUY_ETH, 2)} ETH for the owner wallet, and adds the owner’s second,
+      In the same transaction the Launcher buys $SKYLINE with {fmtEth(p.launch.LAUNCH_BUY_ETH, 2)} ETH for the owner wallet, and adds the owner’s second,
       full-range position with {fmtEth(p.launch.SECOND_POSITION_ETH, 2)} ETH, locked for {fmtYears(p.lpVault.SECOND_LOCK)}.
     </span>
   );
@@ -170,10 +170,10 @@ function NotOursYet({ p }: { p: PrelaunchState }) {
   const town = network.deployment?.contracts.UpTownToken;
   if (p.launcherBalance !== p.token.totalSupply) return null;
   return (
-    <Notice kind="warn" title="No SKYLINE is traded anywhere yet">
+    <Notice kind="warn" title="No $SKYLINE is traded anywhere yet">
       <p>
-        Every SKYLINE is held by the Launcher until the launch, and the official pool is opened by the launch itself, through SkylineHook. A SKYLINE pool, or a
-        token offered as SKYLINE, before then is not UpTown’s. SKYLINE’s address: <code class="break">{town}</code>.
+        Every $SKYLINE is held by the Launcher until the launch, and the official pool is opened by the launch itself, through SkylineHook. A $SKYLINE pool, or a
+        token offered as $SKYLINE, before then is not UpTown’s. $SKYLINE’s address: <code class="break">{town}</code>.
       </p>
     </Notice>
   );
@@ -184,11 +184,11 @@ export function TradeBeforeLaunch({ p }: { p: PrelaunchState }) {
   const { network } = useApp();
   return (
     <div class="wrap page narrow" data-state="not-launched">
-      <PageHead title="Trade SKYLINE" lead="Buy or sell SKYLINE for ETH, from the launch." />
-      <NotOpen>Buying and selling start at the launch, when the official SKYLINE pool opens. Until then there is nothing to trade here.</NotOpen>
-      <section class="card swap-card" aria-label="Trade SKYLINE">
-        <OffAction id="buy" label="Buy SKYLINE" why={OFF.buy} />
-        <OffAction id="sell" label="Sell SKYLINE" why={OFF.sell} />
+      <PageHead title="Trade $SKYLINE" lead="Buy or sell $SKYLINE for ETH, from the launch." />
+      <NotOpen>Buying and selling start at the launch, when the official $SKYLINE pool opens. Until then there is nothing to trade here.</NotOpen>
+      <section class="card swap-card" aria-label="Trade $SKYLINE">
+        <OffAction id="buy" label="Buy $SKYLINE" why={OFF.buy} />
+        <OffAction id="sell" label="Sell $SKYLINE" why={OFF.sell} />
       </section>
       <NotOursYet p={p} />
       <FeeRules rules={p} />
@@ -206,9 +206,9 @@ function FeeRules({ rules }: { rules: FixedRules }) {
           <strong>Buy.</strong> {fmtBps(rules.hook.BUY_FEE_BPS)} of the ETH, to the treasury, from the first second of trading.
         </li>
         <li>
-          <strong>Sell.</strong> 2% of every sell: burned in SKYLINE, or sent to the treasury in ETH, decided each day by the contract; from{' '}
-          {dayName(rules.hook.RESERVE_FEE_START)} half of a SKYLINE fee goes to the rebate reserve, and once only {fmtTown(rules.hook.BURN_FLOOR)} SKYLINE remain
-          every sell pays 1% in SKYLINE to the reserve and 1% in ETH.
+          <strong>Sell.</strong> 2% of every sell: burned in $SKYLINE, or sent to the treasury in ETH, decided each day by the contract; from{' '}
+          {dayName(rules.hook.RESERVE_FEE_START)} half of a $SKYLINE fee goes to the rebate reserve, and once only {fmtTown(rules.hook.BURN_FLOOR)} $SKYLINE remain
+          every sell pays 1% in $SKYLINE to the reserve and 1% in ETH.
         </li>
         <li>
           <strong>Pool.</strong> The pool’s 0.5% trading fee goes to the locked liquidity.
@@ -226,7 +226,7 @@ export function RewardsBeforeLaunch({ p }: { p: PrelaunchState }) {
     <div class="wrap page" data-state="not-launched">
       <PageHead
         title="Rewards"
-        lead={`Every buy earns a SKYLINE rebate: ${fmtBps(r.low)} to ${fmtBps(r.high)} of the SKYLINE you bought, set each day by the last three days’ trading, less a ${fmtBps(p.rewards.CLAIM_FEE_BPS)} claim fee, claimable the next day within each day’s limit.`}
+        lead={`Every buy earns a $SKYLINE rebate: ${fmtBps(r.low)} to ${fmtBps(r.high)} of the $SKYLINE you bought, set each day by the last three days’ trading, less a ${fmtBps(p.rewards.CLAIM_FEE_BPS)} claim fee, claimable the next day within each day’s limit.`}
       />
       <NotOpen>Rebates start with the launch: the launch day is the first day buys are counted, and it can be claimed from the next midnight UTC.</NotOpen>
       <Card title="Claim">
@@ -249,10 +249,10 @@ export function StakeBeforeLaunch({ p }: { p: PrelaunchState }) {
   return (
     <div class="wrap page" data-state="not-launched">
       <PageHead title="Stake" lead={STAKE_LEAD} />
-      <NotOpen>Staking starts at the launch. Until then every SKYLINE is held by the Launcher, so there is nothing to stake.</NotOpen>
+      <NotOpen>Staking starts at the launch. Until then every $SKYLINE is held by the Launcher, so there is nothing to stake.</NotOpen>
       <HowStakingWorks />
       <Card title="Stake">
-        <OffAction id="stake" label="Stake SKYLINE" why={OFF.stake} />
+        <OffAction id="stake" label="Stake $SKYLINE" why={OFF.stake} />
       </Card>
       <StakeDetails />
       <Verify links={[{ what: 'the staking contract', href: readUrl(network, p.staking.address) }]} />
@@ -271,13 +271,13 @@ export function StatsBeforeLaunch({ p }: { p: PrelaunchState }) {
         <ContractList />
       </Card>
       <div class="grid-2">
-        <Card title="SKYLINE">
+        <Card title="$SKYLINE">
           <SupplyFigures p={p} />
           <p class="small faint card-foot">
-            The burn stops at <span class="num">{fmtTown(p.hook.BURN_FLOOR)}</span> SKYLINE of supply. At the launch, 500,000,000 SKYLINE go into the pool and
-            500,000,000 SKYLINE into the rebate reserve. <LaunchFacts p={p} />
+            The burn stops at <span class="num">{fmtTown(p.hook.BURN_FLOOR)}</span> $SKYLINE of supply. At the launch, 500,000,000 $SKYLINE go into the pool and
+            500,000,000 $SKYLINE into the rebate reserve. <LaunchFacts p={p} />
           </p>
-          <Verify links={[{ label: 'total supply', what: 'SKYLINE’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) }]} />
+          <Verify links={[{ label: 'total supply', what: '$SKYLINE’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) }]} />
         </Card>
         <Card title="Settings">
           <Figures cols={2}>

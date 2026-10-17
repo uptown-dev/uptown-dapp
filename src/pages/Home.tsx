@@ -5,7 +5,7 @@ import { dayName, fmtBps, fmtEth, fmtTown, fmtRate } from '../lib/format';
 import { contractUrl, readUrl, tokenUrl } from '../lib/network';
 import { HomeContracts, launchLine } from './BeforeLaunch';
 
-const FIXED_RULES = ['1,000,000,000 SKYLINE, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell pays 2%: burned, to the rebate reserve, or to the treasury in ETH'];
+const FIXED_RULES = ['1,000,000,000 $SKYLINE, never more', 'No upgrades; trading never pauses', 'Liquidity locked for 10 years', 'Every sell pays 2%: burned, to the rebate reserve, or to the treasury in ETH'];
 
 /**
  * The owner's own words (CR-77 items 2 to 5), character for character as he wrote them, including
@@ -13,11 +13,12 @@ const FIXED_RULES = ['1,000,000,000 SKYLINE, never more', 'No upgrades; trading 
  * nothing here re-words, re-punctuates, re-wraps or splits them, and the text node the browser
  * shows is the sentence itself. Do not edit these without a change request. CR-102 changed only the
  * symbol in them ($TOWN to $SKYLINE, TOWN to SKYLINE, TownHook to SkylineHook), no other word.
+ * CR-105 writes every SKYLINE as $SKYLINE (the owner's instruction); an existing $SKYLINE is kept.
  */
 const WHY_FIRST = 'Most projects that distribute revenue have no systems that ensure sustained revenue generation. Attention fades after launch, trading slows, and the project fades with it.';
 const WHY_SECOND =
-  "UpTown's sophisticated flywheel is built on top of the pool. Every trade in the SKYLINE pool passes through SkylineHook, a contract no one controls, and it turns trading into reasons to participate: buyers claim SKYLINE rebates at the end of trading days, stakers receive a daily share of the ETH the treasury collects, and on every sale 2% is either charged in $SKYLINE and burned or charged in ETH and sent to the treasury. The rules are written into the contracts and cannot be changed.";
-const REBATE_CARD = "of SKYLINE bought every day, claimable in $SKYLINE, minus a 2% claim fee, claimable the next day. The rate moves between 5% and 5.5%, decided using data from the last three days' trading activity.";
+  "UpTown's sophisticated flywheel is built on top of the pool. Every trade in the $SKYLINE pool passes through SkylineHook, a contract no one controls, and it turns trading into reasons to participate: buyers claim $SKYLINE rebates at the end of trading days, stakers receive a daily share of the ETH the treasury collects, and on every sale 2% is either charged in $SKYLINE and burned or charged in ETH and sent to the treasury. The rules are written into the contracts and cannot be changed.";
+const REBATE_CARD = "of $SKYLINE bought every day, claimable in $SKYLINE, minus a 2% claim fee, claimable the next day. The rate moves between 5% and 5.5%, decided using data from the last three days' trading activity.";
 const STAKER_CARD = 'charged in ETH, sent to the treasury; 90% of it streams to stakers as WETH';
 const RULES_CARD = 'never more. Zero dev allocation. No upgrades; trading never pauses; liquidity locked for a minimum of ten years.';
 
@@ -39,7 +40,7 @@ export function Home() {
         <div class="wrap hero-inner">
           <div class="hero-text">
             <p class="eyebrow">
-              UpTown Token (SKYLINE) on Ethereum
+              UpTown Token ($SKYLINE) on Ethereum
               {c !== null && (
                 <>
                   {' '}
@@ -52,11 +53,11 @@ export function Home() {
                 {launchLine(network)}
               </p>
             )}
-            <h1>SKYLINE, the first token that rewards buyers and stakers.</h1>
+            <h1>$SKYLINE, the first token that rewards buyers and stakers.</h1>
             <p class="hero-summary">
               Every trade in the $SKYLINE pool on Uniswap v4 passes through SkylineHook, a contract managed by no one: it sends 2% of every buy, charged in ETH, to
-              the treasury, records the SKYLINE bought, and dynamically takes 2% of every SKYLINE sold into the pool: burned when it collects $SKYLINE, or to the
-              treasury when it collects ETH. Every day, buyers claim up to 5.5% of $SKYLINE bought from a 500,000,000 SKYLINE reserve. 90% of the treasury’s ETH
+              the treasury, records the $SKYLINE bought, and dynamically takes 2% of every $SKYLINE sold into the pool: burned when it collects $SKYLINE, or to the
+              treasury when it collects ETH. Every day, buyers claim up to 5.5% of $SKYLINE bought from a 500,000,000 $SKYLINE reserve. 90% of the treasury’s ETH
               funds staker rewards, which stream to stakers every day as WETH.
             </p>
             {before ? (
@@ -72,10 +73,10 @@ export function Home() {
             ) : (
               <div class="btn-row hero-cta">
                 <a class="btn btn-primary btn-large" href="#/trade">
-                  Buy SKYLINE
+                  Buy $SKYLINE
                 </a>
                 <a class="btn btn-secondary btn-large" href="#/stake">
-                  Stake SKYLINE
+                  Stake $SKYLINE
                 </a>
               </div>
             )}
@@ -91,7 +92,7 @@ export function Home() {
             <Verify
               links={[
                 { label: 'SkylineHook code', what: 'SkylineHook’s code', href: contractUrl(network, 'SkylineHook', 'code') },
-                { label: 'the supply', what: 'SKYLINE’s total supply', href: tokenUrl(network, town) },
+                { label: 'the supply', what: '$SKYLINE’s total supply', href: tokenUrl(network, town) },
                 { label: 'the lock', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
               ]}
             />
@@ -142,9 +143,9 @@ export function Home() {
               <LockIcon size={20} />
             </span>
             <h2>Fixed rules</h2>
-            <p class="feature-number num">1,000,000,000 SKYLINE</p>
+            <p class="feature-number num">1,000,000,000 $SKYLINE</p>
             <p>{RULES_CARD}</p>
-            <Verify links={[{ what: 'SKYLINE’s total supply', href: tokenUrl(network, town) }]} />
+            <Verify links={[{ what: '$SKYLINE’s total supply', href: tokenUrl(network, town) }]} />
           </article>
         </div>
       </section>
@@ -160,7 +161,7 @@ export function Home() {
                 <span class="step-no">1</span>
                 <div>
                   <h3>Every trade goes through SkylineHook</h3>
-                  <p>Buy or sell SKYLINE in its Uniswap v4 pool and the trade passes through SkylineHook, which nobody can change or switch off.</p>
+                  <p>Buy or sell $SKYLINE in its Uniswap v4 pool and the trade passes through SkylineHook, which nobody can change or switch off.</p>
                 </div>
               </li>
               <li>
@@ -168,7 +169,7 @@ export function Home() {
                 <div>
                   <h3>On a buy, SkylineHook pays the treasury and records you</h3>
                   <p>
-                    2% of the ETH goes to the treasury, and the SKYLINE you bought is written into the day’s tally that rebates are paid from. The buy fee is
+                    2% of the ETH goes to the treasury, and the $SKYLINE you bought is written into the day’s tally that rebates are paid from. The buy fee is
                     2% from the first second of trading.
                   </p>
                 </div>
@@ -178,9 +179,9 @@ export function Home() {
                 <div>
                   <h3>On a sell, SkylineHook takes 2%</h3>
                   <p>
-                    The 2% is taken in SKYLINE and burned; from {dayName(reserveFeeStart(rules))} half is burned and half refills the rebate reserve. On a day
-                    after one that burned more SKYLINE than it paid out in rebates, it goes to the treasury in ETH instead. Once only{' '}
-                    {fmtTown(burnFloor(rules))} SKYLINE remain, every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the treasury.
+                    The 2% is taken in $SKYLINE and burned; from {dayName(reserveFeeStart(rules))} half is burned and half refills the rebate reserve. On a day
+                    after one that burned more $SKYLINE than it paid out in rebates, it goes to the treasury in ETH instead. Once only{' '}
+                    {fmtTown(burnFloor(rules))} $SKYLINE remain, every sell pays 1% in $SKYLINE to the rebate reserve and 1% in ETH to the treasury.
                   </p>
                 </div>
               </li>
@@ -189,7 +190,7 @@ export function Home() {
                 <div>
                   <h3>Buyers and stakers are rewarded</h3>
                   <p>
-                    From the day after a buy you can claim {fmtBps(r.low)} to {fmtBps(r.high)} of your SKYLINE back from the reserve, set each day by the last
+                    From the day after a buy you can claim {fmtBps(r.low)} to {fmtBps(r.high)} of your $SKYLINE back from the reserve, set each day by the last
                     three days’ trading ({fmtRate(afterFeeBps(rules, r.low))} to {fmtRate(afterFeeBps(rules, r.high))} after the claim fee). Each day the treasury pays
                     part of its ETH to stakers as WETH, streamed over seven days.
                   </p>
@@ -211,9 +212,9 @@ export function Home() {
             {chain ? (
               <Figures cols={4}>
                 <Fig label="ETH sent to stakers" value={fmtEth(chain.treasury.totalDistributed)} unit="WETH" amount={chain.treasury.totalDistributed} view="Treasury.totalDistributed" />
-                <Fig label="SKYLINE rebated to buyers" value={fmtTown(chain.rewards.totalPaidToBuyers)} unit="SKYLINE" amount={chain.rewards.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" />
-                <Fig label="SKYLINE burned" value={fmtTown(burned(chain))} unit="SKYLINE" amount={burned(chain)} view="1,000,000,000 - UpTownToken.totalSupply" />
-                <Fig label="SKYLINE staked" value={fmtTown(chain.staking.totalStaked)} unit="SKYLINE" amount={chain.staking.totalStaked} view="SkylineStaking.totalStaked" />
+                <Fig label="$SKYLINE rebated to buyers" value={fmtTown(chain.rewards.totalPaidToBuyers)} unit="$SKYLINE" amount={chain.rewards.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" />
+                <Fig label="$SKYLINE burned" value={fmtTown(burned(chain))} unit="$SKYLINE" amount={burned(chain)} view="1,000,000,000 - UpTownToken.totalSupply" />
+                <Fig label="$SKYLINE staked" value={fmtTown(chain.staking.totalStaked)} unit="$SKYLINE" amount={chain.staking.totalStaked} view="SkylineStaking.totalStaked" />
               </Figures>
             ) : network.deployment ? (
               <p class="muted">Reading the figures from the contracts…</p>
@@ -226,7 +227,7 @@ export function Home() {
               links={[
                 { label: 'Treasury', what: 'the Treasury’s total paid to stakers', href: contractUrl(network, 'Treasury', 'read') },
                 { label: 'BuyerRewards', what: 'BuyerRewards’ total paid to buyers', href: contractUrl(network, 'BuyerRewards', 'read') },
-                { label: 'SKYLINE supply', what: 'SKYLINE’s total supply', href: tokenUrl(network, town) },
+                { label: '$SKYLINE supply', what: '$SKYLINE’s total supply', href: tokenUrl(network, town) },
                 { label: 'staking', what: 'the staking contract’s total staked', href: chain ? readUrl(network, chain.staking.address) : contractUrl(network, 'SkylineStaking', 'read') },
               ]}
             />
