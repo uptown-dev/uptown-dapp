@@ -1,7 +1,7 @@
 // F13a (CR-102) review driver: photographs the SKYLINE site and checks what each page shows.
 //
 //   node scripts/f13a-shots.mjs local     after VITE_CHAIN_ID=31337 npm run build, with the local chain running
-//   node scripts/f13a-shots.mjs mainnet   after VITE_CHAIN_ID=1 npm run build (today's chain-1 address file is TOWN's)
+//   node scripts/f13a-shots.mjs mainnet   only for a chain-1 address file that is not SKYLINE's (see below)
 //
 // local: Home, Trade, Stake, Stats, Docs and Owner (the owner's test wallet for Owner, Test wallet 1
 // elsewhere), at 1280 px light and 390 px dark. On every page: no word of TOWN outside the
@@ -11,9 +11,11 @@
 // Chainlink feed is days old). Stake: the three plain facts and the three actions. Stats: the two
 // positions and the launch buy. Owner: the second position's two powers.
 //
-// mainnet: the build made from the committed `src/addresses/1.json`, which still holds the retired
-// TOWN deployment's addresses until the owner's SKYLINE phase 1 rewrites it. Every page must say "not
-// deployed", show the retired-TOWN notice, name no contract address and contact no network service.
+// mainnet: written for F13a, when the committed `src/addresses/1.json` still held the retired TOWN
+// deployment's addresses: every page must say "not deployed", show the retired-TOWN notice, name no
+// contract address and contact no network service. Since the owner's SKYLINE phase 1 (17 October
+// 2026) that file is SKYLINE's, so this mode refuses to run; the mainnet build as it is now is
+// photographed and checked by scripts/f13c-shots.mjs.
 //
 // It serves dist/ with the hosting headers of vercel.json on 127.0.0.1:4313 (never 4173, 5173 or
 // 8545) and drives headless Edge (debugging port 9413). It picks local test wallets the way the
@@ -28,6 +30,9 @@ import { extname, join, resolve } from 'node:path';
 const MODE = process.argv[2];
 if (MODE !== 'local' && MODE !== 'mainnet') throw new Error('usage: node scripts/f13a-shots.mjs local|mainnet');
 const LOCAL = MODE === 'local';
+if (!LOCAL && JSON.parse(readFileSync(resolve('src/addresses/1.json'), 'utf8')).tokenSymbol === 'SKYLINE') {
+  throw new Error("src/addresses/1.json is SKYLINE's (since phase 1, 17 October 2026): use node scripts/f13c-shots.mjs for the mainnet build");
+}
 const DIST = resolve('dist');
 const OUT = resolve(`review-shots/f13a/${MODE}`);
 rmSync(OUT, { recursive: true, force: true });

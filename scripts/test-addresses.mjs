@@ -286,13 +286,39 @@ try {
       r.out,
     );
   }
+  // The real chain-1 records. Since the owner's SKYLINE phase 1 (17 October 2026),
+  // script/deployments/1.json is SKYLINE's phase-1 record: deployed, not launched. The retired TOWN
+  // records are kept beside it under other names; each must still be refused if it is ever handed
+  // to the script as the mainnet record.
+  const lf = (s) => (s === null ? null : s.replace(/\r\n/g, '\n'));
   const realMainnet = join(PROJECT, 'script', 'deployments', '1.json');
-  if (existsSync(realMainnet) && JSON.parse(readFileSync(realMainnet, 'utf8')).tokenSymbol !== 'SKYLINE') {
-    r = run(['frontend/scripts/addresses.mjs', '--chain', '1'], PROJECT);
-    check('CR-102 refused: the real script/deployments/1.json of today, the retired TOWN record, as script/mainnet-deploy.sh would run it (exit 1, target unchanged)', r.code === 1 && bytes(MAINNET_FILE) === mainnetBefore && /not a record of the SKYLINE deployment/.test(r.out), r.out);
-  } else {
-    check('CR-102: the real script/deployments/1.json (skipped: it is absent or already SKYLINE\'s)', true);
-  }
+  const realSymbol = existsSync(realMainnet) ? JSON.parse(readFileSync(realMainnet, 'utf8')).tokenSymbol ?? null : null;
+  r = run(['frontend/scripts/addresses.mjs', '--chain', '1'], PROJECT);
+  check(
+    'CR-102 the real script/deployments/1.json is SKYLINE\'s phase-1 record: run as script/mainnet-deploy.sh runs it, exit 0, "deployed, not launched yet", and it writes exactly the committed src/addresses/1.json (line endings aside: git may check that file out with CRLF)',
+    realSymbol === 'SKYLINE' && r.code === 0 && /deployed, not launched yet/.test(r.out) && lf(bytes(MAINNET_FILE)) === lf(mainnetBefore),
+    `tokenSymbol ${JSON.stringify(realSymbol)}; ${r.out}`,
+  );
+  restoreMainnet();
+  // The retired TOWN record in the mainnet command's format: refused for its missing SKYLINE symbol.
+  const keptTown = join(PROJECT, 'script', 'deployments', '1-town-20261017.json');
+  r = existsSync(keptTown) ? run(['frontend/scripts/addresses.mjs', '--chain', '1', 'script/deployments/1-town-20261017.json'], PROJECT) : { code: null, out: `${keptTown} is missing` };
+  check(
+    'CR-102 refused: the retired TOWN record, kept as script/deployments/1-town-20261017.json, given as the mainnet record (exit 1, target unchanged, plain message naming SKYLINE and the retired TOWN)',
+    r.code === 1 && bytes(MAINNET_FILE) === mainnetBefore && /not a record of the SKYLINE deployment/.test(r.out) && /TOWN, 0x994d362B403a5AbE6D815749f63c23B8e807fCF5/.test(r.out) && /Nothing was changed/.test(r.out),
+    r.out,
+  );
+  restoreMainnet();
+  // TOWN's raw phase-1 record (the broadcast's own file, which the mainnet command turns into 1.json):
+  // refused as well, whatever the first rule it breaks.
+  const keptTownPhase1 = join(PROJECT, 'script', 'deployments', '1-phase1-town-20261017.json');
+  r = existsSync(keptTownPhase1) ? run(['frontend/scripts/addresses.mjs', '--chain', '1', 'script/deployments/1-phase1-town-20261017.json'], PROJECT) : { code: null, out: `${keptTownPhase1} is missing` };
+  check(
+    'CR-102 refused: TOWN\'s raw phase-1 record, kept as script/deployments/1-phase1-town-20261017.json, given as the mainnet record (exit 1, target unchanged, "Nothing was changed")',
+    r.code === 1 && bytes(MAINNET_FILE) === mainnetBefore && /Nothing was changed/.test(r.out),
+    r.out,
+  );
+  restoreMainnet();
 
   // A phase-2 file that also names the pool key and the local-style helper fields, all agreeing.
   const p2key = sample('phase2-key-1.json', {

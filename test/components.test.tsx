@@ -127,8 +127,13 @@ import { Docs } from '../src/pages/Docs';
 import { OWNER_POWERS, RETIRED_NOTICE_TEXT, RETIRED_TOWN_ADDRESS, ROUTING_NOTE, THINGS_TO_KNOW } from '../src/content/docs';
 import { App, DayClock, FooterContracts, Freshness, PageView, NetworkTag, PlaceRow, StaleNotice, WalletButton, WalletChoices, WrongNetworkNote, navItems, networkNote, shortNetworkName } from '../src/app';
 import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetSkylineAddress } from '../src/lib/places';
+// The committed chain-1 address file, read as the site reads it (lib/places.ts imports it the same way).
+import MAINNET_ADDRESS_FILE from '../src/addresses/1.json';
 import type { ChainId, Network } from '../src/lib/network';
 import type { Address, CandidateCheck, ChainState, OwnerState, PrelaunchState, WalletState } from '../src/data/types';
+
+/** SKYLINE's token on Ethereum mainnet, deployed by the owner's phase 1 on 17 October 2026 (F13c). */
+const SKYLINE_MAINNET: Address = '0x9Ce79b2eB03fd83f3a8051234FF0b9fE4e654567';
 
 const log = document.getElementById('log')!;
 const stage = document.getElementById('stage')!;
@@ -2412,9 +2417,10 @@ async function cr82(base: ChainState, wallet: WalletState) {
 }
 
 // ---- F9q (CR-84), F9r (CR-87) and F9s (CR-88): the project's places in the footer ---------------
-// The row is rendered on its own, with the site's own chain-1 address file (no SKYLINE address today,
-// so GMGN says "at launch") and with a stand-in address passed in its place (GMGN is then an
-// ordinary link). The stylesheet is loaded for as long as these checks run, because it is the
+// The row is rendered on its own, with the site's own chain-1 address file (SKYLINE's since the
+// owner's phase 1 on 17 October 2026, so GMGN is a link to its page), with `null` passed in its
+// place (GMGN then says "at launch") and with a stand-in address (GMGN is then an ordinary link to
+// it). The stylesheet is loaded for as long as these checks run, because it is the
 // stylesheet that hides the words until the pointer or the keyboard reaches them, that paints each
 // mark its platform's colour, and that decides where the block sits. Nothing in src/addresses/** is
 // touched.
@@ -2442,9 +2448,9 @@ async function cr82(base: ChainState, wallet: WalletState) {
 // CR-101 (F12b): OpenSea shows one message, the owner's words "Uptowners collection soon", on hover
 // and on keyboard focus, and a screen reader hears "OpenSea: Uptowners collection soon" once; the
 // mark that is not a link carries no `title`, so the browser draws no second label beside the
-// bubble. The links keep their `title`. Since mainnet phase 1 (15 October 2026) the chain-1 address
-// file names SKYLINE, so the site's own row has GMGN as a link; the "at launch" form is checked by
-// passing `null` in the file's place.
+// bubble. The links keep their `title`. Since SKYLINE's mainnet phase 1 (17 October 2026) the
+// chain-1 address file names SKYLINE, so the site's own row has GMGN as a link; the "at launch" form
+// is checked by passing `null` in the file's place.
 
 /** The X mark's path, exactly as CR-87's task brief gives it (Simple Icons). */
 const X_PATH =
@@ -2611,9 +2617,9 @@ async function cr84cr87cr88() {
   }
 
   // CR-88 item 3: GMGN is shown always, and follows the chain-1 address file: a link to its SKYLINE
-  // page once the file names SKYLINE (it does since mainnet phase 1, 15 October 2026), and otherwise
-  // the same treatment as OpenSea with its own word. Both states are checked whatever the file
-  // holds today: the file's own state here, the "no address" state with `null` passed in.
+  // page once the file names SKYLINE (it does since SKYLINE's mainnet phase 1, 17 October 2026),
+  // and otherwise the same treatment as OpenSea with its own word. Both states are checked whatever
+  // the file holds: the file's own state here, the "no address" state with `null` passed in.
   const gm = seen(own, 'GMGN');
   const fileTown = mainnetSkylineAddress();
   check(
@@ -4333,17 +4339,37 @@ async function f13a(base: ChainState, wallet: WalletState, o: OwnerState) {
       'CR-102 an address file is read as deployed only when it names SKYLINE: the retired TOWN file (no tokenSymbol) and "TOWN" are "not deployed", so the site never shows or sends to the retired contracts',
       !isSkylineFile(town) && !isSkylineFile({ ...sky, tokenSymbol: 'TOWN' }) && !isSkylineFile({ tokenSymbol: 'SKYLINE', contracts: null }) && isSkylineFile(sky),
     );
+    // Since the owner's SKYLINE phase 1 (17 October 2026) the committed chain-1 file is SKYLINE's:
+    // deployed, not launched (no launch time, pool ID or position yet). GMGN's link does not wait for
+    // the launch (spec "Frontend -> Official Links"): it is built from the file's SKYLINE address.
+    const file = MAINNET_ADDRESS_FILE as { tokenSymbol?: string; contracts: Record<string, string> | null; launchTime: unknown; poolId: unknown; positionTokenId: unknown };
     check(
-      'CR-102 GMGN today: the committed chain-1 file still holds TOWN’s addresses (until the owner’s SKYLINE phase 1), so the mark has no link and says "at launch"; with a SKYLINE file it links to SKYLINE’s page',
-      mainnetSkylineAddress() === null &&
+      'CR-102 GMGN today: the committed chain-1 file is SKYLINE’s phase-1 record (deployed, not launched), so the mark links to SKYLINE’s page, gmgn.ai/eth/token/0x9Ce79b2eB03fd83f3a8051234FF0b9fE4e654567; a TOWN or symbol-less file still gives no address',
+      isSkylineFile(file) &&
+        file.launchTime === null &&
+        file.poolId === null &&
+        file.positionTokenId === null &&
+        mainnetSkylineAddress() === SKYLINE_MAINNET &&
+        mainnetSkylineAddress()!.toLowerCase() !== RETIRED_TOWN_ADDRESS.toLowerCase() &&
+        gmgnUrl(mainnetSkylineAddress()) === `https://gmgn.ai/eth/token/${SKYLINE_MAINNET}` &&
         mainnetSkylineAddress(town as never) === null &&
+        mainnetSkylineAddress({ ...sky, tokenSymbol: 'TOWN' }) === null &&
         mainnetSkylineAddress(sky) === k.UpTownToken &&
         gmgnUrl(mainnetSkylineAddress(sky)) === `https://gmgn.ai/eth/token/${k.UpTownToken}`,
-      String(mainnetSkylineAddress()),
+      `the file: tokenSymbol ${JSON.stringify(file.tokenSymbol)}, launchTime ${JSON.stringify(file.launchTime)}; its SKYLINE address ${String(mainnetSkylineAddress())}`,
     );
     const row = await mount(<PlaceRow />, base, wallet, 'CR-102: the footer’s places row, today');
     const gm = row.querySelector('[data-place="GMGN"]') as HTMLElement | null;
-    check('CR-102 the GMGN mark today: not a link, "at launch", and named for SKYLINE', !!gm && gm.tagName === 'SPAN' && text(gm).includes('GMGN: at launch'), gm ? gm.outerHTML.slice(0, 160) : 'no mark');
+    check(
+      'CR-102 the GMGN mark today: a link to SKYLINE’s GMGN page, opening in a new tab, named for SKYLINE, with no "at launch"',
+      !!gm &&
+        gm.tagName === 'A' &&
+        gm.getAttribute('href') === `https://gmgn.ai/eth/token/${SKYLINE_MAINNET}` &&
+        gm.getAttribute('target') === '_blank' &&
+        gm.getAttribute('aria-label') === 'SKYLINE on GMGN (opens in a new tab)' &&
+        !text(gm).includes('at launch'),
+      gm ? gm.outerHTML.slice(0, 200) : 'no mark',
+    );
   }
   if (!GALLERY) stage.replaceChildren();
 }

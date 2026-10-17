@@ -258,9 +258,9 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
 // its own word: full strength, not a link, no href, and "at launch" on hover and on keyboard focus.
 // Its address is never typed in: it is SKYLINE's address on Ethereum from the site's own chain-1
 // address file (`lib/places.ts`), which is read whatever network this build is for, so every build
-// shows the same state; a file of the retired TOWN deployment counts as no address (CR-102). The
-// SKYLINE mainnet deployment turns the mark into an ordinary link to its SKYLINE page, with no word
-// and no further change here.
+// shows the same state; a file of the retired TOWN deployment counts as no address (CR-102). Since
+// SKYLINE's mainnet phase 1 (17 October 2026) the file names SKYLINE, so the mark is an ordinary
+// link to its SKYLINE page, with no word, before the launch as after it.
 // ---------------------------------------------------------------------------------------------
 
 /** One mark: a link that opens in a new tab, or a mark that leads nowhere and shows `word` (CR-87: not dimmed; CR-101: no `title`, so `word` is its only message). */

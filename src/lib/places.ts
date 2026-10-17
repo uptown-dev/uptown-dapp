@@ -5,11 +5,11 @@
 // GMGN is different: its page is a token page on Ethereum mainnet, so its address is the SKYLINE
 // address from the site's own chain-1 address file, `src/addresses/1.json` — the same file the rest
 // of the site reads for mainnet, never typed in by hand. Only a file that names SKYLINE counts
-// (CR-102: `"tokenSymbol": "SKYLINE"`). Until the owner's SKYLINE phase 1 rewrites it, that file
-// still holds the retired first deployment's addresses (TOWN, with no `tokenSymbol`), so there is no
-// address and no link: the mark is shown all the same (CR-88 item 3), at full strength, not a link,
-// and saying "at launch". When the SKYLINE deployment fills that file the same mark becomes a
-// working link to the token's page there, with no further change here.
+// (CR-102: `"tokenSymbol": "SKYLINE"`). Since the owner's SKYLINE phase 1 (17 October 2026) that
+// file is SKYLINE's, deployed and not launched, so the mark is a working link to the token's page
+// there: the link does not wait for the launch. A file with no SKYLINE address (none at all, or the
+// retired first deployment's, TOWN, which has no `tokenSymbol`) gives no address and no link: the
+// mark is shown all the same (CR-88 item 3), at full strength, not a link, and saying "at launch".
 //
 // The chain-1 file is imported straight, not through `virtual:uptown-site-chains` (which carries
 // only the chain the build is for, F9h/CL-53), so a Sepolia or local build shows exactly the same
@@ -33,7 +33,7 @@ if (FILE.chainId !== 1) throw new Error(`src/addresses/1.json names chain ${FILE
 
 /**
  * SKYLINE's address on Ethereum mainnet, from the site's own chain-1 address file; `null` while that
- * file names no SKYLINE contracts (today: it still holds the retired TOWN deployment's) or names
+ * file names no SKYLINE contracts (for example a file of the retired TOWN deployment) or names
  * something that is not an address. `file` is a parameter only so a test can try other files.
  */
 export function mainnetSkylineAddress(file: { tokenSymbol?: string | null; contracts: Record<string, string> | null } = FILE): Address | null {
