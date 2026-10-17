@@ -1,13 +1,13 @@
 // Shared building blocks: the app context, cards, figures, notices, expanders, buttons and the
 // transaction status line.
 import { createContext, type ComponentChildren } from 'preact';
-import { useContext, useState } from 'preact/hooks';
+import { useContext, useRef, useState } from 'preact/hooks';
 import type { PublicClient, TransactionReceipt } from 'viem';
 import type { Address, ChainState, FixedRules, OwnerState, PrelaunchState, WalletState } from '../data/types';
 import { ChevronIcon, ExternalIcon, InfoIcon, NoteIcon, WarnIcon } from './icons';
 import { txUrl, type Network } from '../lib/network';
 import { explainError, type TradeKind } from '../lib/errors';
-import { sendTx, waitForTx, type TxRequest } from '../lib/wallet';
+import { chosenWallet, sendTx, waitForTx, type TxRequest } from '../lib/wallet';
 import { fmtInt, fmtUsd, fmtUsd8, shortAddress } from '../lib/format';
 import { usdOf, type Priced } from '../lib/derive';
 import { fmtExact } from '../lib/amount';
@@ -50,6 +50,8 @@ export interface AppState {
   disconnect: () => void;
   /** The injected wallet is on another chain than the site's. */
   wrongNetwork: boolean;
+  /** The chain the injected wallet is on, as it last said (`eth_chainId`, `chainChanged`); null until known, and on the local chain. */
+  walletChain?: number | null;
   switchNetwork: () => void;
   toast: (message: string) => void;
 }
@@ -203,9 +205,22 @@ export function Details({ summary = 'Details', children }: { summary?: string; c
   );
 }
 
-/** Shown where a wallet is needed and none is connected. */
+/**
+ * Shown where a wallet is needed and its figures are not there: none is connected, or (CR-104) one
+ * is connected and its figures are being read, just after the visitor connected or switched account
+ * in the wallet. The previous account's figures are never shown meanwhile.
+ */
 export function ConnectPrompt({ what, block }: { what: string; block?: boolean }) {
-  const { connect, network } = useApp();
+  const { connect, network, account } = useApp();
+  if (account) {
+    return (
+      <div class="connect-prompt" data-reading-wallet={account}>
+        <p class="muted">
+          Reading the figures of <code title={account}>{shortAddress(account)}</code>: {what} appear here in a moment.
+        </p>
+      </div>
+    );
+  }
   return (
     <div class="connect-prompt">
       <p>{network.local ? `Pick a local test wallet to see ${what}.` : `Connect a wallet to see ${what}.`}</p>
@@ -242,34 +257,96 @@ export interface Tx extends TxState {
   reset: () => void;
 }
 
+// ---- CR-104: success messages that clear themselves; the wallet the messages belong to ----------
+// A transaction's success message (its status, its hash and the link) disappears by itself
+// `TX_MESSAGE_MS` after the transaction is confirmed. Errors and refusals are not success messages:
+// they stay until the visitor acts (presses again, or another form replaces them). The status box
+// is a live region from the moment the transaction starts, so a screen reader hears "Done." when it
+// is written, before it clears.
+//
+// Every transaction state belongs to the wallet it was sent from: the account, the network the
+// wallet is on, and the browser wallet chosen (`walletKeyOf`). When any of them changes, the state
+// is cleared at once and anything that arrives later for the old one (a confirmation, a refusal)
+// is dropped, so it is never shown against the new account.
+
+/** How long a confirmed transaction's success message stays (CR-104): 2 seconds. */
+export const TX_MESSAGE_MS = 2_000;
+
+/** The timer that clears success messages; the tests replace `set` to move time by hand. */
+export const txTimer: { set: (fn: () => void, ms: number) => void } = {
+  set: (fn, ms) => void window.setTimeout(fn, ms),
+};
+
+/** The wallet a page's states belong to, as one string: the account, the wallet's network (the site's own, or which other one) and the browser wallet chosen. */
+export function walletKeyOf(app: Pick<AppState, 'account' | 'wrongNetwork' | 'walletChain'>): string {
+  const net = app.wrongNetwork ? `wrong ${app.walletChain ?? ''}` : 'right';
+  return `${app.account?.toLowerCase() ?? 'none'}|${net}|${chosenWallet()?.uuid ?? ''}`;
+}
+
+/** The wallet key, for `key=` on a form whose inputs depend on the wallet: a new wallet gets a fresh form (CR-104). */
+export function useWalletKey(): string {
+  return walletKeyOf(useApp());
+}
+
+/**
+ * A counter, increased by one each time the wallet key changes, as seen by this component, and a getter
+ * for its latest value. A state tagged with an older count belongs to a previous wallet.
+ */
+export function useWalletEpoch(): { epoch: number; now: () => number } {
+  const key = useWalletKey();
+  const r = useRef({ key, epoch: 0 });
+  if (r.current.key !== key) r.current = { key, epoch: r.current.epoch + 1 };
+  const now = useRef(() => r.current.epoch);
+  return { epoch: r.current.epoch, now: now.current };
+}
+
+let txSeq = 0;
+const IDLE: TxState = { phase: 'idle' };
+
 export function useTx(): Tx {
   const app = useApp();
-  const [st, setSt] = useState<TxState>({ phase: 'idle' });
+  const w = useWalletEpoch();
+  const [st, setSt] = useState<TxState & { epoch: number; id: number }>({ phase: 'idle', epoch: -1, id: 0 });
   const run: Tx['run'] = async (label, build, onDone, kind) => {
     if (!app.account) {
       app.connect();
       return;
     }
-    setSt({ phase: 'checking', label });
+    const epoch = w.now();
+    const id = ++txSeq;
+    /** False once the wallet changed: nothing more is shown for this transaction. */
+    const ours = () => w.now() === epoch;
+    const put = (s: TxState) => ours() && setSt({ ...s, epoch, id });
+    put({ phase: 'checking', label });
     let hash: string | undefined;
     try {
       const req = build();
-      setSt({ phase: 'wallet', label });
+      put({ phase: 'wallet', label });
       hash = await sendTx(app.network, app.client, app.account, req);
-      setSt({ phase: 'pending', label, hash });
+      put({ phase: 'pending', label, hash });
       const receipt = await waitForTx(app.client, hash as `0x${string}`);
+      if (!ours()) return;
       if (receipt.status === 'success') {
-        setSt({ phase: 'done', label, hash, gasUsed: receipt.gasUsed, message: onDone(receipt) });
+        put({ phase: 'done', label, hash, gasUsed: receipt.gasUsed, message: onDone(receipt) });
+        // CR-104: the success message clears itself 2 seconds after the confirmation.
+        txTimer.set(() => setSt((s) => (s.id === id && s.phase === 'done' ? { phase: 'idle', epoch, id } : s)), TX_MESSAGE_MS);
       } else {
-        setSt({ phase: 'failed', label, hash, gasUsed: receipt.gasUsed, message: 'The transaction was included but failed, so nothing changed; only its gas was spent.' });
+        put({ phase: 'failed', label, hash, gasUsed: receipt.gasUsed, message: 'The transaction was included but failed, so nothing changed; only its gas was spent.' });
       }
     } catch (e) {
       const { message, name } = explainError(e, kind);
-      setSt({ phase: 'failed', label, hash, message, error: name });
+      put({ phase: 'failed', label, hash, message, error: name });
     }
-    await app.refresh();
+    if (ours()) await app.refresh();
   };
-  return { ...st, busy: st.phase === 'checking' || st.phase === 'wallet' || st.phase === 'pending', run, reset: () => setSt({ phase: 'idle' }) };
+  // A state from a previous wallet is not shown (CR-104).
+  const shown: TxState = st.epoch === w.epoch ? st : IDLE;
+  return {
+    ...shown,
+    busy: shown.phase === 'checking' || shown.phase === 'wallet' || shown.phase === 'pending',
+    run,
+    reset: () => setSt({ phase: 'idle', epoch: -1, id: 0 }),
+  };
 }
 
 /** The status of a form's last transaction: pending, the hash, then success or failure in plain words. */

@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, PageHead, Chips, TxStatus, Usd, Uses } from '../components/ui';
+import { useApp, useChain, useTx, useWalletKey, ConnectPrompt, Details, FieldError, PageHead, Chips, TxStatus, Usd, Uses } from '../components/ui';
 import { RunStatus, Stop, readUntil, useRun, useWatch } from '../components/steps';
 import { amountError, amountOrNull } from '../lib/amount';
 import { ArrowDownIcon } from '../components/icons';
@@ -125,6 +125,11 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
   const { network } = useApp();
   const [mode, setMode] = useState<Mode>(openSell ? 'sell' : 'buy');
   useEffect(() => setMode(openSell ? 'sell' : 'buy'), [openSell]);
+  // CR-104: each form belongs to the wallet it was filled for. When the visitor switches account (or
+  // network) in the wallet, both forms start again for the new one: an amount filled from the old
+  // balance, a minimum, an approval step and any transaction message of the old account are gone at
+  // once, and a balance read for the old account that lands later changes nothing.
+  const walletKey = useWalletKey();
   const town = network.deployment?.contracts.UpTownToken;
   return (
     <div class="wrap page narrow">
@@ -148,10 +153,10 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
           ))}
         </div>
         <div role="tabpanel" id="trade-panel-buy" aria-labelledby="trade-tab-buy" hidden={mode !== 'buy'}>
-          <BuyForm active={mode === 'buy'} />
+          <BuyForm key={walletKey} active={mode === 'buy'} />
         </div>
         <div role="tabpanel" id="trade-panel-sell" aria-labelledby="trade-tab-sell" hidden={mode !== 'sell'}>
-          <SellForm active={mode === 'sell'} />
+          <SellForm key={walletKey} active={mode === 'sell'} />
         </div>
       </section>
       <div class="after-card">

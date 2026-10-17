@@ -436,11 +436,11 @@ function parseHash(hash: string): { page: string; section: string } {
   return { page, section: page ? second : '' };
 }
 
-function storedLocalWallet(): Address | null {
-  if (!NETWORK.local) return null;
+function storedLocalWallet(n: Network): Address | null {
+  if (!n.local) return null;
   try {
     const a = window.localStorage.getItem(LOCAL_WALLET_KEY);
-    const w = NETWORK.testWallets.find((x) => x.address.toLowerCase() === (a ?? '').toLowerCase());
+    const w = n.testWallets.find((x) => x.address.toLowerCase() === (a ?? '').toLowerCase());
     return w ? w.address : null;
   } catch {
     return null;
@@ -452,8 +452,13 @@ interface Toast {
   message: string;
 }
 
-export function App() {
-  const network = NETWORK;
+/**
+ * The site. Both props exist for the component tests only (CR-104): `network` renders the site as
+ * a build for another network entry (a copy of the local one marked public, so a stand-in browser
+ * wallet drives the account), and `read` stands in for `readAll` so a test can hold back one
+ * account's reply. The site itself renders `<App />`.
+ */
+export function App({ network = NETWORK, read = readAll }: { network?: Network; read?: typeof readAll } = {}) {
   const client = useMemo(() => makeClient(network), [network]);
   const [hash, setHash] = useState<string>(() => canonicalHash(window.location.hash));
   const { page, section } = parseHash(hash);
@@ -461,7 +466,7 @@ export function App() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => currentTheme());
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [account, setAccount] = useState<Address | null>(() => storedLocalWallet());
+  const [account, setAccount] = useState<Address | null>(() => storedLocalWallet(network));
   const [walletChain, setWalletChain] = useState<number | null>(null);
   const [chain, setChain] = useState<ChainState | null>(null);
   const [prelaunch, setPrelaunch] = useState<PrelaunchState | null>(null);
@@ -474,7 +479,10 @@ export function App() {
   const firstRender = useRef(true);
   const accountRef = useRef(account);
   accountRef.current = account;
-  const reading = useRef<Promise<void> | null>(null);
+  // The read in progress and the account it is for; every read's number, and the newest one shown.
+  const reading = useRef<{ who: Address | null; p: Promise<void> } | null>(null);
+  const readSeq = useRef(0);
+  const shownSeq = useRef(0);
 
   const toast = useCallback((message: string) => {
     const id = Date.now() + Math.random();
@@ -485,12 +493,21 @@ export function App() {
   // ---- reading the figures -------------------------------------------------------------------
   const refresh = useCallback(async () => {
     if (!network.deployment) return;
-    if (reading.current) await reading.current; // one read at a time; then read again, fresh
     const who = accountRef.current;
+    // One read at a time for the same account: wait for it, then read again, fresh. A read for another
+    // account (CR-104: the visitor switched account or disconnected in the wallet) does not wait: the
+    // new account's figures are read at once, and the old account's read is dropped when it lands.
+    while (reading.current && reading.current.who === who) await reading.current.p;
+    if (accountRef.current !== who) return; // switched while waiting: the new account's own read runs
+    const seq = ++readSeq.current;
+    // CR-104: a reply for an account that is no longer the connected one, or older than a reply already
+    // shown, never replaces what is on the page.
+    const stale = () => accountRef.current !== who || seq < shownSeq.current;
     const p = (async () => {
       try {
-        const r = await readAll(client, network, who);
-        if (accountRef.current !== who) return; // the wallet changed meanwhile: a new read follows
+        const r = await read(client, network, who);
+        if (stale()) return; // the wallet changed meanwhile: the new account's own read follows
+        shownSeq.current = seq;
         const readAt = Date.now();
         setChain(r.chain);
         setPrelaunch(r.prelaunch);
@@ -500,14 +517,15 @@ export function App() {
         if (block !== undefined) setClock((prev) => stepClock(prev, block, readAt));
         setData({ state: r.chain ? 'ready' : 'not-launched', error: null, readAt });
       } catch (e) {
+        if (stale()) return;
         // A failed read after a good one keeps the state that read found (launched, or not yet: CR-86) and its figures.
         setData((d) => ({ ...d, state: d.readAt ? d.state : 'error', error: explainError(e).message }));
       }
     })();
-    reading.current = p;
+    reading.current = { who, p };
     await p;
-    reading.current = null;
-  }, [client, network]);
+    if (reading.current?.p === p) reading.current = null;
+  }, [client, network, read]);
 
   useEffect(() => {
     void refresh();
@@ -553,22 +571,36 @@ export function App() {
       setWalletChain(null);
       return;
     }
+    // CR-104: the wallet's own events (the visitor switched account, disconnected, or moved to
+    // another network in the wallet) are followed at once: every figure, form and transaction state
+    // tied to the wallet follows the new account (`walletKeyOf` in ui.tsx; the read above). An answer
+    // to the requests below that arrives after such an event is older than it, and is dropped.
+    let accountsEvent = false;
+    let chainEvent = false;
     const onAccounts = (a: unknown) => {
       const list = a as string[];
-      setAccount(list && list.length ? getAddress(list[0]) : null);
+      setAccount(Array.isArray(list) && list.length ? getAddress(list[0]) : null);
     };
     const onChain = (id: unknown) => setWalletChain(Number(id));
+    const onAccountsEvent = (a: unknown) => {
+      accountsEvent = true;
+      onAccounts(a);
+    };
+    const onChainEvent = (id: unknown) => {
+      chainEvent = true;
+      onChain(id);
+    };
     if (restored.current !== p) {
       restored.current = p;
       // Restore a connection the visitor already granted, without asking again.
-      p.request({ method: 'eth_accounts' }).then(onAccounts, () => {});
+      p.request({ method: 'eth_accounts' }).then((a) => !accountsEvent && onAccounts(a), () => {});
     }
-    p.request({ method: 'eth_chainId' }).then(onChain, () => {});
-    p.on?.('accountsChanged', onAccounts);
-    p.on?.('chainChanged', onChain);
+    p.request({ method: 'eth_chainId' }).then((id) => !chainEvent && onChain(id), () => {});
+    p.on?.('accountsChanged', onAccountsEvent);
+    p.on?.('chainChanged', onChainEvent);
     return () => {
-      p.removeListener?.('accountsChanged', onAccounts);
-      p.removeListener?.('chainChanged', onChain);
+      p.removeListener?.('accountsChanged', onAccountsEvent);
+      p.removeListener?.('chainChanged', onChainEvent);
     };
   }, [network, provider]);
 
@@ -698,6 +730,7 @@ export function App() {
     connect,
     disconnect: () => (network.local ? pickLocal(null) : disconnectWallet()),
     wrongNetwork,
+    walletChain,
     switchNetwork: () => {
       switchWalletChain(network).catch((e) => toast(explainError(e).message));
     },

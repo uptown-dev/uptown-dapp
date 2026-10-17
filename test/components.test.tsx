@@ -65,6 +65,13 @@
 //   withdrawal offered only after its 14 days, as an action that cannot be undone; the launch sent with
 //   0.13 ETH; the retired-TOWN notice in the footer and in Docs; a chain-1 address file that is not
 //   SKYLINE's read as "not deployed".
+// - F13b (CR-104): success messages clear themselves 2 seconds after the confirmation (a buy, a
+//   three-step sell, a two-step stake, claims, Stats' trigger and an owner action, with a fake timer,
+//   and once with the real one, timed); errors and refusals stay, a failed second step too; the status
+//   box is a live region before the success arrives. The whole site follows the account: the local
+//   test-wallet menu and a stand-in browser wallet (accountsChanged, chainChanged, disconnect) switch
+//   between Test wallet 1 and the owner, with one account's reply held back to show the figures,
+//   forms, messages and Owner page follow at once and a late reply changes nothing.
 // - CR-95 items 2 and 3 (F9v): the Trade page without its "Buy here" line; the dollar figures — the
 //   arithmetic from a known sqrtPriceX96 and a known ETH price, the pool's price as the site reads
 //   it (against StateView read on its own at the same block), the figures beside the amounts on
@@ -78,7 +85,7 @@ import { render, type ComponentChildren } from 'preact';
 import GLOBAL_CSS from '../src/styles/global.css?inline';
 import LOGO_ON_LIGHT from '../logo/uptown-lamplight-on-light.svg?raw';
 import LOGO_ON_DARK from '../logo/uptown-lamplight-on-dark.svg?raw';
-import { AppContext, type AppState } from '../src/components/ui';
+import { AppContext, TX_MESSAGE_MS, txTimer, type AppState } from '../src/components/ui';
 import { NETWORK } from '../src/lib/network';
 import { ethUsdFrom, makeClient, poolId, poolKey, quoteBuy, quoteSell, readAll, readStakes, verifyCandidate } from '../src/lib/reads';
 import { explainError } from '../src/lib/errors';
@@ -864,6 +871,7 @@ async function run() {
   await f9u(base, wallet);
   await f12a(base, wallet, live.owner, live);
   await f13a(base, wallet, live.owner);
+  await f13b(base, wallet, live.owner);
 
   if (!GALLERY) stage.replaceChildren();
 }
@@ -4336,6 +4344,644 @@ async function f13a(base: ChainState, wallet: WalletState, o: OwnerState) {
     const row = await mount(<PlaceRow />, base, wallet, 'CR-102: the footer’s places row, today');
     const gm = row.querySelector('[data-place="GMGN"]') as HTMLElement | null;
     check('CR-102 the GMGN mark today: not a link, "at launch", and named for SKYLINE', !!gm && gm.tagName === 'SPAN' && text(gm).includes('GMGN: at launch'), gm ? gm.outerHTML.slice(0, 160) : 'no mark');
+  }
+  if (!GALLERY) stage.replaceChildren();
+}
+
+// ---- F13b (CR-104): success messages that clear themselves; the site follows the wallet's account ----
+// Part 1, the messages: the site's own forms run against a stand-in wallet and a stand-in chain (as in
+// CR-82; nothing reaches the local node), with the timer that clears success messages replaced by a
+// fake one moved by hand (`txTimer`), and once with the real timer, timed. Part 2, the account: the
+// whole site (`<App />`) on the live local chain, its reads passed through a gate that can hold back
+// one account's reply; first switched through the local test-wallet menu, then through a stand-in
+// browser wallet that announces `accountsChanged` and `chainChanged` as a wallet extension does.
+// Nothing in part 2 is sent: the one transaction asked for is refused by the stand-in wallet.
+async function f13b(base: ChainState, wallet: WalletState, o: OwnerState) {
+  const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+  const until = async (ok: () => boolean, ms = 8_000) => {
+    for (let t = 0; t < ms && !ok(); t += 25) await settle(25);
+    return ok();
+  };
+  const typeIn = (el: HTMLElement, sel: string, v: string) => {
+    const input = el.querySelector(sel) as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, v);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const E = 10n ** 18n;
+  const same = (a: unknown, b: string) => typeof a === 'string' && a.toLowerCase() === b.toLowerCase();
+  const PUBLIC: Network = { ...NETWORK, local: false };
+  const SKYLINE = k.UpTownToken;
+  const P2 = NETWORK.uniswap!.permit2;
+  const ROUTER = NETWORK.uniswap!.universalRouter;
+  const QUOTER = NETWORK.uniswap!.v4Quoter;
+  const STAKING = base.staking.address;
+  const NOW = Math.floor(Date.now() / 1000) + 5_000;
+  const chain: ChainState = { ...base, blockTimestamp: NOW };
+
+  // ---- the fake timer ----
+  let fakeNow = 0;
+  let timers: { at: number; ms: number; fn: () => void }[] = [];
+  const realSet = txTimer.set;
+  const fakeTimers = () => {
+    fakeNow = 0;
+    timers = [];
+    txTimer.set = (fn, ms) => void timers.push({ at: fakeNow + ms, ms, fn });
+  };
+  const advance = async (ms: number) => {
+    fakeNow += ms;
+    const due = timers.filter((t) => t.at <= fakeNow);
+    timers = timers.filter((t) => t.at > fakeNow);
+    due.forEach((t) => t.fn());
+    await settle(30);
+  };
+
+  // ---- the stand-in wallet and chain (part 1) ----
+  interface Fake {
+    balance: bigint;
+    toPermit2: bigint;
+    router: { amount: bigint; expiration: number };
+    staking: bigint;
+    log: string[];
+    reject: Set<string>;
+    revert: Set<string>;
+  }
+  let f: Fake;
+  const fresh = (over: Partial<Fake> = {}): Fake => ({ balance: 2_000_000n * E, toPermit2: 0n, router: { amount: 0n, expiration: 0 }, staking: 0n, log: [], reject: new Set(), revert: new Set(), ...over });
+  const nameOf = (to: string, data: `0x${string}`, value: bigint): { name: string; args: readonly unknown[] } => {
+    if (same(to, SKYLINE)) {
+      const d = decodeFunctionData({ abi: TOKEN_ABI, data });
+      return { name: same(d.args![0], P2) ? 'approve' : 'stake-approve', args: d.args! };
+    }
+    if (same(to, P2)) return { name: 'allow', args: decodeFunctionData({ abi: PERMIT2_ABI, data }).args! };
+    if (same(to, ROUTER)) return { name: value > 0n ? 'buy' : 'sell', args: [] };
+    for (const [addr, abi] of [
+      [STAKING, STAKING_ABI],
+      [k.LPVault, LPVAULT_ABI],
+      [k.Treasury, TREASURY_ABI],
+      [k.BuyerRewards, REWARDS_ABI],
+    ] as const) {
+      if (same(to, addr)) {
+        const d = decodeFunctionData({ abi: abi as never, data });
+        return { name: d.functionName as string, args: (d.args ?? []) as readonly unknown[] };
+      }
+    }
+    return { name: `unknown ${to}`, args: [] };
+  };
+  const pending = new Map<string, { name: string; args: readonly unknown[] }>();
+  let nonce = 0;
+  let box: HTMLElement | null = null;
+  /** The status box (a live region) as it stood when each request reached the wallet. */
+  const regionAtSend: Record<string, Element | null> = {};
+  const provider = {
+    async request({ method, params }: { method: string; params?: unknown[] }) {
+      if (method === 'eth_chainId') return '0x7a69';
+      if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [W1];
+      if (method === 'eth_sendTransaction') {
+        const t = params![0] as { to: string; data: `0x${string}`; value?: string };
+        const n = nameOf(t.to, t.data, t.value ? BigInt(t.value) : 0n);
+        f.log.push(`send ${n.name}`);
+        regionAtSend[n.name] = box?.querySelector('.tx-status, .run-status') ?? null;
+        if (f.reject.has(n.name)) throw Object.assign(new Error('User rejected the request.'), { code: 4001 });
+        const hash = `0x${(++nonce + 0xf13b00).toString(16).padStart(64, '0')}`;
+        pending.set(hash, n);
+        return hash;
+      }
+      throw new Error(`the stand-in wallet does not do ${method}`);
+    },
+  };
+  const standIn: WalletInfo = { uuid: 'f13b-stand-in', name: 'Stand-in wallet', icon: null, rdns: 'test.f13b.standin', provider };
+  const fake = {
+    ...client,
+    async getBlock() {
+      return { number: 2_000n + BigInt(nonce), timestamp: BigInt(NOW) };
+    },
+    async readContract(a: { address: string; functionName: string; args?: readonly unknown[] }) {
+      if (same(a.address, SKYLINE) && a.functionName === 'balanceOf') return f.balance;
+      if (same(a.address, SKYLINE) && a.functionName === 'allowance') return same(a.args![1], P2) ? f.toPermit2 : f.staking;
+      if (same(a.address, P2) && a.functionName === 'allowance') return [f.router.amount, f.router.expiration, 0];
+      throw new Error(`the stand-in chain does not read ${a.functionName}`);
+    },
+    async simulateContract(a: { address: string; args?: readonly { zeroForOne?: boolean }[] }) {
+      // A buy's estimate in SKYLINE (150,000), a sale's in ETH (0.05).
+      if (same(a.address, QUOTER)) return { result: [a.args?.[0]?.zeroForOne ? 150_000n * E : 5n * 10n ** 16n, 0n], request: a };
+      return { result: undefined, request: a };
+    },
+    async waitForTransactionReceipt({ hash }: { hash: string }) {
+      await settle(80);
+      const n = pending.get(hash)!;
+      const failed = f.revert.has(n.name);
+      if (!failed) {
+        if (n.name === 'approve') f.toPermit2 = n.args[1] as bigint;
+        if (n.name === 'allow') f.router = { amount: n.args[2] as bigint, expiration: Number(n.args[3]) };
+        if (n.name === 'stake-approve') f.staking = n.args[1] as bigint;
+      }
+      f.log.push(`mined ${n.name}${failed ? ' (failed)' : ''}`);
+      return { status: failed ? 'reverted' : 'success', transactionHash: hash, gasUsed: 50_000n, blockNumber: 2_000n + BigInt(nonce) };
+    },
+    async getBalance() {
+      return 3n * E;
+    },
+    async estimateFeesPerGas() {
+      return { maxFeePerGas: 7n * 10n ** 9n, maxPriorityFeePerGas: 10n ** 9n };
+    },
+  } as unknown as PublicClient;
+  let refreshes = 0;
+  const extra: Partial<AppState> = {
+    network: PUBLIC,
+    client: fake,
+    refresh: async () => {
+      refreshes++;
+    },
+  };
+  const walletOf = (x: Fake, over: Partial<WalletState> = {}): WalletState => ({
+    ...wallet,
+    address: W1,
+    townBalance: x.balance,
+    ethBalance: 3n * E,
+    townAllowanceToPermit2: x.toPermit2,
+    routerAllowance: x.router,
+    townAllowanceToStaking: x.staking,
+    ...over,
+  });
+  const status = (el: HTMLElement) => el.querySelector('.tx-status, .run-status') as HTMLElement | null;
+  const finishedTx = (el: HTMLElement) => until(() => ['done', 'failed'].includes(status(el)?.dataset.phase ?? '') && !status(el)?.dataset.run);
+  const finishedRun = (el: HTMLElement) => until(() => ['done', 'stopped'].includes(el.querySelector<HTMLElement>('.run-status')?.dataset.run ?? ''));
+  const live = (el: Element | null) => !!el && el.getAttribute('role') === 'status' && el.getAttribute('aria-live') === 'polite';
+
+  check('CR-104 a success message stays exactly 2 seconds after the confirmation (TX_MESSAGE_MS = 2,000 ms)', TX_MESSAGE_MS === 2_000, String(TX_MESSAGE_MS));
+
+  chooseWallet(standIn);
+  fakeTimers();
+  try {
+    // ---- 1. A buy (one transaction): the message, then nothing, 2 seconds after the confirmation ----
+    {
+      f = fresh();
+      refreshes = 0;
+      const el = (box = await mount(<Trade />, chain, walletOf(f), 'CR-104: a buy, confirmed (stand-in wallet, fake timer)', extra));
+      await until(() => /\d/.test((el.querySelector('#trade-panel-buy .swap-output') as HTMLElement).innerText.replace(/^0$/, '')));
+      (el.querySelector('#trade-panel-buy .btn-primary') as HTMLButtonElement).click();
+      await finishedTx(el);
+      const done = status(el);
+      const shown = done ? text(done) : '';
+      check(
+        'CR-104 buy: once confirmed, the success message shows its status and the transaction hash, and one timer of 2,000 ms is set to clear it',
+        done?.dataset.phase === 'done' && shown.startsWith('Done. Your buy went through') && shown.includes('Transaction') && (done.dataset.hash ?? '').length === 66 && timers.length === 1 && timers[0].ms === 2_000,
+        `${shown} | timers: ${timers.map((t) => t.ms).join(',')}`,
+      );
+      check(
+        'CR-104 buy: a screen reader hears the success before it clears: the status box was already a polite live region (role "status") while the transaction waited in the wallet, and the same box then says "Done."',
+        live(regionAtSend.buy) && regionAtSend.buy === done && done!.isConnected && text(done!).includes('Done.'),
+        `at send: ${regionAtSend.buy?.getAttribute('role')}/${regionAtSend.buy?.getAttribute('aria-live')}, same box: ${regionAtSend.buy === done}`,
+      );
+      check('CR-104 buy: the figures are read again after the confirmation, as before', refreshes >= 1, `${refreshes} reads`);
+      await advance(1_999);
+      const at1999 = status(el)?.dataset.phase ?? 'gone';
+      await advance(1);
+      check('CR-104 buy: still shown 1,999 ms after the confirmation, gone at 2,000 ms (nothing left under the button)', at1999 === 'done' && status(el) === null, `${at1999} → ${status(el)?.dataset.phase ?? 'gone'}`);
+    }
+
+    // ---- 2. A first sell (three transactions): the whole list clears 2 seconds after the last confirmation ----
+    {
+      f = fresh();
+      fakeTimers();
+      const el = (box = await mount(<Trade sell />, chain, walletOf(f), 'CR-104: a first sell, three steps (stand-in wallet, fake timer)', extra));
+      typeIn(el, '#sell-town', '1000');
+      await until(() => /\d/.test((el.querySelector('#trade-panel-sell .swap-output') as HTMLElement).innerText.replace(/^0$/, '')));
+      await settle(80);
+      (el.querySelector('.sell-go') as HTMLButtonElement).click();
+      await finishedRun(el);
+      const st = el.querySelector('.run-status') as HTMLElement | null;
+      const steps = [...(st?.querySelectorAll('.run-step') ?? [])].map((s) => `${(s as HTMLElement).dataset.step}=${(s as HTMLElement).dataset.state}`);
+      const timersAfterApprovals = f.log.join(' > ');
+      check(
+        'CR-104 sell: the finished list (approve, allow, sell, each confirmed, with its hash) and "Done." stay while the timer runs; no timer was set by the two approvals, one of 2,000 ms after the last confirmation',
+        st?.dataset.run === 'done' && steps.join(',') === 'approve=done,allow=done,sell=done' && (st.dataset.hashes ?? '').split(',').length === 3 && text(st).includes('Done. You sold 1,000 SKYLINE') && timers.length === 1 && timers[0].ms === 2_000,
+        `${steps.join(',')} | timers ${timers.map((t) => t.ms).join(',')} | ${timersAfterApprovals}`,
+      );
+      check('CR-104 sell: the status box was a live region from the first approval on, and is the box that says "Done."', live(regionAtSend.approve) && regionAtSend.approve === st);
+      await advance(1_999);
+      const before = el.querySelector('.run-status') ? 'shown' : 'gone';
+      await advance(1);
+      check('CR-104 sell: the whole list clears 2 seconds after the last confirmation, not before', before === 'shown' && el.querySelector('.run-status') === null, `${before} → ${el.querySelector('.run-status') ? 'shown' : 'gone'}`);
+    }
+
+    // ---- 3. A stake (approve, then stake): the list clears; a failed second step keeps its error ----
+    {
+      f = fresh();
+      fakeTimers();
+      const el = (box = await mount(<Stake />, chain, walletOf(f, { stakeOf: 0n, earned: 0n }), 'CR-104: approve then stake, confirmed (fake timer)', extra));
+      typeIn(el, '#stake-amount', '1000');
+      await settle();
+      (el.querySelector('.stake-go') as HTMLButtonElement).click();
+      await finishedRun(el);
+      const st = el.querySelector('.run-status') as HTMLElement | null;
+      const steps = [...(st?.querySelectorAll('.run-step') ?? [])].map((s) => `${(s as HTMLElement).dataset.step}=${(s as HTMLElement).dataset.state}`);
+      check(
+        'CR-104 stake: the two-step list (approve, stake: both confirmed) and its message stay until the timer, set once, after the stake’s confirmation',
+        st?.dataset.run === 'done' && steps.join(',') === 'approve=done,stake=done' && text(st).includes('1,000 SKYLINE is staked') && timers.length === 1 && timers[0].ms === 2_000,
+        `${steps.join(',')} | ${f.log.join(' > ')}`,
+      );
+      await advance(1_999);
+      const before = el.querySelector('.run-status') ? 'shown' : 'gone';
+      await advance(1);
+      check('CR-104 stake: the finished list is gone 2 seconds after the last confirmation', before === 'shown' && el.querySelector('.run-status') === null && el.querySelector('.tx-status') === null);
+    }
+    {
+      f = fresh({ revert: new Set(['stake']) });
+      fakeTimers();
+      const el = (box = await mount(<Stake />, chain, walletOf(f, { stakeOf: 0n, earned: 0n }), 'CR-104: approve confirmed, the stake failed: the error stays', extra));
+      typeIn(el, '#stake-amount', '1000');
+      await settle();
+      (el.querySelector('.stake-go') as HTMLButtonElement).click();
+      await finishedRun(el);
+      const t0 = performance.now();
+      await advance(60_000);
+      await settle(2_300);
+      const st = el.querySelector('.run-status') as HTMLElement | null;
+      const steps = [...(st?.querySelectorAll('.run-step') ?? [])].map((s) => `${(s as HTMLElement).dataset.step}=${(s as HTMLElement).dataset.state}`);
+      check(
+        'CR-104 stake: a confirmed approval followed by a failed stake keeps the list and the error ("Stopped.", approve confirmed, stake not done): no timer is set, and it is still there 60 s on the fake clock and 2.3 s on the real one later',
+        st?.dataset.run === 'stopped' && steps.join(',') === 'approve=done,stake=failed' && text(st).includes('Stopped.') && text(st).includes('included but failed') && timers.length === 0,
+        `${steps.join(',')} | ${st ? text(st).slice(0, 160) : 'gone'} | ${Math.round(performance.now() - t0)} ms`,
+      );
+    }
+
+    // ---- 4. Claim (one transaction) clears; an unstake refused in the wallet stays ----
+    {
+      f = fresh();
+      fakeTimers();
+      const el = (box = await mount(<Stake />, chain, walletOf(f, { stakeOf: 5_000n * E, earned: 10n ** 16n }), 'CR-104: claim, confirmed (fake timer)', extra));
+      (button(el, 'Claim') as HTMLButtonElement).click(); // the tab
+      await settle();
+      (el.querySelector('.claim-go') as HTMLButtonElement).click();
+      await finishedTx(el);
+      const done = el.querySelector('.tx-status') as HTMLElement | null;
+      const ok = done?.dataset.phase === 'done' && text(done).includes('Done. About 0.01 WETH went to your wallet.') && timers.length === 1;
+      await advance(2_000);
+      check('CR-104 claim (Stake): "Done." with its transaction, then gone 2 seconds after the confirmation', ok && el.querySelector('.tx-status') === null, done ? text(done) : 'no status');
+    }
+    {
+      f = fresh({ reject: new Set(['unstake']) });
+      fakeTimers();
+      const el = (box = await mount(<Stake />, chain, walletOf(f, { stakeOf: 5_000n * E, earned: 0n }), 'CR-104: an unstake refused in the wallet: the message stays', extra));
+      (button(el, 'Unstake') as HTMLButtonElement).click();
+      await settle();
+      typeIn(el, '#unstake-amount', '100');
+      await settle();
+      (el.querySelector('.unstake-go') as HTMLButtonElement).click();
+      await finishedTx(el);
+      await advance(60_000);
+      await settle(2_300);
+      const st = el.querySelector('.tx-status') as HTMLElement | null;
+      check(
+        'CR-104 unstake refused in the wallet: "Not done." and the reason stay (no timer), 60 s on the fake clock and 2.3 s on the real one later',
+        st?.dataset.phase === 'failed' && text(st).startsWith('Not done.') && timers.length === 0,
+        st ? text(st) : 'gone',
+      );
+    }
+
+    // ---- 5. Rewards, Stats and the Owner page: the same rule ----
+    {
+      f = fresh();
+      fakeTimers();
+      const c = chain.rewards.currentCycle;
+      const w = walletOf(f, { bought: { [c - 1]: 1_000n * E }, claimed: {}, claimable: 49n * E });
+      const el = (box = await mount(<Rewards />, chain, w, 'CR-104: a rebate claim, confirmed (fake timer)', extra));
+      (button(el, 'Claim day') as HTMLButtonElement).click();
+      await finishedTx(el);
+      const done = el.querySelector('.tx-status') as HTMLElement | null;
+      const ok = done?.dataset.phase === 'done' && text(done).startsWith('Done.') && timers.length === 1 && timers[0].ms === 2_000;
+      await advance(2_000);
+      check('CR-104 Rewards claim: "Done." with its transaction, then gone 2 seconds after the confirmation', ok && el.querySelector('.tx-status') === null, done ? text(done) : 'no status');
+    }
+    {
+      f = fresh();
+      fakeTimers();
+      const t = chain.treasury;
+      const waiting: ChainState = { ...chain, treasury: { ...t, paused: false, pauseEffectiveAt: 0, lastDistributedCycle: t.currentCycle - 1, nextDistributionTime: NOW - 1 } };
+      const el = (box = await mount(<Stats />, waiting, walletOf(f), 'CR-104: trigger the payout, confirmed (fake timer)', extra));
+      (button(el, 'Trigger payout') as HTMLButtonElement).click();
+      await finishedTx(el);
+      const done = el.querySelector('.tx-status') as HTMLElement | null;
+      const ok = done?.dataset.phase === 'done' && f.log.includes('send poke') && timers.length === 1;
+      await advance(2_000);
+      check('CR-104 Stats "Trigger payout": "Done." with its transaction, then gone 2 seconds after the confirmation', ok && el.querySelector('.tx-status') === null, done ? text(done) : 'no status');
+    }
+    {
+      f = fresh();
+      fakeTimers();
+      const el = (box = await mount(<OwnerPage o={o} chain={chain} access={pageAccess(o, OWNER)} />, chain, { ...walletOf(f), address: OWNER }, 'CR-104: an owner action, confirmed (fake timer)', extra));
+      const act = el.querySelector('[data-action="collectFees"]') as HTMLElement;
+      typeIn(el, '#owner-fees-to', OWNER);
+      await settle();
+      button(act, 'Check:')!.click();
+      await until(() => !!button(act, 'Confirm:'));
+      button(act, 'Confirm:')!.click();
+      const power = el.querySelector('#power-fees') as HTMLElement;
+      await finishedTx(power);
+      const done = power.querySelector('.tx-status') as HTMLElement | null;
+      const ok = done?.dataset.phase === 'done' && text(done).includes('Done. The fees were collected.') && f.log.includes('send collectFees') && timers.length === 1;
+      await advance(1_999);
+      const before = power.querySelector('.tx-status') ? 'shown' : 'gone';
+      await advance(1);
+      check('CR-104 Owner page (collect the fees): "Done." with its transaction, gone 2 seconds after the confirmation', ok && before === 'shown' && power.querySelector('.tx-status') === null, done ? text(done) : 'no status');
+    }
+
+    // ---- 6. With the real timer, timed ----
+    {
+      txTimer.set = realSet;
+      f = fresh();
+      const el = (box = await mount(<Stake />, chain, walletOf(f, { stakeOf: 5_000n * E, earned: 10n ** 16n }), 'CR-104: claim, the real timer', extra));
+      (button(el, 'Claim') as HTMLButtonElement).click();
+      await settle();
+      (el.querySelector('.claim-go') as HTMLButtonElement).click();
+      for (let i = 0; i < 400 && el.querySelector('.tx-status')?.getAttribute('data-phase') !== 'done'; i++) await new Promise((r) => setTimeout(r, 5));
+      const seen = performance.now();
+      const wasDone = el.querySelector('.tx-status')?.getAttribute('data-phase') === 'done';
+      for (let i = 0; i < 1_000 && el.querySelector('.tx-status'); i++) await new Promise((r) => setTimeout(r, 10));
+      const after = Math.round(performance.now() - seen);
+      check(
+        'CR-104 the real timer: the success message, seen within a few milliseconds of the confirmation, is gone about 2 seconds later (between 1.9 and 2.3 s)',
+        wasDone && !el.querySelector('.tx-status') && after >= 1_900 && after <= 2_300,
+        `gone ${after} ms after "Done." was first seen`,
+      );
+    }
+  } finally {
+    txTimer.set = realSet;
+    chooseWallet(null);
+    box = null;
+  }
+
+  // ---- part 2: the whole site follows the account (live local chain) ----
+  const [w1, ow] = await Promise.all([readAll(client, NETWORK, W1), readAll(client, NETWORK, OWNER)]);
+  const W1W = w1.wallet!;
+  const OWW = ow.wallet!;
+  check(
+    'CR-104 the two local accounts differ where the page shows them (Test wallet 1 has a stake, the owner none; their SKYLINE balances differ)',
+    W1W.stakeOf > 0n && OWW.stakeOf === 0n && W1W.townBalance !== OWW.townBalance && OWW.townBalance > 0n,
+    `W1 ${fmtTown(W1W.townBalance)} SKYLINE, staked ${fmtTown(W1W.stakeOf)}; owner ${fmtTown(OWW.townBalance)}, staked ${fmtTown(OWW.stakeOf)}`,
+  );
+
+  // The gate: every read is the site's own readAll; a reply for an account in `hold` waits for `release`.
+  const hold = new Set<string>();
+  const held = new Map<string, (() => void)[]>();
+  const reads: string[] = [];
+  const who = (a: Address | null) => (a === null ? 'none' : same(a, OWNER) ? 'owner' : same(a, W1) ? 'W1' : a.slice(0, 8));
+  const gated: typeof readAll = async (c, n, a) => {
+    const id = (a ?? 'none').toLowerCase();
+    reads.push(`start ${who(a)}`);
+    const r = await readAll(c, n, a);
+    if (hold.has(id)) await new Promise<void>((res) => held.set(id, [...(held.get(id) ?? []), res]));
+    reads.push(`reply ${who(a)}`);
+    return r;
+  };
+  const release = (a: Address) => {
+    const id = a.toLowerCase();
+    hold.delete(id);
+    (held.get(id) ?? []).forEach((res) => res());
+    held.delete(id);
+  };
+  const LOCAL_KEY = 'uptown-local-wallet';
+  const savedTitle = document.title;
+  const fig = (el: HTMLElement, view: string) => (el.querySelector(`[data-view="${view}"] .num`) as HTMLElement | null)?.innerText.trim() ?? null;
+  const yourSkyline = (el: HTMLElement) => (el.querySelector('#stake-amount')?.closest('.field')?.querySelector('.hint .num') as HTMLElement | null)?.innerText.trim() ?? null;
+  const ownerLink = (el: HTMLElement) => !!el.querySelector('nav#site-nav a[href="#/owner"]');
+  const walletBtn = (el: HTMLElement) => (el.querySelector('.wallet-btn') as HTMLElement).innerText.trim();
+  const reading = (el: HTMLElement) => [...el.querySelectorAll('[data-reading-wallet]')].map((x) => (x as HTMLElement).dataset.readingWallet);
+  const h1 = (el: HTMLElement) => el.querySelector('main h1')?.textContent?.trim() ?? '';
+  const isOwnerPage = (el: HTMLElement) => h1(el) === 'Owner' && !!el.querySelector('.owner-page') && !text(el).includes('For the owner wallet only');
+
+  // ---- 2a. The local test-wallet menu: Test wallet 1 → the owner → Test wallet 1 → disconnected ----
+  {
+    try {
+      window.localStorage.setItem(LOCAL_KEY, W1);
+    } catch {
+      /* storage off */
+    }
+    location.hash = '#/stake';
+    const site = document.createElement('div');
+    stage.replaceChildren(site);
+    render(<App read={gated} />, site);
+    await until(() => fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(W1W.stakeOf));
+    (button(site, 'All of it') as HTMLButtonElement)?.click();
+    await settle();
+    const filled = (site.querySelector('#stake-amount') as HTMLInputElement | null)?.value ?? '';
+    const beforeSwitch = `${walletBtn(site)} | staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')} | your SKYLINE ${yourSkyline(site)} | amount ${filled} | owner link ${ownerLink(site)}`;
+    check(
+      'CR-104 local menu, Test wallet 1 (live): its stake and SKYLINE are shown, "All of it" fills its balance, no Owner link',
+      fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(W1W.stakeOf) && yourSkyline(site) === fmtTown(W1W.townBalance) && filled === formatUnits(W1W.townBalance, 18) && !ownerLink(site),
+      beforeSwitch,
+    );
+
+    hold.add(OWNER.toLowerCase());
+    (site.querySelector('.wallet-btn') as HTMLButtonElement).click();
+    await settle(0);
+    (site.querySelector(`.wallet-option[data-address="${OWNER}"]`) as HTMLButtonElement).click();
+    await settle(0);
+    const atOnce = `${walletBtn(site)} | staked ${fig(site, 'SkylineStaking.stakeOf(wallet)') ?? 'not shown'} | reading ${reading(site).join(',')} | form ${site.querySelector('#stake-amount') ? 'shown' : 'not shown'} | owner link ${ownerLink(site)} | owner reply ${reads.includes('reply owner') ? 'in' : 'held'}`;
+    check(
+      'CR-104 local menu, Test wallet 1 → the owner, at once (the owner’s reply still held back): the wallet display names the owner, the Owner link appears, Test wallet 1’s stake, balance and filled amount are gone and the card says it is reading the owner’s figures',
+      walletBtn(site).includes(shortAddress(OWNER)) && ownerLink(site) && fig(site, 'SkylineStaking.stakeOf(wallet)') === null && reading(site).includes(OWNER) && !site.querySelector('#stake-amount') && !reads.includes('reply owner'),
+      atOnce,
+    );
+    release(OWNER);
+    await until(() => fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf));
+    const afterRead = `staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')} | your SKYLINE ${yourSkyline(site)} | amount "${(site.querySelector('#stake-amount') as HTMLInputElement | null)?.value}"`;
+    check(
+      'CR-104 local menu: the owner’s reply lands at once (no 15-second wait): its stake and SKYLINE are shown, and the stake form is empty (nothing filled from Test wallet 1’s balance)',
+      fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf) && yourSkyline(site) === fmtTown(OWW.townBalance) && (site.querySelector('#stake-amount') as HTMLInputElement | null)?.value === '',
+      afterRead,
+    );
+
+    // The Owner page: open for the owner; Test wallet 1 closes it at once, and the owner opens it again at once.
+    location.hash = '#/owner';
+    await until(() => isOwnerPage(site));
+    const openForOwner = isOwnerPage(site);
+    hold.add(W1.toLowerCase());
+    (site.querySelector('.wallet-btn') as HTMLButtonElement).click();
+    await settle(0);
+    (site.querySelector(`.wallet-option[data-address="${W1}"]`) as HTMLButtonElement).click();
+    await settle(0);
+    const closed = !isOwnerPage(site) && text(site).includes('For the owner wallet only') && !ownerLink(site) && !site.querySelector('[data-action]');
+    (site.querySelector('.wallet-btn') as HTMLButtonElement).click();
+    await settle(0);
+    (site.querySelector(`.wallet-option[data-address="${OWNER}"]`) as HTMLButtonElement).click();
+    await settle(0);
+    const reopened = isOwnerPage(site) && ownerLink(site);
+    check(
+      'CR-104 local menu, the Owner page: shown to the owner; switching to Test wallet 1 replaces it at once with "For the owner wallet only" and removes the Owner link (Test wallet 1’s reply still held back); switching back opens it again at once',
+      openForOwner && closed && reopened,
+      `owner ${openForOwner} | Test wallet 1: closed ${closed} | owner again: ${reopened}`,
+    );
+    release(W1);
+    // Disconnected from the menu: no account, no Owner page, no wallet figures.
+    location.hash = '#/stake';
+    await until(() => fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf));
+    (site.querySelector('.wallet-btn') as HTMLButtonElement).click();
+    await settle(0);
+    (site.querySelector('.wallet-off') as HTMLButtonElement).click();
+    await settle(0);
+    check(
+      'CR-104 local menu, Disconnect: at once the wallet display asks for a test wallet, the Owner link is gone and Your stake asks for a wallet; no figure of the owner remains',
+      walletBtn(site) === 'Pick a test wallet' && !ownerLink(site) && fig(site, 'SkylineStaking.stakeOf(wallet)') === null && text(site).includes('Pick a local test wallet to see your stake'),
+      `${walletBtn(site)} | owner link ${ownerLink(site)}`,
+    );
+    render(null, site);
+    site.remove();
+    try {
+      window.localStorage.removeItem(LOCAL_KEY);
+    } catch {
+      /* storage off */
+    }
+  }
+
+  // ---- 2b. A browser wallet (EIP-1193 stand-in) that switches account, disconnects and changes network ----
+  {
+    const listeners = new Map<string, Set<(x: unknown) => void>>();
+    let accounts: string[] = [W1];
+    let chainHex = '0x7a69';
+    const emit = (ev: string, x: unknown) => (listeners.get(ev) ?? new Set()).forEach((fn) => fn(x));
+    const ext = {
+      async request({ method }: { method: string; params?: unknown[] }) {
+        if (method === 'eth_chainId') return chainHex;
+        if (method === 'eth_accounts' || method === 'eth_requestAccounts') return accounts;
+        if (method === 'eth_sendTransaction') throw Object.assign(new Error('User rejected the request.'), { code: 4001 });
+        throw new Error(`the stand-in wallet does not do ${method}`);
+      },
+      on(ev: string, fn: (x: unknown) => void) {
+        listeners.set(ev, (listeners.get(ev) ?? new Set()).add(fn));
+      },
+      removeListener(ev: string, fn: (x: unknown) => void) {
+        listeners.get(ev)?.delete(fn);
+      },
+    };
+    const switchTo = async (list: string[]) => {
+      accounts = list;
+      emit('accountsChanged', list);
+      await settle(0);
+    };
+    chooseWallet({ uuid: 'f13b-extension', name: 'Stand-in extension', icon: null, rdns: 'test.f13b.extension', provider: ext });
+    location.hash = '#/stake';
+    const site = document.createElement('div');
+    stage.replaceChildren(site);
+    reads.length = 0;
+    try {
+      render(<App network={PUBLIC} read={gated} />, site);
+      await until(() => fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(W1W.stakeOf));
+      // Test wallet 1 fills "All of it" and asks to stake; the wallet refuses the approval: an error message of Test wallet 1's stays on the page.
+      (button(site, 'All of it') as HTMLButtonElement).click();
+      await settle();
+      hold.add(W1.toLowerCase()); // the read that follows the refusal is held back: a late reply for Test wallet 1
+      (site.querySelector('.stake-go') as HTMLButtonElement).click();
+      await until(() => site.querySelector<HTMLElement>('.run-status')?.dataset.run === 'stopped');
+      await until(() => reads.filter((r) => r === 'start W1').length >= 2 && held.has(W1.toLowerCase()));
+      const stoppedText = site.querySelector('.run-status') ? text(site.querySelector('.run-status') as HTMLElement) : '';
+      const lateFor = held.has(W1.toLowerCase());
+      const w1RepliesAtHold = reads.filter((r) => r === 'reply W1').length;
+
+      hold.add(OWNER.toLowerCase());
+      await switchTo([OWNER]);
+      const atOnce = `${walletBtn(site)} | stopped message ${site.querySelector('.run-status') ? 'shown' : 'gone'} | staked ${fig(site, 'SkylineStaking.stakeOf(wallet)') ?? 'not shown'} | reading ${reading(site).join(',')} | owner link ${ownerLink(site)}`;
+      check(
+        'CR-104 browser wallet, accountsChanged to the owner, at once (before any reply for the owner): the wallet display names the owner, the Owner link appears, Test wallet 1’s stake, balance, filled amount and its stopped stake ("Stopped. … rejected") are all gone',
+        stoppedText.includes('Stopped.') &&
+          walletBtn(site).includes(shortAddress(OWNER)) &&
+          ownerLink(site) &&
+          !site.querySelector('.run-status') &&
+          fig(site, 'SkylineStaking.stakeOf(wallet)') === null &&
+          !site.querySelector('#stake-amount') &&
+          reading(site).includes(OWNER),
+        `before: ${stoppedText.slice(0, 80)} || at once: ${atOnce}`,
+      );
+      release(OWNER);
+      await until(() => fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf));
+      const ownerShown = fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf) && yourSkyline(site) === fmtTown(OWW.townBalance);
+      const w1StillHeld = held.has(W1.toLowerCase()) && reads.filter((r) => r === 'reply W1').length === w1RepliesAtHold;
+      // Now Test wallet 1's late reply lands.
+      const repliesBefore = reads.filter((r) => r === 'reply W1').length;
+      release(W1);
+      await until(() => reads.filter((r) => r === 'reply W1').length > repliesBefore);
+      await settle(150);
+      check(
+        'CR-104 browser wallet, the late reply: the owner’s figures appear while Test wallet 1’s read is still held (the new account does not wait for it); when Test wallet 1’s reply lands afterwards it changes nothing: the owner’s stake and balance stay, the stake form stays empty',
+        lateFor && ownerShown && w1StillHeld && fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(OWW.stakeOf) && yourSkyline(site) === fmtTown(OWW.townBalance) && (site.querySelector('#stake-amount') as HTMLInputElement).value === '' && walletBtn(site).includes(shortAddress(OWNER)),
+        `${reads.join(' > ')} | after the late reply: staked ${fig(site, 'SkylineStaking.stakeOf(wallet)')}, your SKYLINE ${yourSkyline(site)}`,
+      );
+
+      // The sell form: 100% fills the owner's balance; switching to Test wallet 1 empties it at once.
+      location.hash = '#/trade/sell';
+      const sellPanel = () => site.querySelector('#trade-panel-sell') as HTMLElement;
+      await until(() => !!sellPanel() && !!button(sellPanel(), '100%') && !(button(sellPanel(), '100%') as HTMLButtonElement).disabled);
+      (button(sellPanel(), '100%') as HTMLButtonElement).click();
+      await until(() => (site.querySelector('#sell-town') as HTMLInputElement).value !== '');
+      const sellFilled = (site.querySelector('#sell-town') as HTMLInputElement).value;
+      hold.add(W1.toLowerCase());
+      await switchTo([W1]);
+      const sellAfter = (site.querySelector('#sell-town') as HTMLInputElement).value;
+      const balanceLine = text(site.querySelector('#trade-panel-sell .swap-box-top') as HTMLElement);
+      check(
+        'CR-104 browser wallet, the sell form: "100%" fills the owner’s balance; switching to Test wallet 1 empties the amount at once, and the owner’s balance line is gone',
+        sellFilled === formatUnits(OWW.townBalance, 18) && sellAfter === '' && !balanceLine.includes(fmtTown(OWW.townBalance)),
+        `filled ${sellFilled} → "${sellAfter}" | ${balanceLine}`,
+      );
+      release(W1);
+
+      // The Owner page: closed for Test wallet 1, open at once for the owner, closed at once again.
+      location.hash = '#/owner';
+      await until(() => h1(site) === 'Owner');
+      const closedFirst = !isOwnerPage(site) && text(site).includes('For the owner wallet only');
+      hold.add(OWNER.toLowerCase());
+      await switchTo([OWNER]);
+      const opened = isOwnerPage(site) && ownerLink(site);
+      await switchTo([W1]);
+      const closedAgain = !isOwnerPage(site) && text(site).includes('For the owner wallet only') && !ownerLink(site);
+      release(OWNER);
+      check(
+        'CR-104 browser wallet, the Owner page: "For the owner wallet only" for Test wallet 1; accountsChanged to the owner opens it at once (its reply held back); back to Test wallet 1 closes it at once',
+        closedFirst && opened && closedAgain,
+        `${closedFirst} → ${opened} → ${closedAgain}`,
+      );
+
+      // chainChanged: another network clears the account's message at once and marks the wallet; back again clears the mark.
+      location.hash = '#/stake';
+      await until(() => fig(site, 'SkylineStaking.stakeOf(wallet)') === fmtTown(W1W.stakeOf));
+      (button(site, 'All of it') as HTMLButtonElement).click();
+      await settle();
+      (site.querySelector('.stake-go') as HTMLButtonElement).click();
+      await until(() => site.querySelector<HTMLElement>('.run-status')?.dataset.run === 'stopped');
+      const msgBefore = !!site.querySelector('.run-status');
+      chainHex = '0x1';
+      emit('chainChanged', '0x1');
+      await settle(0);
+      const wrong = (site.querySelector('.wallet-btn') as HTMLElement).className.includes('btn-danger');
+      const clearedOnChain = !site.querySelector('.run-status') && (site.querySelector('#stake-amount') as HTMLInputElement | null)?.value === '';
+      chainHex = '0x7a69';
+      emit('chainChanged', '0x7a69');
+      await settle(0);
+      const right = !(site.querySelector('.wallet-btn') as HTMLElement).className.includes('btn-danger');
+      check(
+        'CR-104 browser wallet, chainChanged: moving the wallet to another network clears the account’s stopped message and the filled amount at once and shows the wrong-network mark; moving back removes the mark',
+        msgBefore && wrong && clearedOnChain && right,
+        `message before ${msgBefore} | wrong mark ${wrong} | cleared ${clearedOnChain} | mark gone after ${right}`,
+      );
+
+      // Disconnected in the wallet: accountsChanged with no account.
+      hold.add('none');
+      await switchTo([]);
+      const off = `${walletBtn(site)} | owner link ${ownerLink(site)} | staked ${fig(site, 'SkylineStaking.stakeOf(wallet)') ?? 'not shown'} | ${text(site.querySelector('.connect-prompt') as HTMLElement)}`;
+      check(
+        'CR-104 browser wallet, disconnected in the wallet (accountsChanged with no account): at once the wallet display says "Connect wallet", no Owner link, and Your stake asks to connect; no figure of Test wallet 1 remains',
+        walletBtn(site) === 'Connect wallet' && !ownerLink(site) && fig(site, 'SkylineStaking.stakeOf(wallet)') === null && text(site).includes('Connect a wallet to see your stake'),
+        off,
+      );
+      release('none' as Address);
+    } finally {
+      render(null, site);
+      site.remove();
+      chooseWallet(null);
+      history.replaceState(null, '', location.pathname + location.search);
+      document.title = savedTitle;
+    }
   }
   if (!GALLERY) stage.replaceChildren();
 }

@@ -9,7 +9,7 @@
 import { useState } from 'preact/hooks';
 import type { PublicClient } from 'viem';
 import { RunStatus, Stop, readUntil, useRun, useWatch, type Run, type Runner } from '../components/steps';
-import { useApp, useChain, useTx, Card, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Tabs, TxStatus, Usd, Uses, type Tx } from '../components/ui';
+import { useApp, useChain, useTx, useWalletKey, Card, ConnectPrompt, Details, Fig, FieldError, Figures, Notice, PageHead, Tabs, TxStatus, Usd, Uses, type Tx } from '../components/ui';
 import { amountError, amountOrNull, fmtExact } from '../lib/amount';
 import { UNLISTED_STAKING, listedStaking, type Network } from '../lib/network';
 import type { Address, OldStake } from '../data/types';
@@ -193,11 +193,13 @@ function PayoutChanges() {
  */
 function OldStakes() {
   const { wallet } = useApp();
+  // CR-104: a card belongs to the wallet it shows; another account gets its own (its message of the old one gone).
+  const walletKey = useWalletKey();
   if (!wallet || wallet.oldStakes.length === 0) return null;
   return (
     <>
       {wallet.oldStakes.map((v) => (
-        <OldStakeCard key={v.address} old={v} />
+        <OldStakeCard key={`${walletKey}:${v.address}`} old={v} />
       ))}
     </>
   );
@@ -354,6 +356,9 @@ function YourStake() {
   const steps = useRun();
   const tx: Tx = { ...single, busy: single.busy || steps.busy, run: (...a) => (steps.reset(), single.run(...a)) };
   const run: Run = { ...steps, busy: steps.busy || single.busy, start: (...a) => (single.reset(), steps.start(...a)) };
+  // CR-104: each action form belongs to the wallet it was filled for; another account gets a fresh one
+  // (an amount filled from the old balance or stake is gone at once).
+  const walletKey = useWalletKey();
   // CR-72: the treasury pays a staking contract the site does not list: its figures, no action.
   const unlisted = listedStaking(network, chain.staking.address) === null;
   if (!wallet) {
@@ -396,11 +401,11 @@ function YourStake() {
               render={(id) => {
                 switch (id) {
                   case 'stake':
-                    return <StakeForm tx={tx} run={run} />;
+                    return <StakeForm key={walletKey} tx={tx} run={run} />;
                   case 'unstake':
-                    return <UnstakeForm tx={tx} />;
+                    return <UnstakeForm key={walletKey} tx={tx} />;
                   default:
-                    return <ClaimForm tx={tx} />;
+                    return <ClaimForm key={walletKey} tx={tx} />;
                 }
               }}
             />

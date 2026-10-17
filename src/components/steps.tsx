@@ -7,7 +7,7 @@
 // itself (another tab, another page). Pressing the button again carries on from what is missing.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TransactionReceipt } from 'viem';
-import { useApp } from './ui';
+import { TX_MESSAGE_MS, txTimer, useApp, useWalletEpoch } from './ui';
 import { ExternalIcon, WarnIcon } from './icons';
 import { chosenWallet, sendTx, waitForTx, type TxRequest } from '../lib/wallet';
 import { explainError, type TradeKind } from '../lib/errors';
@@ -88,10 +88,20 @@ export interface Run extends RunState {
 const AGAIN =
   'Pressing the button again carries on from what is still missing: approvals already on chain are read, not asked for again.';
 
-/** The transactions of one form, run in order. */
+let runSeq = 0;
+const IDLE_RUN: RunState = { phase: 'idle', title: '', steps: [] };
+
+/**
+ * The transactions of one form, run in order. CR-104: once the whole run is confirmed, its finished
+ * step list and message clear themselves `TX_MESSAGE_MS` (2 seconds) after the last confirmation; a
+ * run that stopped (a refusal, a failure, a change) keeps its message until the visitor acts. A run
+ * belongs to the wallet it started with: when the wallet changes, its state is cleared at once and
+ * nothing it reports later is shown.
+ */
 export function useRun(): Run {
   const app = useApp();
-  const [st, setSt] = useState<RunState>({ phase: 'idle', title: '', steps: [] });
+  const w = useWalletEpoch();
+  const [st, setStRaw] = useState<RunState & { epoch: number; id: number }>({ ...IDLE_RUN, epoch: -1, id: 0 });
   const watched = useRef<{ owner: object; parts: Watched } | null>(null);
 
   const start: Run['start'] = async (title, first, body, kind) => {
@@ -101,6 +111,13 @@ export function useRun(): Run {
     }
     const at = watched.current;
     if (!at) return;
+    const epoch = w.now();
+    const runId = ++runSeq;
+    const ours = () => w.now() === epoch;
+    const setSt = (next: RunState | ((p: RunState) => RunState)) => {
+      if (!ours()) return;
+      setStRaw((p) => ({ ...(typeof next === 'function' ? next(p) : next), epoch, id: runId }));
+    };
     const owner = at.owner;
     const snapshot = { ...at.parts };
     const { network, client } = app;
@@ -180,8 +197,12 @@ export function useRun(): Run {
 
     try {
       const message = await body(runner);
+      if (!ours()) return;
       setSt({ phase: 'done', title, steps, message });
+      // CR-104: the finished list and its message clear themselves 2 seconds after the last confirmation.
+      txTimer.set(() => setStRaw((p) => (p.id === runId && p.phase === 'done' ? { ...IDLE_RUN, epoch, id: runId } : p)), TX_MESSAGE_MS);
     } catch (e) {
+      if (!ours()) return;
       const stop = e instanceof Stop ? e : new Stop(explainError(e, kind).message, explainError(e, kind).name);
       steps = steps.map((s) => (s.state === 'checking' || s.state === 'wallet' ? { ...s, state: 'todo' } : s));
       const done = steps.filter((s) => s.state === 'done').map((s) => s.label);
@@ -194,11 +215,13 @@ export function useRun(): Run {
     await app.refresh();
   };
 
+  // A run of a previous wallet is not shown (CR-104).
+  const shown: RunState = st.epoch === w.epoch ? st : IDLE_RUN;
   return {
-    ...st,
-    busy: st.phase === 'running',
+    ...shown,
+    busy: shown.phase === 'running',
     start,
-    reset: () => setSt({ phase: 'idle', title: '', steps: [] }),
+    reset: () => setStRaw({ ...IDLE_RUN, epoch: -1, id: 0 }),
     watched,
   };
 }

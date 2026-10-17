@@ -21,6 +21,8 @@ The site reads an address file as deployed only when it says `"tokenSymbol": "SK
 
 The dollar figures read Chainlink's ETH/USD feed directly, through the same network service (the feed's address for each network is in `src/lib/chains.ts`); they are hidden when the feed's answer is not positive or is more than 3 hours old.
 
+A confirmed transaction's success message (its status and hash) clears itself 2 seconds after the confirmation; errors and refusals stay (CR-104). When the visitor switches account or network in the wallet, or disconnects there, every figure, form, message and the Owner page follow at once; a reply read for the previous account is dropped (CR-104).
+
 `npm run dev` starts a development server.
 
 ## Checks

@@ -16,7 +16,7 @@ import { useContext, useState } from 'preact/hooks';
 import { createContext, type ComponentChildren } from 'preact';
 import type { TransactionReceipt } from 'viem';
 import { formatEther, formatUnits, getAddress } from 'viem';
-import { useApp, useTx, Card, FieldError, Notice, PageHead, TxStatus, Usd, Uses, type Tx } from '../components/ui';
+import { useApp, useTx, useWalletKey, Card, FieldError, Notice, PageHead, TxStatus, Usd, Uses, type Tx } from '../components/ui';
 import { amountOrNull } from '../lib/amount';
 import { targetProblem } from '../lib/wallet';
 import { CheckIcon, ExternalIcon, WarnIcon } from '../components/icons';
@@ -56,6 +56,10 @@ type Actor = Role | { kind: 'off'; reason: string };
 
 export function Owner() {
   const { owner, chain, account, data, network } = useApp();
+  // CR-104: the page follows the connected account at once: it opens for the owner (or a signer of
+  // the owner's multisig) and closes for anyone else as soon as the wallet switches, and another
+  // owner-side account gets a fresh page (no check, typed confirmation or message of the previous one).
+  const walletKey = useWalletKey();
   if (!network.deployment) {
     return (
       <div class="wrap page narrow">
@@ -82,7 +86,7 @@ export function Owner() {
   }
   const access = pageAccess(owner, account);
   if (access.kind === 'closed') return <ForOwnerOnly />;
-  return <OwnerPage o={owner} chain={chain} access={access} />;
+  return <OwnerPage key={walletKey} o={owner} chain={chain} access={access} />;
 }
 
 /** Anyone else who opens the page by its address sees only this. */
