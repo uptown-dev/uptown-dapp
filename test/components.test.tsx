@@ -5183,7 +5183,7 @@ async function f13d(base: ChainState, wallet: WalletState, notLaunchedExtra: Par
     const docs = await mount(<Docs />, base, wallet, 'CR-105: Docs, the contract names');
     const dt = docs.textContent ?? '';
     check(
-      'CR-105 what stays: an address file is read as SKYLINE’s only with "tokenSymbol": "SKYLINE" (not "$SKYLINE"), the token on chain is SKYLINE, and the contract names SkylineHook and SkylineStaking are written as before',
+      'CR-105 what stays: an address file is read as SKYLINE’s only with "tokenSymbol": "SKYLINE" (not "$SKYLINE"; the token’s on-chain symbol, SKYLINE, is read in the F13a block), and the contract names SkylineHook and SkylineStaking are written as before',
       isSkylineFile(sky) && !isSkylineFile({ ...sky, tokenSymbol: '$SKYLINE' }) && dt.includes('SkylineHook') && dt.includes('SkylineStaking') && !dt.includes('$SkylineHook') && !dt.includes('$SkylineStaking'),
     );
   }
