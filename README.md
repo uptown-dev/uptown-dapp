@@ -1,6 +1,6 @@
 # UpTown website
 
-The UpTown website: a static site to buy and sell TOWN, claim rebates and stake, which reads every figure straight from the UpTown contracts on Ethereum. It has no server, database or indexer: the browser talks to one public network service (RPC) and to the visitor's own wallet.
+The UpTown website: a static site to buy and sell SKYLINE, claim rebates and stake, which reads every figure straight from the UpTown contracts on Ethereum. It has no server, database or indexer: the browser talks to one public network service (RPC) and to the visitor's own wallet.
 
 ## Install and build
 
@@ -16,6 +16,10 @@ The built site is in `dist/`. It uses relative paths and hash routing, so any st
 `VITE_CHAIN_ID` is required. Each build is for one network only and carries only that network's contract addresses and network service: `1` is Ethereum mainnet, `11155111` is the Sepolia test network, `31337` is a local test chain. The page's content-security policy allows the browser to contact that one network service and nothing else. Without `VITE_CHAIN_ID`, or with any other value, the build stops and builds nothing. A mainnet or Sepolia build that contains anything of the local test chain is deleted and the build stops.
 
 The addresses come from `src/addresses/<chain ID>.json`. Before every build, `scripts/addresses.mjs` writes the local chain's file, `src/addresses/31337.json`, from `../script/deployments/31337.json` when that file exists, and as "not deployed" when it does not.
+
+The site reads an address file as deployed only when it says `"tokenSymbol": "SKYLINE"` (CR-102). The files of the retired first deployment (TOWN) have no such field, so a build made from one shows "not deployed" and contacts no contract. `node scripts/addresses.mjs --chain 1` refuses a mainnet record that does not name SKYLINE, and writes nothing.
+
+The dollar figures read Chainlink's ETH/USD feed directly, through the same network service (the feed's address for each network is in `src/lib/chains.ts`); they are hidden when the feed's answer is not positive or is more than 3 hours old.
 
 `npm run dev` starts a development server.
 

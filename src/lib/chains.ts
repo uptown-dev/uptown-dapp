@@ -19,7 +19,7 @@ export interface ChainContracts {
   v4Quoter: `0x${string}`;
   /** Universal Router 2.1.2: the site's buys and sells (CL-40, CL-41, CR-43). */
   universalRouter: `0x${string}`;
-  /** Permit2: a sell's TOWN reaches the router through it (CR-43; R1b A1). */
+  /** Permit2: a sell's SKYLINE reaches the router through it (CR-43; R1b A1). */
   permit2: `0x${string}`;
   /** Multicall3: every figure is read through it in one call. */
   multicall3: `0x${string}`;
@@ -27,7 +27,7 @@ export interface ChainContracts {
   /**
    * StateView: the pool's current price, `getSlot0(poolId)`, for the dollar figures (CR-95; R1b A1
    * and A6). `null` where the chain's address file does not name it (a local address file written
-   * before F9v): the TOWN dollar figures are then hidden, the ETH ones still shown.
+   * before F9v): the SKYLINE dollar figures are then hidden, the ETH ones still shown.
    */
   stateView: `0x${string}` | null;
 }
@@ -48,9 +48,10 @@ export interface ChainInfo {
   /** True only for the private local copy of mainnet (anvil): test wallets without keys. */
   local: boolean;
   /**
-   * The Chainlink ETH/USD feed TownStaking is deployed with on this chain (F12a): the address
-   * script checks a mainnet deployment file's `ethUsdFeed` against it. The site itself reads the
-   * feed from TownStaking (`feed()`, `priceStatus()`), never from here. Null where it is not checked.
+   * The Chainlink ETH/USD feed on this chain, the site's own (CR-102): every dollar figure reads it
+   * directly, `latestRoundData()`, 8 decimals, and hides itself when the answer is not positive or
+   * more than 3 hours old. The address script also checks a mainnet deployment file's `ethUsdFeed`
+   * against it (F12a). Null where the chain has none: the dollar figures are then never shown.
    */
   ethUsdFeed: `0x${string}` | null;
 }
@@ -114,8 +115,10 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
       stateView: '0xE1Dd9c3fA50EDB962E442f60DfBc432e24537E4C',
     },
     local: false,
-    // Not checked for Sepolia: F9a's checks of a Sepolia file are unchanged.
-    ethUsdFeed: null,
+    // R1c (table "ETH/USD proxy", Sepolia column): Chainlink's Sepolia ETH/USD proxy, 8 decimals,
+    // CONFIRMED from Chainlink's addresses page and on Sepolia itself. The dollar figures of a Sepolia
+    // build read it; F9a's checks of a Sepolia deployment file are unchanged.
+    ethUsdFeed: '0x694AA1769357215DE4FAC081bf1f309aDC325306',
   },
   31337: {
     chainId: 31337,
@@ -128,7 +131,9 @@ export const CHAINS: Record<ChainId, ChainInfo> = {
     // Mainnet's, read from the local address file (it is a fork of mainnet).
     contracts: null,
     local: true,
-    ethUsdFeed: null,
+    // The local chain is a copy of mainnet (a fork), so mainnet's feed is there, frozen at the fork's
+    // block: on a chain run for days its answer is more than 3 hours old and the dollar figures hide.
+    ethUsdFeed: '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419',
   },
 };
 

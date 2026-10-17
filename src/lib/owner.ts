@@ -10,9 +10,9 @@ import type { Address, Multisig, OwnerState } from '../data/types';
 import type { TxRequest } from './wallet';
 import type { Network } from './network';
 
-/** The three contracts with two-step ownership. */
-export type Owned = 'Treasury' | 'TownStaking' | 'LPVault';
-export const OWNED: readonly Owned[] = ['Treasury', 'TownStaking', 'LPVault'];
+/** The two contracts with two-step ownership (CR-102: SkylineStaking has no owner). */
+export type Owned = 'Treasury' | 'LPVault';
+export const OWNED: readonly Owned[] = ['Treasury', 'LPVault'];
 
 const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
@@ -33,10 +33,10 @@ export function roleFor(o: OwnerState, holder: Address | null, account: Address 
 
 /** A contract's ownership in the owner state. */
 export function ownershipOf(o: OwnerState, c: Owned) {
-  return c === 'Treasury' ? o.treasury : c === 'TownStaking' ? o.staking : o.lpVault;
+  return c === 'Treasury' ? o.treasury : o.lpVault;
 }
 
-/** Every address holding a power now: the three owners and offered owners, and the Launcher's owner before launch. */
+/** Every address holding a power now: the two owners and offered owners, and the Launcher's owner before launch. */
 export function holders(o: OwnerState): Address[] {
   const list = [o.launcher.launched ? null : o.launcher.owner, ...OWNED.flatMap((c) => [ownershipOf(o, c).owner, ownershipOf(o, c).pendingOwner])];
   const out: Address[] = [];
@@ -116,20 +116,6 @@ export function checkRate(text: string, maxBps: number): Checked<number> {
 }
 
 /**
- * The fallback ETH/USD price typed in dollars (up to 8 decimals), as the contract's 8-decimal
- * number, above zero. A leading $ is allowed; commas only between thousands ("2,500.50", CR-72).
- */
-export function checkPrice(text: string): Checked<bigint> {
-  const p = parseAmount(text.trim().replace(/^\$\s*/, ''), 8);
-  if (p.kind === 'empty') return { ok: false, error: 'Enter a price in dollars, for example 2,500.' };
-  if (p.kind === 'comma') return { ok: false, error: p.error };
-  if (p.kind === 'decimals') return { ok: false, error: 'The price has at most 8 decimals.' };
-  if (p.kind === 'invalid') return { ok: false, error: 'Enter a price in dollars, for example 2500.50.' };
-  if (p.value <= 0n) return { ok: false, error: 'Enter a price above zero.' };
-  return { ok: true, value: p.value };
-}
-
-/**
  * A new unlock date typed in the visitor's own time (an `<input type="datetime-local">` value such as
  * 2036-10-27T14:00), as seconds since 1970; it must be later than the current unlock time.
  */
@@ -151,7 +137,7 @@ export function localInputValue(ts: number): string {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Prepared for a multisig (CR-64): the target, the value (always 0) and the calldata, to copy into
+// Prepared for a multisig (CR-64): the target, the value (0, or the launch's 0.13 ETH) and the calldata, to copy into
 // the Safe app, where the signers approve it.
 // ---------------------------------------------------------------------------------------------
 

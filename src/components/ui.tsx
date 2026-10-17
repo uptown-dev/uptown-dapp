@@ -132,10 +132,10 @@ export function Fig({
   view: string;
   accent?: boolean;
   large?: boolean;
-  /** The raw amount behind `value` (CR-95): with an ETH, WETH or TOWN unit, its dollar estimate shows under the value. */
+  /** The raw amount behind `value` (CR-95): with an ETH, WETH or SKYLINE unit, its dollar estimate shows under the value. */
   amount?: bigint | null;
 }) {
-  const priced = unit === 'ETH' || unit === 'WETH' || unit === 'TOWN' ? (unit as Priced) : null;
+  const priced = unit === 'ETH' || unit === 'WETH' || unit === 'SKYLINE' ? (unit as Priced) : null;
   return (
     <div class={`fig${accent ? ' accent' : ''}${large ? ' large' : ''}`}>
       <dt>{label}</dt>
@@ -426,12 +426,12 @@ export function FieldError({ children }: { children: ComponentChildren }) {
 
 /**
  * Beside an amount field (CR-72): the amount the form will use, formatted with every decimal typed,
- * as soon as the text is a valid amount; nothing otherwise. An ETH, WETH or TOWN amount carries its
+ * as soon as the text is a valid amount; nothing otherwise. An ETH, WETH or SKYLINE amount carries its
  * dollar estimate after it (CR-95).
  */
 export function Uses({ value, decimals = 18, unit, id }: { value: bigint | null; decimals?: number; unit: string; id?: string }) {
   if (value === null) return null;
-  const priced = decimals === 18 && (unit === 'ETH' || unit === 'WETH' || unit === 'TOWN') ? (unit as Priced) : null;
+  const priced = decimals === 18 && (unit === 'ETH' || unit === 'WETH' || unit === 'SKYLINE') ? (unit as Priced) : null;
   return (
     <span class="uses" id={id} data-uses={value.toString()} aria-live="polite">
       Uses <span class="num">{fmtExact(value, decimals)}</span> {unit}
@@ -446,36 +446,43 @@ export function Uses({ value, decimals = 18, unit, id }: { value: bigint | null;
 }
 
 /**
- * CR-95: the dollar estimate beside an ETH, WETH or TOWN amount, "≈ $12.34", muted and secondary:
- * the amount itself always stays beside it with its unit. ETH/USD is TownStaking.priceStatus() and
- * TOWN's price the pool's, through `usdOf` (derive.ts), the one place the arithmetic is done.
- * Nothing is shown when no usable price is reported (hidden, never shown stale), or, for TOWN, when
- * the pool's price could not be read. When the price is the owner's fallback, the figure carries
- * the fallback notice's warning mark and says so in its tooltip and to screen readers. `block` puts
- * it on its own line; `paren` wraps it in brackets inside a sentence; `unitPrice` formats the price
- * of one TOWN with enough digits to read below a cent.
+ * CR-95: the dollar estimate beside an ETH, WETH or SKYLINE amount, "≈ $12.34", muted and secondary:
+ * the amount itself always stays beside it with its unit. ETH/USD is Chainlink's ETH/USD feed, read
+ * directly (CR-102), and SKYLINE's price the pool's, through `usdOf` (derive.ts), the one place the
+ * arithmetic is done. Nothing is shown when the feed gives no answer, an answer that is not positive
+ * or one more than 3 hours old (hidden, never shown stale), or, for SKYLINE, when the pool's price
+ * could not be read. `block` puts it on its own line; `paren` wraps it in brackets inside a
+ * sentence; `unitPrice` formats the price of one SKYLINE with enough digits to read below a cent;
+ * `lead` puts the space before it inside, for a figure that ends a sentence ("… WETH (≈ $1.23).",
+ * and "… WETH." when it is hidden, never "… WETH .").
  */
-export function Usd({ amount, unit, block, paren, unitPrice }: { amount: bigint | null | undefined; unit: Priced; block?: boolean; paren?: boolean; unitPrice?: boolean }) {
+export function Usd({
+  amount,
+  unit,
+  block,
+  paren,
+  unitPrice,
+  lead,
+}: {
+  amount: bigint | null | undefined;
+  unit: Priced;
+  block?: boolean;
+  paren?: boolean;
+  unitPrice?: boolean;
+  lead?: boolean;
+}) {
   const { chain } = useApp();
   if (amount === null || amount === undefined || !chain) return null;
   const f = usdOf(chain, amount, unit);
   if (!f) return null;
   const shown = fmtUsd(f.usd, unitPrice);
-  const eth = fmtUsd8(chain.staking.priceStatus.price);
-  const pool = unit === 'TOWN' ? ' and the pool’s current TOWN price' : '';
-  const tip = f.fallback
-    ? `An estimate, at the owner’s fallback ETH price of ${eth}${pool}: the Chainlink feed is not up to date, so the staking contract uses the fallback.`
-    : `An estimate, at Chainlink’s ETH price of ${eth}${pool}.`;
+  const pool = unit === 'SKYLINE' ? ' and the pool’s current SKYLINE price' : '';
+  const tip = `An estimate, at Chainlink’s ETH price of ${fmtUsd8(f.price)}${pool}.`;
   return (
-    <span class={`usd${block ? ' block' : ''}${f.fallback ? ' fallback' : ''}`} data-usd={f.usd.toString()} title={tip}>
+    <span class={`usd${block ? ' block' : ''}`} data-usd={f.usd.toString()} title={tip}>
+      {lead ? ' ' : ''}
       {paren ? '(' : ''}
       {shown.startsWith('<') ? shown : `≈ ${shown}`}
-      {f.fallback && (
-        <>
-          <WarnIcon size={11} />
-          <span class="visually-hidden"> at the owner’s fallback ETH price</span>
-        </>
-      )}
       {paren ? ')' : ''}
     </span>
   );

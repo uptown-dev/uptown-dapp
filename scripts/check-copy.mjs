@@ -50,7 +50,7 @@ const RULES = [
   { name: 'bounty (poke pays nothing)', re: /\bbount(?:y|ies)\b/gi },
   { name: 'team wallet', re: /\bteam\s+wallet/gi },
   { name: 'lambo', re: /\blambo/gi },
-  // Added by F8a3: no wording that states or hints that TOWN's price is expected to rise.
+  // Added by F8a3: no wording that states or hints that SKYLINE's price is expected to rise.
   { name: 'price will', re: /\bprice\s+will\b/gi },
   { name: 'go up', re: /\bgo\s+up\b/gi },
   { name: 'goes up', re: /\bgoes\s+up\b/gi },

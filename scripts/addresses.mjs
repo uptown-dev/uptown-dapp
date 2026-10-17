@@ -33,6 +33,15 @@
 // untouched and the script exits 1. This script has no network: it does not check that the
 // addresses hold code (the mainnet command does).
 //
+// CR-102 (task F13a): the contracts were redeployed under the symbol SKYLINE. Every deployment
+// record of this generation carries `"tokenSymbol": "SKYLINE"` (the token's own symbol(), written by
+// the Deployer's scripts) and `secondPositionTokenId` once launched; the keys keep their first names
+// (`townToken`, `townHook`, `townStaking`, ...). The site's address files name the contracts
+// SkylineHook and SkylineStaking and copy `tokenSymbol`; the site reads a file without
+// "SKYLINE" as "not deployed". A chain-1 record whose `tokenSymbol` is not "SKYLINE" is refused
+// outright: the retired first deployment's record (TOWN, launched 15 October 2026) has none, and the
+// site must never be built against it by mistake.
+//
 // Any other chain is refused.
 //
 // Usage: node scripts/addresses.mjs [--chain <id>] [source]
@@ -51,6 +60,25 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PROJECT = join(ROOT, '..');
 
 const isAddress = (a) => typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a);
+
+/** The symbol of this generation's token (CR-102); the site reads only address files that name it. */
+const SYMBOL = 'SKYLINE';
+/** The retired first deployment's token, named in the refusal so the owner recognises it. */
+const RETIRED = '0x994d362B403a5AbE6D815749f63c23B8e807fCF5';
+
+/** `tokenSymbol` as the site's address file keeps it: the record's string, or null when it has none. */
+const symbolOf = (src) => (typeof src.tokenSymbol === 'string' ? src.tokenSymbol : null);
+
+/** `secondPositionTokenId` as a decimal string, or null; anything else stops the script. */
+function secondIdOf(src, tokenId, nothingChanged) {
+  const v = src.secondPositionTokenId;
+  if (v === undefined || v === null) return null;
+  const s = String(v);
+  if (!/^\d+$/.test(s)) fail(`secondPositionTokenId is not a number: ${s}.${nothingChanged}`);
+  if (tokenId === null) fail(`secondPositionTokenId ${s} is given but positionTokenId is not: the two positions are made in the same launch transaction.${nothingChanged}`);
+  if (s === tokenId) fail(`secondPositionTokenId ${s} is the launch position's own token ID: the second position is a different NFT.${nothingChanged}`);
+  return s;
+}
 
 function fail(message) {
   console.error(`addresses: ${message}`);
@@ -111,7 +139,7 @@ if (CHAIN === 31337) {
   // ---------------------------------------------------------------------------------------------
   if (!existsSync(SOURCE)) {
     write(
-      { chainId: 31337, source: null, contracts: null, owner: null, positionTokenId: null, uniswap: null, testWallets: [] },
+      { chainId: 31337, source: null, tokenSymbol: null, contracts: null, owner: null, positionTokenId: null, secondPositionTokenId: null, uniswap: null, testWallets: [] },
       `written as "not deployed" (no ${relative(PROJECT, SOURCE)}; start the local chain with: bash script/local-chain.sh start)`,
     );
     process.exit(0);
@@ -129,12 +157,13 @@ if (CHAIN === 31337) {
     return src[key];
   };
 
+  // CR-102: the site's names; the record keeps the first deployment's keys.
   const contracts = {
     UpTownToken: pick('townToken'),
-    TownHook: pick('townHook'),
+    SkylineHook: pick('townHook'),
     BuyerRewards: pick('buyerRewards'),
     Treasury: pick('treasury'),
-    TownStaking: pick('townStaking'),
+    SkylineStaking: pick('townStaking'),
     LPVault: pick('lpVault'),
     Launcher: pick('launcher'),
   };
@@ -153,18 +182,25 @@ if (CHAIN === 31337) {
   if (!wallets.every(isAddress)) fail('testWallets holds something that is not an address');
   const tokenId = src.positionTokenId === undefined || src.positionTokenId === null ? null : String(src.positionTokenId);
   if (tokenId !== null && !/^\d+$/.test(tokenId)) fail(`positionTokenId is not a number: ${tokenId}`);
+  const secondId = secondIdOf(src, tokenId, '');
+  const symbol = symbolOf(src);
 
   write(
     {
       chainId: 31337,
       source: 'script/deployments/31337.json',
+      tokenSymbol: symbol,
       contracts,
       owner: pick('owner'),
       positionTokenId: tokenId,
+      secondPositionTokenId: secondId,
       uniswap,
       testWallets: wallets,
     },
-    `copied from ${relative(PROJECT, SOURCE)} (${Object.keys(contracts).length} contracts, ${wallets.length} test wallets)`,
+    `copied from ${relative(PROJECT, SOURCE)} (${Object.keys(contracts).length} contracts, ${wallets.length} test wallets)` +
+      (symbol === SYMBOL
+        ? ''
+        : `. NOTE: the file names no "tokenSymbol": "${SYMBOL}", so it is from before the SKYLINE redeployment and the site shows "not deployed"; restart the local chain (bash script/local-chain.sh stop, then start)`),
   );
   process.exit(0);
 }
@@ -198,6 +234,15 @@ if (MAINNET ? src.dryRun !== false : src.dryRun !== false && src.dryRun !== unde
     `${SOURCE} is not the record of a real ${NAME} deployment ("dryRun" is ${JSON.stringify(src.dryRun)}): no contracts exist on ${NAME} from a dry run. Nothing was changed.`,
   );
 }
+if (MAINNET && src.tokenSymbol !== SYMBOL) {
+  // CR-102: the retired first deployment's record (TOWN) has no tokenSymbol; anything but SKYLINE is refused.
+  const said = src.tokenSymbol === undefined ? 'no "tokenSymbol"' : `"tokenSymbol": ${JSON.stringify(src.tokenSymbol)}`;
+  fail(
+    `${SOURCE} is not a record of the SKYLINE deployment: it says ${said}, and the site is built only for SKYLINE. ` +
+      `The record of UpTown's first deployment (TOWN, ${RETIRED}), which is retired, has no "tokenSymbol". ` +
+      'Run phase 1 of the SKYLINE deployment first (bash script/mainnet-deploy.sh deploy --fresh, from the project root; it runs this script itself), then run this again if needed. Nothing was changed.',
+  );
+}
 if (MAINNET) {
   // A local-chain file relabelled as chain 1 still carries the local chain's own fields (LocalChain.s.sol).
   const local = ['forkOfChainId', 'forkUrl', 'forkBlock', 'rpcUrl', 'townBank'].filter((key) => src[key] !== undefined);
@@ -216,12 +261,13 @@ const pickS = (key) => {
   return src[key];
 };
 
+// CR-102: the site's names; the record keeps the first deployment's keys.
 const contracts = {
   UpTownToken: pickS('townToken'),
-  TownHook: pickS('townHook'),
+  SkylineHook: pickS('townHook'),
   BuyerRewards: pickS('buyerRewards'),
   Treasury: pickS('treasury'),
-  TownStaking: pickS('townStaking'),
+  SkylineStaking: pickS('townStaking'),
   LPVault: pickS('lpVault'),
   Launcher: pickS('launcher'),
 };
@@ -264,7 +310,8 @@ for (const [field, key] of Object.entries(FROM_FILE)) {
   uniswap[field] = given;
   fromFile.push(key);
 }
-// Mainnet: the Chainlink ETH/USD feed TownStaking was deployed with must be the site's own (R1b A1).
+// Mainnet: the Chainlink ETH/USD feed the record names must be the site's own (R1b A1); the site reads
+// that feed directly for its dollar figures (CR-102).
 if (MAINNET && src.ethUsdFeed !== undefined && src.ethUsdFeed !== null) {
   const given = pickS('ethUsdFeed');
   const known = CHAINS[1].ethUsdFeed;
@@ -279,19 +326,24 @@ if (MAINNET && src.ethUsdFeed !== undefined && src.ethUsdFeed !== null) {
 
 const tokenId = src.positionTokenId === undefined || src.positionTokenId === null ? null : String(src.positionTokenId);
 if (tokenId !== null && !/^\d+$/.test(tokenId)) fail(`positionTokenId is not a number: ${tokenId}. Nothing was changed.`);
+const secondId = secondIdOf(src, tokenId, ' Nothing was changed.');
+const symbol = symbolOf(src);
 
 if (!MAINNET) {
   write(
     {
       chainId: 11155111,
       source: 'script/deployments/11155111.json',
+      tokenSymbol: symbol,
       contracts,
       owner,
       positionTokenId: tokenId,
+      secondPositionTokenId: secondId,
       uniswap,
       testWallets: [],
     },
-    `copied from ${relative(PROJECT, SOURCE)} (${Object.keys(contracts).length} contracts; Uniswap set checked against the file for: ${fromFile.length ? fromFile.join(', ') : 'none'})`,
+    `copied from ${relative(PROJECT, SOURCE)} (${Object.keys(contracts).length} contracts; Uniswap set checked against the file for: ${fromFile.length ? fromFile.join(', ') : 'none'})` +
+      (symbol === SYMBOL ? '' : `. NOTE: the file names no "tokenSymbol": "${SYMBOL}", so the site shows Sepolia as "not deployed"`),
   );
   process.exit(0);
 }
@@ -311,33 +363,36 @@ if (launchFacts !== 0 && launchFacts !== 3) {
   );
 }
 // The pool key, where the file names it (the local chain's and Sepolia's files do; the mainnet
-// command's may): it must be the TOWN pool's, native ETH and TOWN at 0.5%, spacing 60, through TownHook.
+// command's may): it must be the SKYLINE pool's, native ETH and SKYLINE at 0.5%, spacing 60, through
+// SkylineHook.
 const KEY = {
   poolCurrency0: '0x0000000000000000000000000000000000000000',
   poolCurrency1: contracts.UpTownToken,
   poolFee: 5000,
   poolTickSpacing: 60,
-  poolHooks: contracts.TownHook,
+  poolHooks: contracts.SkylineHook,
 };
 for (const [key, want] of Object.entries(KEY)) {
   if (src[key] === undefined || src[key] === null) continue;
   const same = typeof want === 'number' ? Number(src[key]) === want : String(src[key]).toLowerCase() === want.toLowerCase();
-  if (!same) fail(`${key} in ${SOURCE} is ${JSON.stringify(src[key])}, but the TOWN pool's is ${want}. Nothing was changed; ask the Lead.`);
+  if (!same) fail(`${key} in ${SOURCE} is ${JSON.stringify(src[key])}, but the SKYLINE pool's is ${want}. Nothing was changed; ask the Lead.`);
 }
 
 write(
   {
     chainId: 1,
     source: 'script/deployments/1.json',
+    tokenSymbol: symbol,
     contracts,
     owner,
     positionTokenId: tokenId,
+    secondPositionTokenId: secondId,
     launchTime,
     poolId,
     uniswap,
     testWallets: [],
   },
   `copied from ${relative(PROJECT, SOURCE)} (${Object.keys(contracts).length} contracts; ${
-    launchFacts ? 'launched: launch time, pool ID and position copied' : 'deployed, not launched yet: no launch time, pool ID or position (phase 1)'
+    launchFacts ? `launched: launch time, pool ID and position copied${secondId !== null ? ', with the second position' : ''}` : 'deployed, not launched yet: no launch time, pool ID or position (phase 1)'
   }; Uniswap set checked against the file for: ${fromFile.length ? fromFile.join(', ') : 'none'})`,
 );

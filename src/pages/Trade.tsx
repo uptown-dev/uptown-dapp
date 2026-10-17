@@ -1,29 +1,28 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, Notice, PageHead, Chips, TxStatus, Usd, Uses } from '../components/ui';
+import { useApp, useChain, useTx, ConnectPrompt, Details, FieldError, PageHead, Chips, TxStatus, Usd, Uses } from '../components/ui';
 import { RunStatus, Stop, readUntil, useRun, useWatch } from '../components/steps';
 import { amountError, amountOrNull } from '../lib/amount';
-import { ArrowDownIcon, WarnIcon } from '../components/icons';
+import { ArrowDownIcon } from '../components/icons';
 import {
   afterClaimFee,
-  antiSnipeActive,
   claimOpensOn,
-  antiSnipeSecondsLeft,
   buyFee,
+  ethUsdPrice,
   dayRateBps,
   effectiveRateBps,
   limitReached,
   minCheck,
   minReceived,
-  ONE_TOWN,
+  ONE_SKYLINE,
   sellFeeMode,
   sellFees,
-  townPriceWei,
+  skylinePriceWei,
   usdOf,
   type SellFeeState,
 } from '../lib/derive';
-import { PriceSource, type ChainState } from '../data/types';
-import { dayName, fmtBps, fmtClock, fmtDateTime, fmtEth, fmtInt, fmtTown, fmtUnits, fmtUsd, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
+import type { ChainState } from '../data/types';
+import { dayName, fmtBps, fmtDateTime, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUnits, fmtUsd, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
 import { quoteBuy, quoteSell, readSellApprovals, readTownBalance, type SellApprovals } from '../lib/reads';
 import { BUY_DEADLINE_SECONDS, ROUTER_ALLOWANCE_SECONDS, allowRouterTx, approvePermit2Tx, buyTx, sellTx } from '../lib/actions';
 import { BUY_GAS_ALLOWANCE, BUY_GAS_MARGIN, QUICK_SHARES, buyGasReserve, buyShare, quickText, shareOf, type QuickShare } from '../lib/quick';
@@ -38,14 +37,14 @@ const SLIPPAGE = [
 type Mode = 'buy' | 'sell';
 
 /**
- * A TOWN or ETH amount typed by the visitor, or null when it cannot be used (CR-72: a point for
+ * A SKYLINE or ETH amount typed by the visitor, or null when it cannot be used (CR-72: a point for
  * decimals; a comma only between thousands, "1,000.5"; "2,5" is refused, never read as 25).
  */
 const parseAmount = (s: string): bigint | null => amountOrNull(s, 18);
 const parseEthInput = parseAmount;
 
-/** One whole TOWN, and a millionth of an ETH: the precision the minimum-received fields are filled in at. */
-const WHOLE_TOWN = 10n ** 18n;
+/** One whole SKYLINE, and a millionth of an ETH: the precision the minimum-received fields are filled in at. */
+const WHOLE_SKYLINE = 10n ** 18n;
 const MICRO_ETH = 10n ** 12n;
 const floorTo = (v: bigint, step: bigint) => (v / step) * step;
 
@@ -114,9 +113,9 @@ const fmtGwei = (wei: bigint) => fmtUnits(wei, 9, wei < 10n ** 9n ? 4 : 2);
 /** A sale's transactions, in order: the approvals still missing, then the sale (CR-82). */
 function sellPlan(approve: boolean, allow: boolean): { id: string; label: string }[] {
   return [
-    ...(approve ? [{ id: 'approve', label: 'Approve TOWN' }] : []),
+    ...(approve ? [{ id: 'approve', label: 'Approve SKYLINE' }] : []),
     ...(allow ? [{ id: 'allow', label: 'Allow the router' }] : []),
-    { id: 'sell', label: 'Sell TOWN' },
+    { id: 'sell', label: 'Sell SKYLINE' },
   ];
 }
 
@@ -129,10 +128,9 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
   const town = network.deployment?.contracts.UpTownToken;
   return (
     <div class="wrap page narrow">
-      <PageHead title="Trade TOWN" lead="Buy or sell TOWN for ETH. Every buy here is counted for your wallet, so its rebate is yours." />
-      {mode === 'buy' && antiSnipeActive(chain) && <AntiSnipe />}
-      <section class="card swap-card" aria-label="Trade TOWN">
-        <TownPrice />
+      <PageHead title="Trade SKYLINE" lead="Buy or sell SKYLINE for ETH. Every buy here is counted for your wallet, so its rebate is yours." />
+      <section class="card swap-card" aria-label="Trade SKYLINE">
+        <SkylinePrice />
         <div class="tab-list trade-switch" role="tablist" aria-label="Buy or sell">
           {(['buy', 'sell'] as const).map((m) => (
             <button
@@ -157,7 +155,7 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
         </div>
       </section>
       <div class="after-card">
-        <p class="small muted">Other TOWN pools, outside the official one, pay no fees and earn no rebates.</p>
+        <p class="small muted">Other SKYLINE pools, outside the official one, pay no fees and earn no rebates.</p>
       </div>
       <Details>
         <ul class="plain-list">
@@ -167,27 +165,23 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
             your wallet in the swap. Your wallet shows each transaction for you to approve.
           </li>
           <li>
-            <strong>Approvals before a first sell.</strong> The router takes your TOWN through Uniswap’s Permit2 contract (
+            <strong>Approvals before a first sell.</strong> The router takes your SKYLINE through Uniswap’s Permit2 contract (
             <code>{network.uniswap ? shortAddress(network.uniswap.permit2) : '—'}</code>), so a first sell needs two approvals, each its own
-            transaction, sent one after the other by the sell button: TOWN to Permit2, once and without a limit, then Permit2 to the router, without a limit
+            transaction, sent one after the other by the sell button: SKYLINE to Permit2, once and without a limit, then Permit2 to the router, without a limit
             for 30 days. Together they cost about 94,000 gas on Ethereum. Later sells need no new approval; every 30 days the router’s permission is renewed
-            with one transaction. The router can move your TOWN only in a trade you send yourself.
+            with one transaction. The router can move your SKYLINE only in a trade you send yourself.
           </li>
           <li>
-            <strong>Fees on a buy.</strong> The buy fee ({fmtBps(chain.hook.BUY_FEE_BPS)} of the ETH, to the treasury; 10% of it is kept for the owner) and the
-            pool’s 0.5% trading fee, which goes to the locked liquidity and is collected by the owner. The estimate already includes both. Gas is paid
-            separately.
+            <strong>Fees on a buy.</strong> The buy fee ({fmtBps(chain.hook.currentBuyFeeBps)} of the ETH, to the treasury; 10% of it is kept for the owner)
+            and the pool’s 0.5% trading fee, which goes to the locked liquidity and is collected by the owner. The estimate already includes both. Gas is
+            paid separately. The buy fee is the same from the first second of trading; there is no higher fee at the launch.
           </li>
           <li>
-            <strong>Fees on a sell.</strong> 2% of every sell, in one of two currencies fixed for the whole day: burned in TOWN (2% of the TOWN sold), or
+            <strong>Fees on a sell.</strong> 2% of every sell, in one of two currencies fixed for the whole day: burned in SKYLINE (2% of the SKYLINE sold), or
             sent to the treasury in ETH (2% of the ETH the sale brings in; 10% of it is kept for the owner). The fee is in ETH on a day after one that burned
-            more TOWN than it paid out in rebates, and on every day once the supply is down to {fmtTown(chain.hook.BURN_FLOOR)} TOWN; once the rebate
+            more SKYLINE than it paid out in rebates, and on every day once the supply is down to {fmtTown(chain.hook.BURN_FLOOR)} SKYLINE; once the rebate
             reserve is spent it is burned until then. Plus the pool’s 0.5% trading fee. The estimate already includes both. A sell takes away none of your
             rebate points; the day’s sells, counted with no names, go into the three-day lean that sets the next days’ rebate rate.
-          </li>
-          <li>
-            <strong>The first 15 minutes.</strong> The buy fee starts at {fmtBps(chain.hook.ANTI_SNIPE_START_BPS)} at launch and falls in a straight line to{' '}
-            {fmtBps(chain.hook.BUY_FEE_BPS)} over 15 minutes, to discourage bots. Rebates count only the TOWN you actually receive.
           </li>
           <li>
             <strong>Who gets the rebate.</strong> A buy made here names your wallet, so it is always credited to you. A buy through another app is credited to
@@ -195,7 +189,7 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
             you.
           </li>
           <li>
-            <strong>The right pool.</strong> Only the TOWN pool that runs through TownHook counts. TOWN’s address: <code class="break">{town ?? '—'}</code>.
+            <strong>The right pool.</strong> Only the SKYLINE pool that runs through SkylineHook counts. SKYLINE’s address: <code class="break">{town ?? '—'}</code>.
           </li>
         </ul>
       </Details>
@@ -204,54 +198,56 @@ export function Trade({ sell: openSell }: { sell?: boolean }) {
 }
 
 /**
- * CR-95: TOWN's price, at the top of the swap card. The pool's current price (StateView.getSlot0,
- * TOWN per ETH) as gwei per TOWN, and in dollars at the ETH price TownStaking.priceStatus() reports,
- * the Chainlink feed or, marked, the owner's fallback; with no usable ETH price the dollar price is
- * left out and the line says why. An estimate for reading only.
+ * CR-95, CR-102: SKYLINE's price, at the top of the swap card. The pool's current price
+ * (StateView.getSlot0, SKYLINE per ETH) as gwei per SKYLINE, and in dollars at Chainlink's ETH/USD
+ * price, read straight from the feed; when the feed's answer is missing, not positive or more than 3
+ * hours old the dollar price is left out and the line says why. An estimate for reading only.
  */
-export function TownPrice() {
+export function SkylinePrice() {
   const chain = useChain();
-  const wei = townPriceWei(chain);
+  const wei = skylinePriceWei(chain);
   if (wei === null) return null;
-  const ps = chain.staking.priceStatus;
-  const one = usdOf(chain, ONE_TOWN, 'TOWN');
+  const p = ethUsdPrice(chain);
+  const one = usdOf(chain, ONE_SKYLINE, 'SKYLINE');
   return (
-    <p class="price-line" data-view="StateView.getSlot0(poolId).sqrtPriceX96; TownStaking.priceStatus">
-      <span>TOWN price</span>
+    <p class="price-line" data-view="StateView.getSlot0(poolId).sqrtPriceX96; Chainlink ETH/USD.latestRoundData" data-eth-usd={p.ok ? 'ok' : p.reason}>
+      <span>SKYLINE price</span>
       {one !== null && (
         <span class="price-value num" data-usd={one.usd.toString()}>
           ≈ {fmtUsd(one.usd, true)}
         </span>
       )}
       <span class="num" data-wei={wei.toString()}>
-        {fmtGwei(wei)} gwei per TOWN in the pool
+        {fmtGwei(wei)} gwei per SKYLINE in the pool
       </span>
-      <span class="price-source">
-        {one === null ? (
-          'No ETH price is reported, so no dollar figures are shown.'
-        ) : ps.source === PriceSource.Fallback ? (
-          <span class="usd fallback">
-            at ETH {fmtUsd8(ps.price)}, the owner’s fallback price
-            <WarnIcon size={11} />
-          </span>
-        ) : (
-          <>at ETH {fmtUsd8(ps.price)}, Chainlink’s price</>
-        )}
-      </span>
+      <span class="price-source">{priceSourceWords(chain)}</span>
     </p>
   );
 }
 
-/** The headline for each of the four states of TownHook.sellFeeShares() (CR-93). */
+/**
+ * Where the dollar figures' ETH price stands, in words (CR-102): Chainlink's price; or why no dollar
+ * figure is shown: no answer, an answer that is not positive, or an answer more than 3 hours old.
+ */
+export function priceSourceWords(chain: ChainState): string {
+  const p = ethUsdPrice(chain);
+  if (p.ok) return `at ETH ${fmtUsd8(p.price)}, Chainlink’s price`;
+  if (p.reason === 'stale')
+    return `Chainlink’s ETH price was last updated ${fmtDuration(chain.blockTimestamp - (p.updatedAt ?? 0))} ago, more than 3 hours, so no dollar figures are shown.`;
+  if (p.reason === 'not-positive') return 'Chainlink’s ETH price feed reports no usable price, so no dollar figures are shown.';
+  return 'No ETH price is reported, so no dollar figures are shown.';
+}
+
+/** The headline for each of the four states of SkylineHook.sellFeeShares() (CR-93). */
 export const SELL_FEE_HEADLINE: Record<SellFeeState, string> = {
-  burn: '2% in TOWN, burned',
-  'burn-reserve': '2% in TOWN: half burned, half to the rebate reserve',
+  burn: '2% in SKYLINE, burned',
+  'burn-reserve': '2% in SKYLINE: half burned, half to the rebate reserve',
   eth: '2% in ETH, to the treasury',
-  split: '1% in TOWN to the rebate reserve, 1% in ETH to the treasury',
+  split: '1% in SKYLINE to the rebate reserve, 1% in ETH to the treasury',
 };
 
 /**
- * The sentence for the day-401 state (CR-93, F9u): why half of a TOWN fee goes to the reserve. Put
+ * The sentence for the day-401 state (CR-93, F9u): why half of a SKYLINE fee goes to the reserve. Put
  * to the owner in the F9u handoff; it ships as written unless he changes it.
  */
 export function reserveShareSentence(chain: ChainState): string {
@@ -260,7 +256,7 @@ export function reserveShareSentence(chain: ChainState): string {
 
 /**
  * Today's sell fee in words (CR-56, CR-57, CR-80, CR-93): the headline (how the next sell's 2%
- * divides, from TownHook.sellFeeShares()) and the reason, from TownHook.burned(c-1),
+ * divides, from SkylineHook.sellFeeShares()) and the reason, from SkylineHook.burned(c-1),
  * BuyerRewards.emissionEstimate(c-1), reserveExhausted() and BURN_FLOOR. The owner's CR-80 sentences
  * stay word for word in the states they were written for (2% burned, 2% in ETH); the day-401 state
  * and the floor's split state have their own (F9u, for the owner's approval).
@@ -269,21 +265,21 @@ export function sellFeeWords(chain: ChainState): { mode: string; reason: string 
   const m = sellFeeMode(chain);
   const mode = SELL_FEE_HEADLINE[m.state];
   const floor = fmtTown(chain.hook.BURN_FLOOR);
-  // From day 401 a TOWN-mode fee is half burned and half sent to the reserve: the reason why TOWN
-  // keeps its figures and ends "in TOWN", and the day-401 sentence follows it.
+  // From day 401 a SKYLINE-mode fee is half burned and half sent to the reserve: the reason why SKYLINE
+  // keeps its figures and ends "in SKYLINE", and the day-401 sentence follows it.
   const half = m.state === 'burn-reserve';
   let reason: string;
   if (m.reason === 'floor')
-    reason = `The burn floor is reached: the supply is at ${floor} TOWN, so nothing more is burned and every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.`;
+    reason = `The burn floor is reached: the supply is at ${floor} SKYLINE, so nothing more is burned and every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the treasury.`;
   else if (m.reason === 'reserve')
     reason = half
-      ? `The rebate reserve is spent, so the fee is in TOWN until the supply reaches ${floor} TOWN.`
-      : `The rebate reserve is spent, so the fee is burned until the supply reaches ${floor} TOWN.`;
+      ? `The rebate reserve is spent, so the fee is in SKYLINE until the supply reaches ${floor} SKYLINE.`
+      : `The rebate reserve is spent, so the fee is burned until the supply reaches ${floor} SKYLINE.`;
   else if (m.reason === 'first-day') reason = `${dayName(0)} has no day before it, so the fee is burned.`;
   else {
     const b = m.burnedYesterday ?? 0n;
     const p = m.rebatesYesterday ?? 0n;
-    const figures = `Yesterday (${dayName(m.yesterday!)}) burned ${fmtTown(b)} TOWN and paid ${fmtTown(p)} TOWN in rebates`;
+    const figures = `Yesterday (${dayName(m.yesterday!)}) burned ${fmtTown(b)} SKYLINE and paid ${fmtTown(p)} SKYLINE in rebates`;
     const more = b > p;
     // CR-80: the owner's words for a burning day ("inflation exceeded deflation"), and "matched" on
     // an exact tie, where nothing exceeded anything. The ETH day keeps "it burned more than it paid".
@@ -292,8 +288,8 @@ export function sellFeeWords(chain: ChainState): { mode: string; reason: string 
       more === m.inEth
         ? more
           ? `${figures}: it burned more than it paid, so today the fee is in ETH.`
-          : `${figures}: ${town}, so today the fee is ${half ? 'in TOWN' : 'burned'}.`
-        : `${figures}; TownHook fixed today’s fee at the day’s first sell.`;
+          : `${figures}: ${town}, so today the fee is ${half ? 'in SKYLINE' : 'burned'}.`
+        : `${figures}; SkylineHook fixed today’s fee at the day’s first sell.`;
   }
   if (half) reason += ` ${reserveShareSentence(chain)}`;
   return { mode, reason };
@@ -301,14 +297,14 @@ export function sellFeeWords(chain: ChainState): { mode: string; reason: string 
 
 /**
  * The sell form's fee rows (CR-93): one row per part of the 2% in today's state, each saying where it
- * goes. TOWN mode before day 401: "Sell fee (2%, burned)". From day 401: the 2% in TOWN with its two
- * halves. ETH mode: "Sell fee (2% of the ETH, to the treasury)". Split mode: the TOWN part and the
+ * goes. SKYLINE mode before day 401: "Sell fee (2%, burned)". From day 401: the 2% in SKYLINE with its two
+ * halves. ETH mode: "Sell fee (2% of the ETH, to the treasury)". Split mode: the SKYLINE part and the
  * ETH part. A sell that reaches the burn floor shows how much of its 2% is burned and how much goes
  * to the reserve.
  */
 function SellFeeRows({ state, fees }: { state: SellFeeState; fees: ReturnType<typeof sellFees> | null }) {
-  const view = 'TownHook.sellFeeShares, currentSellFeeBps';
-  const town = (v: bigint | undefined) => (v !== undefined ? `${fmtTown(v)} TOWN` : '—');
+  const view = 'SkylineHook.sellFeeShares, currentSellFeeBps';
+  const town = (v: bigint | undefined) => (v !== undefined ? `${fmtTown(v)} SKYLINE` : '—');
   const eth = (v: bigint | null | undefined) => (v !== null && v !== undefined ? `≈ ${fmtEth(v, 6)} ETH` : '—');
   const parts = !!fees && fees.townFee > 0n && (fees.reachesFloor || state === 'burn-reserve');
   if (state === 'eth')
@@ -325,10 +321,10 @@ function SellFeeRows({ state, fees }: { state: SellFeeState; fees: ReturnType<ty
     return (
       <>
         <div class="row" data-fee="town">
-          <dt>Sell fee in TOWN (1%, to the rebate reserve)</dt>
+          <dt>Sell fee in SKYLINE (1%, to the rebate reserve)</dt>
           <dd class="num" data-view={view}>
             {town(fees?.townFee)}
-            <Usd amount={fees?.townFee ?? null} unit="TOWN" block />
+            <Usd amount={fees?.townFee ?? null} unit="SKYLINE" block />
           </dd>
         </div>
         <div class="row" data-fee="eth">
@@ -342,10 +338,10 @@ function SellFeeRows({ state, fees }: { state: SellFeeState; fees: ReturnType<ty
     );
   return (
     <div class="row" data-fee="town">
-      <dt>{state === 'burn' && !fees?.reachesFloor ? 'Sell fee (2%, burned)' : state === 'burn' ? 'Sell fee (2%, in TOWN)' : 'Sell fee (2%: half burned, half to the rebate reserve)'}</dt>
+      <dt>{state === 'burn' && !fees?.reachesFloor ? 'Sell fee (2%, burned)' : state === 'burn' ? 'Sell fee (2%, in SKYLINE)' : 'Sell fee (2%: half burned, half to the rebate reserve)'}</dt>
       <dd class="num" data-view={view}>
         {town(fees?.townFee)}
-        <Usd amount={fees?.townFee ?? null} unit="TOWN" block />
+        <Usd amount={fees?.townFee ?? null} unit="SKYLINE" block />
         {parts && fees && (
           <span class="fee-parts small muted">
             {fmtTown(fees.burned)} burned, {fmtTown(fees.toReserve)} to the reserve
@@ -362,9 +358,9 @@ function soldFeeWords(f: ReturnType<typeof sellFees>, state: SellFeeState): stri
   const toTreasury = f.ethFee !== null ? `about ${fmtEth(f.ethFee, 6)} ETH` : null;
   if (state === 'eth') return `${toTreasury ?? '2% of the ETH'} of the sale, the sell fee, went to the treasury`;
   if (state === 'split')
-    return `${fmtTown(f.toReserve)} TOWN of it went to the rebate reserve and ${toTreasury ?? '1% of the ETH'} of the sale to the treasury`;
-  if (f.toReserve > 0n) return `${fmtTown(f.burned)} TOWN of it was burned and ${fmtTown(f.toReserve)} TOWN went to the rebate reserve`;
-  return `${fmtTown(f.burned)} TOWN of it was burned`;
+    return `${fmtTown(f.toReserve)} SKYLINE of it went to the rebate reserve and ${toTreasury ?? '1% of the ETH'} of the sale to the treasury`;
+  if (f.toReserve > 0n) return `${fmtTown(f.burned)} SKYLINE of it was burned and ${fmtTown(f.toReserve)} SKYLINE went to the rebate reserve`;
+  return `${fmtTown(f.burned)} SKYLINE of it was burned`;
 }
 
 /** The sell form's line on today's sell fee, with its reason (CR-56, CR-57, CR-93). */
@@ -377,38 +373,13 @@ function SellFeeToday() {
     <div
       class={`sell-mode${state === 'eth' ? ' in-eth' : ''}`}
       data-state={state}
-      data-view={`TownHook.sellFeeShares; TownHook.burned(${c - 1}); BuyerRewards.emissionEstimate(${c - 1})`}
+      data-view={`SkylineHook.sellFeeShares; SkylineHook.burned(${c - 1}); BuyerRewards.emissionEstimate(${c - 1})`}
     >
       <p class="sell-mode-title">
         Today’s sell fee: <span class="sell-mode-value">{w.mode}</span>
       </p>
       <p class="small muted">{w.reason}</p>
     </div>
-  );
-}
-
-function AntiSnipe() {
-  const chain = useChain();
-  const left = antiSnipeSecondsLeft(chain);
-  const dur = chain.hook.ANTI_SNIPE_DURATION;
-  const done = Math.round(((dur - left) / dur) * 100);
-  return (
-    <Notice kind="warn" title={`Higher buy fee in the first 15 minutes: ${fmtBps(chain.hook.currentBuyFeeBps)} right now`}>
-      <p>
-        For the first 15 minutes after launch the buy fee falls from {fmtBps(chain.hook.ANTI_SNIPE_START_BPS)} to {fmtBps(chain.hook.BUY_FEE_BPS)}. It reaches{' '}
-        {fmtBps(chain.hook.BUY_FEE_BPS)} in <strong class="num">{fmtClock(left)}</strong>. Unless you mean to pay it, wait.
-      </p>
-      <div
-        class="meter"
-        role="progressbar"
-        aria-label="Time passed in the first 15 minutes after launch"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={done}
-      >
-        <span style={`width:${done}%`} />
-      </div>
-    </Notice>
   );
 }
 
@@ -457,8 +428,8 @@ function BuyForm({ active }: { active: boolean }) {
   const feeBps = chain.hook.currentBuyFeeBps;
   const fee = amountIn !== null ? buyFee(amountIn, feeBps) : null;
   const estimate = fresh?.out ?? null;
-  // Cut to whole TOWN, as the field shows it, so the field and the amount used are the same.
-  const autoMin = estimate !== null ? floorTo(minReceived(estimate, slippage), WHOLE_TOWN) : null;
+  // Cut to whole SKYLINE, as the field shows it, so the field and the amount used are the same.
+  const autoMin = estimate !== null ? floorTo(minReceived(estimate, slippage), WHOLE_SKYLINE) : null;
   const minValue = minText !== null ? parseAmount(minText) : autoMin;
   const c = chain.hook.currentCycle;
   // Today's rate, BuyerRewards.rateBps(today) (CR-47), or less once the day's limit is shared.
@@ -494,7 +465,7 @@ function BuyForm({ active }: { active: boolean }) {
     if (!account || amountIn === null || minValue === null || mins.zero) return;
     const deadline = BigInt(nowSeconds(chain.blockTimestamp) + BUY_DEADLINE_SECONDS);
     void tx.run(
-      'Buy TOWN',
+      'Buy SKYLINE',
       () => buyTx(network, account, amountIn, minValue, deadline),
       () => `Your buy went through and is counted for your wallet on ${dayName(c)}. Its rebate can be claimed from ${dayName(claimOpensOn(c))}.`,
       'buy',
@@ -502,7 +473,7 @@ function BuyForm({ active }: { active: boolean }) {
   };
 
   return (
-    <div class="trade-form" aria-label="Buy TOWN with ETH">
+    <div class="trade-form" aria-label="Buy SKYLINE with ETH">
       <div class="swap-box">
         <div class="swap-box-top">
           <label for="buy-eth">You pay</label>
@@ -555,7 +526,7 @@ function BuyForm({ active }: { active: boolean }) {
           <span>You receive (estimate)</span>
           {wallet && (
             <span class="muted small">
-              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> TOWN <Usd amount={wallet.townBalance} unit="TOWN" paren />
+              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> SKYLINE <Usd amount={wallet.townBalance} unit="SKYLINE" paren />
             </span>
           )}
         </div>
@@ -563,10 +534,10 @@ function BuyForm({ active }: { active: boolean }) {
           <output class="swap-output num" data-view="V4Quoter.quoteExactInputSingle" for="buy-eth">
             {estimate !== null ? fmtTown(estimate) : amountIn !== null && amountIn > 0n && !fresh ? '…' : '0'}
           </output>
-          <span class="token-pill gold">TOWN</span>
+          <span class="token-pill gold">SKYLINE</span>
         </div>
         <span class="swap-output-usd">
-          <Usd amount={estimate} unit="TOWN" />
+          <Usd amount={estimate} unit="SKYLINE" />
         </span>
       </div>
 
@@ -577,7 +548,7 @@ function BuyForm({ active }: { active: boolean }) {
       <dl class="rows swap-rows">
         <div class="row">
           <dt>Buy fee ({fmtBps(feeBps)}, to the treasury)</dt>
-          <dd class="num" data-view="TownHook.currentBuyFeeBps">
+          <dd class="num" data-view="SkylineHook.currentBuyFeeBps">
             {fee !== null ? `${fmtEth(fee)} ETH` : '—'}
             <Usd amount={fee} unit="ETH" block />
           </dd>
@@ -587,8 +558,8 @@ function BuyForm({ active }: { active: boolean }) {
             <label for="buy-min">Minimum received</label>
           </dt>
           <dd class="num">
-            {minValue !== null ? `${fmtTown(minValue)} TOWN` : '—'}
-            <Usd amount={minValue} unit="TOWN" block />
+            {minValue !== null ? `${fmtTown(minValue)} SKYLINE` : '—'}
+            <Usd amount={minValue} unit="SKYLINE" block />
           </dd>
         </div>
         <div class="row row-control">
@@ -608,23 +579,23 @@ function BuyForm({ active }: { active: boolean }) {
               class="small-input num"
               inputMode="decimal"
               autoComplete="off"
-              aria-label="Minimum TOWN received, editable"
+              aria-label="Minimum SKYLINE received, editable"
               aria-invalid={minText !== null && minValue === null}
               value={minText ?? (autoMin !== null ? fmtUnits(autoMin, 18, 0) : '')}
               onInput={(e) => setMinText((e.target as HTMLInputElement).value)}
             />
-            <Uses value={minValue} unit="TOWN" />
+            <Uses value={minValue} unit="SKYLINE" />
           </dd>
         </div>
         <div class="row strong">
           <dt>Rebate this buy can earn</dt>
           <dd class="num accent-text">
-            {rebate !== null ? `up to ${fmtTown(rebate)} TOWN` : '—'}
-            <Usd amount={rebate} unit="TOWN" block />
+            {rebate !== null ? `up to ${fmtTown(rebate)} SKYLINE` : '—'}
+            <Usd amount={rebate} unit="SKYLINE" block />
           </dd>
         </div>
       </dl>
-      <MinMessages min={minValue} estimate={estimate} text={minText} unit="TOWN" example="150,000" trade="buy" />
+      <MinMessages min={minValue} estimate={estimate} text={minText} unit="SKYLINE" example="150,000" trade="buy" />
       <p class="small muted swap-note">
         Rebate after the {fmtBps(chain.rewards.CLAIM_FEE_BPS)} claim fee, at {dayName(c)}’s rate of{' '}
         <span class="num" data-view={`BuyerRewards.rateBps(${c})`}>
@@ -642,7 +613,7 @@ function BuyForm({ active }: { active: boolean }) {
           disabled={tx.busy || amountIn === null || amountIn === 0n || overBalance || minValue === null || mins.zero}
           onClick={buy}
         >
-          {tx.busy ? 'Buying…' : 'Buy TOWN'}
+          {tx.busy ? 'Buying…' : 'Buy SKYLINE'}
         </button>
       ) : (
         <ConnectPrompt what="your balance and buy" block />
@@ -663,12 +634,12 @@ function SellForm({ active }: { active: boolean }) {
   const amountIn = parseAmount(amount);
   const fresh = useQuote(active, amountIn, (a) => quoteSell(client, network, a), (e) => explainError(e, 'sell').message, []);
 
-  // The sell fee, in today's state (CR-56, CR-57, CR-93; spec "TownHook -> Fees"), from
-  // TownHook.sellFeeShares(). TOWN mode: 2% of the TOWN sold, taken before the swap, burned (from day
+  // The sell fee, in today's state (CR-56, CR-57, CR-93; spec "SkylineHook -> Fees"), from
+  // SkylineHook.sellFeeShares(). SKYLINE mode: 2% of the SKYLINE sold, taken before the swap, burned (from day
   // 401 half burned and half to the rebate reserve); the pool then swaps the other 98%. ETH mode: the
-  // pool swaps all the TOWN and 2% of the ETH it pays out goes to the treasury. Split mode, at the
-  // floor: 1% of the TOWN to the reserve before the swap, and 1% of the ETH to the treasury. The
-  // quoter runs the swap through TownHook, so its estimate (and the minimum received taken from it,
+  // pool swaps all the SKYLINE and 2% of the ETH it pays out goes to the treasury. Split mode, at the
+  // floor: 1% of the SKYLINE to the reserve before the swap, and 1% of the ETH to the treasury. The
+  // quoter runs the swap through SkylineHook, so its estimate (and the minimum received taken from it,
   // which goes to the router) already has every fee off, in every state; the rows below only show
   // where the fees go.
   const feeState = sellFeeMode(chain).state;
@@ -683,7 +654,7 @@ function SellForm({ active }: { active: boolean }) {
   const ok = amountIn !== null && amountIn > 0n && !overBalance;
 
   // The two approvals (Permit2, on-chain transactions, no signed message), without a limit as the
-  // Uniswap app gives them (CR-83): TOWN to Permit2 once ever, then Permit2 to the router for 30 days.
+  // Uniswap app gives them (CR-83): SKYLINE to Permit2 once ever, then Permit2 to the router for 30 days.
   // A step counts as done when the allowance on chain covers the amount (and, for the router, has not
   // expired), so a wallet holding older, smaller approvals is asked once more.
   const quickOn = !!wallet && !!account && !wrongNetwork;
@@ -692,7 +663,7 @@ function SellForm({ active }: { active: boolean }) {
   const routerExpired = !!ra && ra.amount > 0n && ra.expiration < chain.blockTimestamp;
   const needAllow = !!wallet && ok && !(!!ra && ra.amount >= amountIn! && ra.expiration >= chain.blockTimestamp);
   const plan = sellPlan(needApprove, needAllow);
-  const label = needApprove ? 'Approve and sell' : needAllow ? (routerExpired ? 'Renew and sell' : 'Allow the router and sell') : 'Sell TOWN';
+  const label = needApprove ? 'Approve and sell' : needAllow ? (routerExpired ? 'Renew and sell' : 'Allow the router and sell') : 'Sell SKYLINE';
 
   // CR-82: the run stops, sending nothing more, if any of these change while it goes on.
   useWatch(run, { amount, minimum: minText ?? `automatic, ${slippage}`, page: active ? 'shown' : 'hidden' });
@@ -717,7 +688,7 @@ function SellForm({ active }: { active: boolean }) {
     const min = minValue;
     const shownEstimate = estimate;
     void run.start(
-      'Sell TOWN',
+      'Sell SKYLINE',
       plan,
       async (r) => {
         const read = () => readSellApprovals(client, network, from);
@@ -741,7 +712,7 @@ function SellForm({ active }: { active: boolean }) {
         // read again, a fresh estimate after any approval, and a fresh deadline.
         r.check();
         const f = await read();
-        if (f.balance < sold) throw new Stop(`This wallet now holds ${fmtTown(f.balance)} TOWN, less than the ${fmtTown(sold)} TOWN to sell, so the sale was not sent.`, 'Balance');
+        if (f.balance < sold) throw new Stop(`This wallet now holds ${fmtTown(f.balance)} SKYLINE, less than the ${fmtTown(sold)} SKYLINE to sell, so the sale was not sent.`, 'Balance');
         const fm = missing(f);
         if (fm.approve || fm.allow) throw new Stop('The approvals on chain do not cover this sale yet, so it was not sent.', 'Approvals');
         let about = shownEstimate;
@@ -758,21 +729,21 @@ function SellForm({ active }: { active: boolean }) {
         }
         const deadline = BigInt(nowSeconds(f.blockTimestamp) + BUY_DEADLINE_SECONDS);
         await r.send('sell', () => sellTx(network, sold, min, deadline));
-        return `You sold ${fmtTown(sold)} TOWN${about !== null ? ` for about ${fmtEth(about, 6)} ETH` : ''}; ${soldFeeWords(sellFees(chain, sold, about), feeState)}. Your rebates are unchanged.`;
+        return `You sold ${fmtTown(sold)} SKYLINE${about !== null ? ` for about ${fmtEth(about, 6)} ETH` : ''}; ${soldFeeWords(sellFees(chain, sold, about), feeState)}. Your rebates are unchanged.`;
       },
       'sell',
     );
   };
 
   return (
-    <div class="trade-form" aria-label="Sell TOWN for ETH">
+    <div class="trade-form" aria-label="Sell SKYLINE for ETH">
       <SellFeeToday />
       <div class="swap-box">
         <div class="swap-box-top">
           <label for="sell-town">You sell</label>
           {wallet && (
             <span class="muted small">
-              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> TOWN <Usd amount={wallet.townBalance} unit="TOWN" paren />
+              Balance <span class="num">{fmtTown(wallet.townBalance)}</span> SKYLINE <Usd amount={wallet.townBalance} unit="SKYLINE" paren />
             </span>
           )}
         </div>
@@ -790,12 +761,12 @@ function SellForm({ active }: { active: boolean }) {
             }}
             aria-invalid={amount !== '' && amountIn === null}
           />
-          <span class="token-pill gold">TOWN</span>
+          <span class="token-pill gold">SKYLINE</span>
         </div>
-        <Uses value={amountIn} unit="TOWN" />
+        <Uses value={amountIn} unit="SKYLINE" />
         {quickOn && wallet && (
-          <QuickAmounts label="Fill in a share of your TOWN" off={wallet.townBalance === 0n} onPick={(p) => void pick(p)}>
-            {wallet.townBalance === 0n && <p class="quick-note small muted">Off: this wallet holds no TOWN.</p>}
+          <QuickAmounts label="Fill in a share of your SKYLINE" off={wallet.townBalance === 0n} onPick={(p) => void pick(p)}>
+            {wallet.townBalance === 0n && <p class="quick-note small muted">Off: this wallet holds no SKYLINE.</p>}
           </QuickAmounts>
         )}
       </div>
@@ -824,8 +795,8 @@ function SellForm({ active }: { active: boolean }) {
         </span>
       </div>
 
-      {amount.trim() !== '' && amountIn === null && <FieldError>{amountError(amount, 18, 'Enter an amount of TOWN, for example 1,000,000.')}</FieldError>}
-      {overBalance && <FieldError>That is more TOWN than this wallet holds.</FieldError>}
+      {amount.trim() !== '' && amountIn === null && <FieldError>{amountError(amount, 18, 'Enter an amount of SKYLINE, for example 1,000,000.')}</FieldError>}
+      {overBalance && <FieldError>That is more SKYLINE than this wallet holds.</FieldError>}
       {fresh?.error && <FieldError>No estimate: {fresh.error}</FieldError>}
 
       <dl class="rows swap-rows">
@@ -833,8 +804,8 @@ function SellForm({ active }: { active: boolean }) {
         <div class="row">
           <dt>Pool fee (0.5%, to the locked liquidity)</dt>
           <dd class="num">
-            {poolFee !== null ? `${fmtTown(poolFee)} TOWN` : '—'}
-            <Usd amount={poolFee} unit="TOWN" block />
+            {poolFee !== null ? `${fmtTown(poolFee)} SKYLINE` : '—'}
+            <Usd amount={poolFee} unit="SKYLINE" block />
           </dd>
         </div>
         <div class="row">
@@ -874,9 +845,9 @@ function SellForm({ active }: { active: boolean }) {
       </dl>
       <MinMessages min={minValue} estimate={estimate} text={minText} unit="ETH" example="0.05" trade="sale" />
       <p class="small muted swap-note">
-        The estimate already takes off every fee. If you would receive less than the minimum, the sale is cancelled and you keep your TOWN.
+        The estimate already takes off every fee. If you would receive less than the minimum, the sale is cancelled and you keep your SKYLINE.
       </p>
-      <p class="small swap-note sell-rebates">Selling does not change your rebates: they count only the TOWN you buy.</p>
+      <p class="small swap-note sell-rebates">Selling does not change your rebates: they count only the SKYLINE you buy.</p>
 
       {account ? (
         <>
@@ -890,10 +861,10 @@ function SellForm({ active }: { active: boolean }) {
               </p>
               <p class="muted">
                 {needApprove
-                  ? 'TOWN is approved for Permit2 once, without a limit; the router’s permission, also without a limit, is renewed every 30 days. The router can move your TOWN only in a trade you send yourself.'
+                  ? 'SKYLINE is approved for Permit2 once, without a limit; the router’s permission, also without a limit, is renewed every 30 days. The router can move your SKYLINE only in a trade you send yourself.'
                   : routerExpired
-                    ? `The router’s permission to move your TOWN expired on ${fmtDateTime(ra!.expiration)}. Renewing it lasts 30 days, without a limit; the router can move your TOWN only in a trade you send yourself.`
-                    : 'The router’s permission lasts 30 days, without a limit, and is then renewed. The router can move your TOWN only in a trade you send yourself.'}
+                    ? `The router’s permission to move your SKYLINE expired on ${fmtDateTime(ra!.expiration)}. Renewing it lasts 30 days, without a limit; the router can move your SKYLINE only in a trade you send yourself.`
+                    : 'The router’s permission lasts 30 days, without a limit, and is then renewed. The router can move your SKYLINE only in a trade you send yourself.'}
               </p>
             </div>
           )}

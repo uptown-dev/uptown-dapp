@@ -12,7 +12,7 @@ export function fmtUnits(value: bigint, decimals = 18, maxFrac = 2, minFrac = 0)
   return (neg ? '-' : '') + grouped + (f ? '.' + f : '');
 }
 
-/** TOWN amounts: whole TOWN, two decimals below 1,000. */
+/** SKYLINE amounts: whole SKYLINE, two decimals below 1,000. */
 export function fmtTown(value: bigint): string {
   return fmtUnits(value, 18, value < 1000n * 10n ** 18n ? 2 : 0);
 }
@@ -48,7 +48,7 @@ export function fmtUsd8(price: bigint): string {
 /**
  * A dollar estimate (CR-95), from dollars × 10^18 (`usdOf` in derive.ts), cut and never rounded up.
  * Ordinary figures: two decimals with thousands separators ("$1,234.56"), "< $0.01" for a non-zero
- * amount below a cent, "$0.00" for nothing. `unitPrice` (TOWN's price for one TOWN): below a dollar,
+ * amount below a cent, "$0.00" for nothing. `unitPrice` (SKYLINE's price for one SKYLINE): below a dollar,
  * three significant digits so a price under a cent still says something ("$0.0000271", "$0.0123",
  * "$0.512"); from a dollar up, two decimals. The caller adds the "≈".
  */
@@ -132,7 +132,7 @@ export function fmtCountdownWords(seconds: number): string {
   return parts.join(' ');
 }
 
-/** A daily limit in TOWN, keeping the half TOWN of days 601 to 700 (CR-93): "39,062.5", "2,500,000". */
+/** A daily limit in SKYLINE, keeping the half SKYLINE of days 601 to 700 (CR-93): "39,062.5", "2,500,000". */
 export function fmtCap(value: bigint): string {
   return fmtUnits(value, 18, 2);
 }

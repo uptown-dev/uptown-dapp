@@ -1,6 +1,6 @@
 // Figures the site works out from contract views. Every input is a field of ChainState or
 // WalletState (read by src/lib/reads.ts); nothing here invents a number.
-import { PriceSource, type ChainState, type FixedRules, type SellFeeShares, type Tier, type WalletState } from '../data/types';
+import type { ChainState, FixedRules, SellFeeShares, WalletState } from '../data/types';
 
 const BPS = 10_000n;
 
@@ -8,7 +8,7 @@ const BPS = 10_000n;
 
 /**
  * The row of the daily-limit schedule a cycle is in (0 to 7): seven 100-cycle epochs, whose limit
- * halves each time (2,500,000 down to 39,062.5 TOWN for cycles 600 to 699), then the 25,000 TOWN
+ * halves each time (2,500,000 down to 39,062.5 SKYLINE for cycles 600 to 699), then the 25,000 SKYLINE
  * tail from cycle 700 on (spec "Emission schedule", CR-93 amended 2026-10-14).
  */
 export function epochIndex(cycle: number): number {
@@ -72,17 +72,6 @@ export function dayCountdown(launchTime: number, cycle: number, now: number): { 
   return { cycle, target, left: Math.max(0, target - now) };
 }
 
-/** Seconds left in the anti-snipe window, 0 once it has ended. */
-export function antiSnipeSecondsLeft(chain: ChainState): number {
-  const end = chain.hook.launchTime + chain.hook.ANTI_SNIPE_DURATION;
-  return Math.max(0, end - chain.blockTimestamp);
-}
-
-/** True while TownHook.currentBuyFeeBps() is above the ordinary 2%. */
-export function antiSnipeActive(chain: ChainState): boolean {
-  return chain.hook.currentBuyFeeBps > chain.hook.BUY_FEE_BPS;
-}
-
 
 // --- buying -------------------------------------------------------------------------------
 
@@ -127,21 +116,22 @@ export function rpcBehind(blockTimestamp: number, nowMs: number): boolean {
 
 // --- burning ---------------------------------------------------------------------------
 
-/** All TOWN destroyed since the mint: sell fees and voluntary burns together. */
+/** All SKYLINE destroyed since the mint: sell fees and voluntary burns together. */
 export function burned(chain: ChainState): bigint {
   return chain.token.INITIAL_SUPPLY - chain.token.totalSupply;
 }
 
 /**
- * The burn floor in TOWN units: TownHook.BURN_FLOOR() when the figures have been read; the spec's
- * 100,000,000 TOWN (CR-55) only where the contracts are not deployed on this network yet.
+ * The burn floor in SKYLINE units: SkylineHook.BURN_FLOOR() when the figures have been read; the
+ * spec's 200,000,000 SKYLINE (CR-55, CR-102) only where the contracts are not deployed on this
+ * network yet.
  */
 export function burnFloor(chain: FixedRules | null): bigint {
   return chain ? chain.hook.BURN_FLOOR : SPEC_BURN_FLOOR;
 }
-const SPEC_BURN_FLOOR = 100_000_000n * 10n ** 18n;
+const SPEC_BURN_FLOOR = 200_000_000n * 10n ** 18n;
 
-/** TOWN left to burn before the burn floor: totalSupply - BURN_FLOOR, never negative. */
+/** SKYLINE left to burn before the burn floor: totalSupply - BURN_FLOOR, never negative. */
 export function leftToBurn(chain: ChainState): bigint {
   const { totalSupply } = chain.token;
   const floor = chain.hook.BURN_FLOOR;
@@ -151,18 +141,18 @@ export function leftToBurn(chain: ChainState): bigint {
 // --- the sell fee (CR-56, CR-57, CR-93) -----------------------------------------------------
 
 /**
- * The four ways the next sell's 2% can divide, from TownHook.sellFeeShares() (CR-93; spec "TownHook
+ * The four ways the next sell's 2% can divide, from SkylineHook.sellFeeShares() (CR-93; spec "SkylineHook
  * -> Fees"):
- * - `burn` (200, 0, 0): 2% of the TOWN sold, burned (TOWN mode before day 401);
- * - `burn-reserve` (100, 100, 0): 2% of the TOWN sold, half burned and half to the rebate reserve
- *   (TOWN mode from day 401, cycle RESERVE_FEE_START = 400);
+ * - `burn` (200, 0, 0): 2% of the SKYLINE sold, burned (SKYLINE mode before day 401);
+ * - `burn-reserve` (100, 100, 0): 2% of the SKYLINE sold, half burned and half to the rebate reserve
+ *   (SKYLINE mode from day 401, cycle RESERVE_FEE_START = 400);
  * - `eth` (0, 0, 200): 2% of the ETH the sale brings in, to the treasury (ETH mode, CR-57);
- * - `split` (0, 100, 100): at or below the burn floor, 1% of the TOWN sold to the rebate reserve and
+ * - `split` (0, 100, 100): at or below the burn floor, 1% of the SKYLINE sold to the rebate reserve and
  *   1% of the ETH to the treasury.
  */
 export type SellFeeState = 'burn' | 'burn-reserve' | 'eth' | 'split';
 
-/** The state named by the three figures of TownHook.sellFeeShares(). */
+/** The state named by the three figures of SkylineHook.sellFeeShares(). */
 export function sellFeeState(s: SellFeeShares): SellFeeState {
   if (s.ethBps > 0) return s.reserveBps > 0 ? 'split' : 'eth';
   return s.reserveBps > 0 ? 'burn-reserve' : 'burn';
@@ -170,34 +160,34 @@ export function sellFeeState(s: SellFeeShares): SellFeeState {
 
 /** Why today's sell fee is charged the way it is. */
 export type SellFeeReason =
-  /** The supply is at or below the burn floor: every sell pays 1% in TOWN to the reserve and 1% in ETH (CR-93). */
+  /** The supply is at or below the burn floor: every sell pays 1% in SKYLINE to the reserve and 1% in ETH (CR-93). */
   | 'floor'
-  /** Nothing is available in the rebate reserve: the fee is in TOWN (CR-57). */
+  /** Nothing is available in the rebate reserve: the fee is in SKYLINE (CR-57). */
   | 'reserve'
-  /** Day 1 has no day before it: the fee is in TOWN. */
+  /** Day 1 has no day before it: the fee is in SKYLINE. */
   | 'first-day'
   /** Yesterday's burn against yesterday's rebate pot: ETH only when the burn was larger. */
   | 'compare';
 
 export interface SellFeeMode {
-  /** The state, from TownHook.sellFeeShares() (CR-93). */
+  /** The state, from SkylineHook.sellFeeShares() (CR-93). */
   state: SellFeeState;
   /** The fee is all in ETH today (state `eth`). */
   inEth: boolean;
   reason: SellFeeReason;
   /** Yesterday's index; null on day 0. */
   yesterday: number | null;
-  /** TownHook.burned(yesterday). */
+  /** SkylineHook.burned(yesterday). */
   burnedYesterday: bigint | null;
   /** BuyerRewards.emissionEstimate(yesterday): yesterday's rebate pot. */
   rebatesYesterday: bigint | null;
 }
 
 /**
- * Today's sell fee, from TownHook.sellFeeShares() (the state the next sell is charged in; CR-93),
+ * Today's sell fee, from SkylineHook.sellFeeShares() (the state the next sell is charged in; CR-93),
  * with the reason the spec's rule gives for it: at or below the floor, split; while nothing is
- * available in the reserve, TOWN; day 1 TOWN; otherwise ETH only when yesterday's `burned` was larger
- * than yesterday's `emissionEstimate` (spec "TownHook -> Sell fee currency"). TOWN mode burns 2%
+ * available in the reserve, SKYLINE; day 1 SKYLINE; otherwise ETH only when yesterday's `burned` was larger
+ * than yesterday's `emissionEstimate` (spec "SkylineHook -> Sell fee currency"). SKYLINE mode burns 2%
  * before day 401 and 1%, with 1% to the reserve, from day 401.
  */
 export function sellFeeMode(chain: ChainState): SellFeeMode {
@@ -215,9 +205,9 @@ export function sellFeeMode(chain: ChainState): SellFeeMode {
 /** The pool's trading fee in pips: 0.5% (`fee = 5000`, spec "Fixed parameters"). */
 export const POOL_FEE_PIPS = 5000n;
 
-/** Where an exact-input sell's fees go, by amount (CR-93; spec "TownHook -> Fees"). Every figure is 0 where the state charges nothing. */
+/** Where an exact-input sell's fees go, by amount (CR-93; spec "SkylineHook -> Fees"). Every figure is 0 where the state charges nothing. */
 export interface SellFees {
-  /** The TOWN the hook takes before the swap: 2% of the TOWN sold in TOWN mode, 1% in split mode, 0 in ETH mode. */
+  /** The SKYLINE the hook takes before the swap: 2% of the SKYLINE sold in SKYLINE mode, 1% in split mode, 0 in ETH mode. */
   townFee: bigint;
   /** The part of `townFee` burned: all of it before day 401, half from day 401 (rounded down), 0 in split mode; never below the floor. */
   burned: bigint;
@@ -227,21 +217,21 @@ export interface SellFees {
   reachesFloor: boolean;
   /** The ETH taken to the treasury, worked back from the ETH the seller receives: 2% in ETH mode, 1% in split mode, else 0; null without an estimate. */
   ethFee: bigint | null;
-  /** The pool's 0.5% fee, in TOWN, on what the pool swaps (the TOWN sold less `townFee`). */
+  /** The pool's 0.5% fee, in SKYLINE, on what the pool swaps (the SKYLINE sold less `townFee`). */
   poolFee: bigint;
 }
 
 /**
- * The fees of an exact-input sell of `amountIn` TOWN in today's state (spec "TownHook -> Fees", the
+ * The fees of an exact-input sell of `amountIn` SKYLINE in today's state (spec "SkylineHook -> Fees", the
  * exact-input rows; CR-93), given `received`, the ETH the seller receives by the quoter's estimate.
- * The quoter runs the swap through TownHook, so `received` already has every fee off; this only says
+ * The quoter runs the swap through SkylineHook, so `received` already has every fee off; this only says
  * where the fees go.
- * - TOWN modes: `fee = amountIn × 200 / 10000`, taken in full; its burn part is `fee` before day 401
+ * - SKYLINE modes: `fee = amountIn × 200 / 10000`, taken in full; its burn part is `fee` before day 401
  *   and `fee / 2` from day 401; the hook burns `min(burn part, totalSupply − BURN_FLOOR)` and sends
- *   the rest of `fee` to the reserve (so the sell that reaches the floor pays its whole 2% in TOWN).
+ *   the rest of `fee` to the reserve (so the sell that reaches the floor pays its whole 2% in SKYLINE).
  * - ETH mode: `ethSwapped × 200 / 10000`; the seller receives `ethSwapped − fee`, so the fee is
  *   `received × 200 / 9800`.
- * - Split mode: `amountIn × 100 / 10000` of TOWN to the reserve, and `ethSwapped × 100 / 10000` of ETH,
+ * - Split mode: `amountIn × 100 / 10000` of SKYLINE to the reserve, and `ethSwapped × 100 / 10000` of ETH,
  *   that is `received × 100 / 9900`.
  */
 export function sellFees(chain: ChainState, amountIn: bigint, received: bigint | null): SellFees {
@@ -285,7 +275,7 @@ export function nextTenCaps(chain: ChainState): bigint {
 
 /**
  * CR-36, CR-93: true when less than ten days of caps are available in the reserve
- * (BuyerRewards.available()), but some TOWN is; an empty reserve has its own notice.
+ * (BuyerRewards.available()), but some SKYLINE is; an empty reserve has its own notice.
  */
 export function reserveNearlySpent(chain: ChainState): boolean {
   const a = chain.rewards.available;
@@ -293,7 +283,7 @@ export function reserveNearlySpent(chain: ChainState): boolean {
 }
 
 /**
- * The cycle from which a TOWN-mode sell sends half its fee to the reserve: TownHook.RESERVE_FEE_START()
+ * The cycle from which a SKYLINE-mode sell sends half its fee to the reserve: SkylineHook.RESERVE_FEE_START()
  * when the figures have been read; the spec's 400 (day 401; CR-93) only where the contracts are not
  * deployed on this network yet.
  */
@@ -302,12 +292,12 @@ export function reserveFeeStart(chain: FixedRules | null): number {
 }
 const SPEC_RESERVE_FEE_START = 400;
 
-/** CR-93: nothing is available in the reserve (BuyerRewards.available() is 0): rebates pause until TOWN arrives. */
+/** CR-93: nothing is available in the reserve (BuyerRewards.available() is 0): rebates pause until SKYLINE arrives. */
 export function reserveEmpty(chain: ChainState): boolean {
   return chain.rewards.available === 0n;
 }
 
-/** The 500,000,000 TOWN the Launcher funds the reserve with at launch (spec "Fixed parameters"): the schedule's shares are of this figure (CR-93). */
+/** The 500,000,000 SKYLINE the Launcher funds the reserve with at launch (spec "Fixed parameters"): the schedule's shares are of this figure (CR-93). */
 export const LAUNCH_FUNDING = 500_000_000n * 10n ** 18n;
 
 /** The spec's rebate rates (CR-47), used only where the contracts are not deployed on this network yet: 5% balanced, 5.25% after only buys, 5.5% after only sells. */
@@ -360,7 +350,7 @@ export function limitReached(chain: ChainState, cycle: number): boolean {
 
 /**
  * The days today's rate was set from (CR-47): the previous LEAN_CYCLES days that exist, with what
- * was bought and sold in them (TownHook.cycleTotal and sold) and BuyerRewards.lean(today), a
+ * was bought and sold in them (SkylineHook.cycleTotal and sold) and BuyerRewards.lean(today), a
  * number from -1 (only sells) to +1 (only buys).
  */
 export function leanToday(chain: ChainState): { days: number[]; bought: bigint; sold: bigint; lean: number } {
@@ -437,16 +427,6 @@ export function forStakers(chain: ChainState): bigint {
   return balance > ownerEthAvailable ? balance - ownerEthAvailable : 0n;
 }
 
-/**
- * TownHook's ETH fees (the buy fees and, on ETH-mode days, the sell fees; CR-56, CR-57) and any other
- * arrivals: totalEthReceived - TownStaking.totalVaultFees (spec "Frontend").
- */
-export function hookFeesReceived(chain: ChainState): bigint {
-  const r = chain.treasury.totalEthReceived;
-  const v = chain.staking.totalVaultFees;
-  return r > v ? r - v : 0n;
-}
-
 export type BudgetState =
   | { kind: 'paused' }
   | { kind: 'paid'; amount: bigint }
@@ -485,9 +465,9 @@ export function stakingChange(chain: ChainState): StakingChange | null {
   return { phase: now < from ? 'waiting' : now <= until ? 'open' : 'expired', from, until };
 }
 
-/** True when the Treasury pays a staking contract other than the address file's TownStaking (CR-46). */
-export function stakingReplaced(chain: ChainState, townStaking: string | undefined): boolean {
-  return !!townStaking && chain.treasury.staking.toLowerCase() !== townStaking.toLowerCase();
+/** True when the Treasury pays a staking contract other than the address file's SkylineStaking (CR-46). */
+export function stakingReplaced(chain: ChainState, skylineStaking: string | undefined): boolean {
+  return !!skylineStaking && chain.treasury.staking.toLowerCase() !== skylineStaking.toLowerCase();
 }
 
 /** When the Treasury began paying a staking contract, from the network module's hand-kept list (CR-50); null if the list does not say. */
@@ -496,104 +476,130 @@ export function stakingPaidSince(records: { address: string; replacedOn: number 
   return i > 0 ? records[i - 1].replacedOn : null;
 }
 
-// --- staking -----------------------------------------------------------------------------
+// --- staking (SkylineStaking, CR-102 amended) -------------------------------------------------
 
-/** A tier's share of every payout, in basis points with decimals: 100/750 -> 1333.33. */
-export function tierShareBps(chain: FixedRules, tier: Tier): number {
-  return Math.round((chain.staking.tierWeight[tier] * 1_000_000) / chain.staking.TOTAL_WEIGHT) / 100;
-}
-
-/** A tier's multiplier as text: weight 125 -> "1.25x". */
-export function tierMultiplier(chain: FixedRules, tier: Tier): string {
-  return `${chain.staking.tierWeight[tier] / 100}x`;
-}
-
-/** True while a tier has no TOWN staked. */
-export function tierEmpty(chain: ChainState, tier: Tier): boolean {
-  return chain.staking.tierStaked[tier] === 0n;
+/** True while nothing is staked: the stream is paused (CL-33). */
+export function poolEmpty(chain: ChainState): boolean {
+  return chain.staking.totalStaked === 0n;
 }
 
 /**
- * The WETH a tier's stream has not yet paid out. While the tier is empty its stream is paused
- * (CL-33): the idle time is added to the stored end, so the remainder is rate * (end - last update).
+ * The WETH the stream has not yet paid out. While nothing is staked the stream is paused (CL-33):
+ * the idle time is added to the stored end at the next update, so the remainder is
+ * rate * (end - last update); otherwise rate * (end - now).
  */
-export function unpaidStream(chain: ChainState, tier: Tier): bigint {
-  const s = chain.staking.streamInfo[tier];
+export function unpaidStream(chain: ChainState): bigint {
+  const s = chain.staking.streamInfo;
   if (s.rewardRate === 0n) return 0n;
-  if (tierEmpty(chain, tier)) {
-    const left = s.periodFinish - s.lastUpdateTime;
-    return left > 0 ? s.rewardRate * BigInt(left) : 0n;
-  }
-  const left = s.periodFinish - chain.blockTimestamp;
+  const left = poolEmpty(chain) ? s.periodFinish - s.lastUpdateTime : s.periodFinish - chain.blockTimestamp;
   return left > 0 ? s.rewardRate * BigInt(left) : 0n;
 }
 
-/** When a non-empty tier's stream runs dry if no new payout arrives; null while paused or ended. */
-export function streamEnd(chain: ChainState, tier: Tier): number | null {
-  const s = chain.staking.streamInfo[tier];
-  if (s.rewardRate === 0n || tierEmpty(chain, tier)) return null;
+/** When the running stream ends if no new payout arrives; null while paused (nothing staked), or with no stream running. */
+export function streamEnd(chain: ChainState): number | null {
+  const s = chain.staking.streamInfo;
+  if (s.rewardRate === 0n || poolEmpty(chain)) return null;
   return s.periodFinish > chain.blockTimestamp ? s.periodFinish : null;
 }
 
-/** The fallback price stops counting FALLBACK_MAX_AGE after it was set. */
-export function fallbackExpiresAt(chain: ChainState): number {
-  return chain.staking.fallbackPriceSetAt + chain.staking.FALLBACK_MAX_AGE;
+/** The WETH streamed per day at the current rate, while the stream runs (rate × 86,400); 0 when none runs. */
+export function streamPerDay(chain: ChainState): bigint {
+  return streamEnd(chain) !== null ? chain.staking.streamInfo.rewardRate * BigInt(DAY) : 0n;
 }
 
-// --- liquidity lock ------------------------------------------------------------------
+/**
+ * A wallet's share of the pool, in basis points with decimals: its stake over the total staked
+ * (rewards follow the SKYLINE each address has staked, one pool; CR-102 amended). 0 with nothing staked.
+ */
+export function stakeShareBps(chain: ChainState, stake: bigint): number {
+  const total = chain.staking.totalStaked;
+  if (total === 0n || stake === 0n) return 0;
+  return Number((stake * 1_000_000n) / total) / 100;
+}
+
+// --- liquidity locks (CR-102: two positions) ------------------------------------------------
 
 export function daysUntil(chain: ChainState, ts: number): number {
   return Math.max(0, Math.floor((ts - chain.blockTimestamp) / 86_400));
 }
 
-// --- dollar figures (CR-95) ------------------------------------------------------------
+/**
+ * The second position (CR-102): `locked` until its 14 days have passed, then `withdrawable` by the
+ * owner, or `withdrawn` once the owner has taken it out of LPVault.
+ */
+export type SecondPositionState = 'locked' | 'withdrawable' | 'withdrawn';
+
+export function secondPositionState(v: { secondUnlockTime: number; secondWithdrawn: boolean }, now: number): SecondPositionState {
+  if (v.secondWithdrawn) return 'withdrawn';
+  return now < v.secondUnlockTime ? 'locked' : 'withdrawable';
+}
+
+// --- dollar figures (CR-95, CR-102) ----------------------------------------------------------
 
 /** The units a dollar figure is shown beside. */
-export type Priced = 'ETH' | 'WETH' | 'TOWN';
+export type Priced = 'ETH' | 'WETH' | 'SKYLINE';
 
-/** 2^192: (sqrtPriceX96)^2 / 2^192 is the pool's price in TOWN units per wei. */
+/** 2^192: (sqrtPriceX96)^2 / 2^192 is the pool's price in SKYLINE units per wei. */
 const Q192 = 1n << 192n;
-/** Chainlink's ETH/USD answer has 8 decimals (spec "TownStaking -> Price"). */
+/** Chainlink's ETH/USD answer has 8 decimals (spec "Frontend -> Dollar figures"). */
 const E8 = 10n ** 8n;
-/** One TOWN in its smallest units. */
-export const ONE_TOWN = 10n ** 18n;
+/** One SKYLINE in its smallest units. */
+export const ONE_SKYLINE = 10n ** 18n;
+/** The dollar figures are hidden when the feed's answer is older than this (spec "Frontend -> Dollar figures"): 3 hours. */
+export const ETH_USD_MAX_AGE = 3 * 60 * 60;
 
-/** A dollar estimate: dollars with 18 decimals, and whether the ETH price behind it is the owner's fallback. */
+/**
+ * Whether the Chainlink ETH/USD answer may be shown (CR-102, spec "Frontend -> Dollar figures"):
+ * `ok` with the price, or why not: `missing` (no feed on this network, or the read failed),
+ * `not-positive` (an answer of 0 or below) or `stale` (updated more than 3 hours before the block
+ * the figures were read at). The age is measured against the chain's own clock, so a page left
+ * open does not age its figures by the visitor's clock.
+ */
+export type EthUsdPrice = { ok: true; price: bigint; updatedAt: number } | { ok: false; reason: 'missing' | 'not-positive' | 'stale'; updatedAt: number | null };
+
+export function ethUsdPrice(chain: Pick<ChainState, 'ethUsd' | 'blockTimestamp'> | null): EthUsdPrice {
+  const f = chain?.ethUsd ?? null;
+  if (!chain || !f) return { ok: false, reason: 'missing', updatedAt: null };
+  if (f.answer <= 0n) return { ok: false, reason: 'not-positive', updatedAt: f.updatedAt };
+  if (chain.blockTimestamp - f.updatedAt > ETH_USD_MAX_AGE) return { ok: false, reason: 'stale', updatedAt: f.updatedAt };
+  return { ok: true, price: f.answer, updatedAt: f.updatedAt };
+}
+
+/** A dollar estimate: dollars with 18 decimals, and the ETH price behind it (8 decimals). */
 export interface UsdFigure {
   /** Dollars × 10^18, rounded down. */
   usd: bigint;
-  /** TownStaking.priceStatus() named the owner's fallback price, not the Chainlink feed. */
-  fallback: boolean;
+  /** Chainlink's ETH/USD answer it was made with. */
+  price: bigint;
 }
 
 /**
- * The dollar estimate of an ETH, WETH or TOWN amount (CR-95, spec "Frontend -> Dollar figures"), in
- * integer arithmetic; null when it cannot be given, and then the site shows none.
+ * The dollar estimate of an ETH, WETH or SKYLINE amount (CR-95, CR-102, spec "Frontend -> Dollar
+ * figures"), in integer arithmetic; null when it cannot be given, and then the site shows none.
  *
- * - ETH/USD is TownStaking.priceStatus(): the Chainlink feed the staking contract uses, or the
- *   owner's fallback price (marked). No usable price (source None, or a price of 0): null.
+ * - ETH/USD is Chainlink's ETH/USD feed, `latestRoundData()`, read directly (8 decimals). No answer,
+ *   an answer that is not positive, or one more than 3 hours old: null (hidden, never shown stale).
  * - ETH and WETH: `amount (wei) × price / 10^8` gives dollars × 10^18.
- * - TOWN: the pool's price from StateView.getSlot0(poolId).sqrtPriceX96 is TOWN per ETH (spec "Pool
- *   and launch position -> Price direction": currency0 is ETH, currency1 is TOWN), so an amount of
- *   TOWN is worth `amount × 2^192 / sqrtPriceX96^2` wei; times the ETH price, in one division so
- *   nothing is lost: `amount × 2^192 × price / (sqrtPriceX96^2 × 10^8)`. No pool price: null.
+ * - SKYLINE: the pool's price from StateView.getSlot0(poolId).sqrtPriceX96 is SKYLINE per ETH (spec
+ *   "Pool and launch position -> Price direction": currency0 is ETH, currency1 is SKYLINE), so an
+ *   amount of SKYLINE is worth `amount × 2^192 / sqrtPriceX96^2` wei; times the ETH price, in one
+ *   division so nothing is lost: `amount × 2^192 × price / (sqrtPriceX96^2 × 10^8)`. No pool price: null.
  *
  * Estimates for reading only: nothing the site sends is ever computed from one.
  */
 export function usdOf(chain: ChainState | null, amount: bigint, unit: Priced): UsdFigure | null {
-  if (!chain) return null;
-  const { price, source } = chain.staking.priceStatus;
-  if (source === PriceSource.None || price <= 0n) return null;
-  const fallback = source === PriceSource.Fallback;
-  if (unit !== 'TOWN') return { usd: (amount * price) / E8, fallback };
+  const p = ethUsdPrice(chain);
+  if (!chain || !p.ok) return null;
+  const price = p.price;
+  if (unit !== 'SKYLINE') return { usd: (amount * price) / E8, price };
   const sp = chain.pool.sqrtPriceX96;
   if (sp === null || sp <= 0n) return null;
-  return { usd: (amount * Q192 * price) / (sp * sp * E8), fallback };
+  return { usd: (amount * Q192 * price) / (sp * sp * E8), price };
 }
 
-/** The pool's price of one TOWN in wei (rounded down), from the same sqrtPriceX96; null without one. Shown on Trade as gwei per TOWN. */
-export function townPriceWei(chain: ChainState): bigint | null {
+/** The pool's price of one SKYLINE in wei (rounded down), from the same sqrtPriceX96; null without one. Shown on Trade as gwei per SKYLINE. */
+export function skylinePriceWei(chain: ChainState): bigint | null {
   const sp = chain.pool.sqrtPriceX96;
   if (sp === null || sp <= 0n) return null;
-  return (ONE_TOWN * Q192) / (sp * sp);
+  return (ONE_SKYLINE * Q192) / (sp * sp);
 }

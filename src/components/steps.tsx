@@ -3,7 +3,7 @@
 // through `wallet.ts` (its target check, chain check and read-only rehearsal) and the wallet still
 // asks the visitor to confirm each one. The run stops, sending nothing more, when the visitor
 // rejects a transaction, when one fails or is not confirmed, or when anything the form watches
-// changes: the wallet, the account, the network, the amount, the minimum, the tier, or the form
+// changes: the wallet, the account, the network, the amount, the minimum, or the form
 // itself (another tab, another page). Pressing the button again carries on from what is missing.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TransactionReceipt } from 'viem';
@@ -26,7 +26,7 @@ export interface RunStep {
 
 export interface RunState {
   phase: 'idle' | 'running' | 'done' | 'stopped';
-  /** What the run does, e.g. "Sell TOWN". */
+  /** What the run does, e.g. "Sell SKYLINE". */
   title: string;
   steps: RunStep[];
   /** The outcome in plain words. */
@@ -46,7 +46,6 @@ const CHANGED: Record<string, string> = {
   network: 'The wallet’s network changed',
   amount: 'The amount changed',
   minimum: 'The minimum received changed',
-  tier: 'The tier changed',
   staking: 'The staking contract the treasury pays changed',
 };
 
@@ -206,7 +205,7 @@ export function useRun(): Run {
 
 /**
  * Called by a form on every render: what its run must not see change. The wallet, the account and
- * the network are added here; the form adds its own (amount, minimum, tier, whether it is shown).
+ * the network are added here; the form adds its own (amount, minimum, whether it is shown).
  * When the form goes away (another tab, another page), the run sees it at its next check.
  */
 export function useWatch(run: Run, parts: Watched): void {

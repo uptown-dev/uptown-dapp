@@ -5,7 +5,7 @@
 import { parseAbi } from 'viem';
 
 /** Every custom error in src/interfaces/**, once each (several contracts share a name and selector). */
-export const UPTOWN_ERRORS = [
+export const PROJECT_ERRORS = [
   'error NotStarted()',
   'error AlreadyStarted()',
   'error OnlyLauncher()',
@@ -24,20 +24,14 @@ export const UPTOWN_ERRORS = [
   'error AlreadyInitialized()',
   'error LiquidityLocked()',
   'error PartialFill()',
+  // SkylineStaking (CR-102, amended 2026-10-17).
   'error OnlyTreasury()',
   'error ZeroAmount()',
-  'error InvalidTier()',
-  'error NoPosition()',
-  'error PositionExists()',
-  'error NotAnUpgrade()',
-  'error InsufficientPayment()',
-  'error StalePrice()',
-  'error ZeroPrice()',
-  'error WrongFeedDecimals()',
-  'error RefundFailed()',
-  'error ForwardFailed()',
-  'error FeedChangeNotReady()',
-  'error NoPendingFeed()',
+  'error InsufficientStake()',
+  // LPVault's second position and the Launcher's launch value (CR-102).
+  'error SecondAlreadyWithdrawn()',
+  'error WrongLaunchValue()',
+  'error EthTransferFailed()',
   'error SpendRateOutOfBounds()',
   'error InsufficientOwnerEth()',
   // Treasury, owner changes with a delay (CR-46).
@@ -78,15 +72,15 @@ export const OTHER_ERRORS = [
   'error NotEnoughLiquidity(bytes32 poolId)',
   'error InsufficientETH()',
   'error UnexpectedRevertBytes(bytes revertData)',
-  // Permit2 (a sell's TOWN reaches the router through it; CR-43).
+  // Permit2 (a sell's SKYLINE reaches the router through it; CR-43).
   'error AllowanceExpired(uint256 deadline)',
   'error InsufficientAllowance(uint256 amount)',
 ] as const;
 
-export const ERRORS_ABI = parseAbi([...UPTOWN_ERRORS, ...OTHER_ERRORS]);
+export const ERRORS_ABI = parseAbi([...PROJECT_ERRORS, ...OTHER_ERRORS]);
 
 /**
- * OpenZeppelin `Ownable2Step`, which the Treasury, TownStaking and LPVault use (their interfaces
+ * OpenZeppelin `Ownable2Step`, which the Treasury and LPVault use (their interfaces
  * name it without redeclaring it): the owner, the address offered ownership, the offer and the
  * acceptance (CR-64, the owner page).
  */
@@ -102,15 +96,13 @@ export const TOKEN_ABI = parseAbi([
   'function balanceOf(address account) view returns (uint256)',
   'function allowance(address owner, address spender) view returns (uint256)',
   'function approve(address spender, uint256 value) returns (bool)',
-  ...UPTOWN_ERRORS,
+  ...PROJECT_ERRORS,
   ...OTHER_ERRORS,
 ]);
 
 export const HOOK_ABI = parseAbi([
   'function BUY_FEE_BPS() view returns (uint256)',
   'function SELL_FEE_BPS() view returns (uint256)',
-  'function ANTI_SNIPE_START_BPS() view returns (uint256)',
-  'function ANTI_SNIPE_DURATION() view returns (uint256)',
   'function BURN_FLOOR() view returns (uint256)',
   'function launchTime() view returns (uint256)',
   'function currentBuyFeeBps() view returns (uint256)',
@@ -118,13 +110,13 @@ export const HOOK_ABI = parseAbi([
   'function currentCycle() view returns (uint256)',
   'function bought(uint256 cycle, address wallet) view returns (uint256)',
   'function cycleTotal(uint256 cycle) view returns (uint256)',
-  // The gross TOWN sold in a cycle (CR-47): with cycleTotal, the net flow behind the rebate rate.
+  // The gross SKYLINE sold in a cycle (CR-47): with cycleTotal, the net flow behind the rebate rate.
   'function sold(uint256 cycle) view returns (uint256)',
-  // The sell fee's currency (CR-56, CR-57): this cycle's mode, and the TOWN the sell fees burned in a cycle.
+  // The sell fee's currency (CR-56, CR-57): this cycle's mode, and the SKYLINE the sell fees burned in a cycle.
   'function sellFeeInEth() view returns (bool)',
   'function burned(uint256 cycle) view returns (uint256)',
   // How the next sell's 2% divides (CR-93): burned, to the rebate reserve, in ETH, in basis points; and
-  // the cycle from which a TOWN-mode sell sends half its fee to the reserve (400, day 401).
+  // the cycle from which a SKYLINE-mode sell sends half its fee to the reserve (400, day 401).
   'function sellFeeShares() view returns (uint256 burnedBps, uint256 reserveBps, uint256 ethBps)',
   'function RESERVE_FEE_START() view returns (uint256)',
 ]);
@@ -155,7 +147,7 @@ export const REWARDS_ABI = parseAbi([
   // The reserve available to the next finalisation (CR-93): what BuyerRewards holds less what
   // finished days promised and buyers have not claimed. It replaces RESERVE - totalEmitted.
   'function available() view returns (uint256)',
-  ...UPTOWN_ERRORS,
+  ...PROJECT_ERRORS,
   ...OTHER_ERRORS,
 ]);
 
@@ -202,49 +194,30 @@ export const TREASURY_ABI = parseAbi([
   'event PauseCancelled()',
   'event Unpaused()',
   ...OWNABLE_2STEP,
-  ...UPTOWN_ERRORS,
+  ...PROJECT_ERRORS,
   ...OTHER_ERRORS,
 ]);
 
+/**
+ * SkylineStaking (CR-102, amended 2026-10-17; src/interfaces/ISkylineStaking.sol): free staking in
+ * one pool, WETH in proportion to the SKYLINE staked. Nothing to buy first, no prices, no owner.
+ */
 export const STAKING_ABI = parseAbi([
   'function STREAM_LENGTH() view returns (uint256)',
-  'function TOTAL_WEIGHT() view returns (uint256)',
-  'function PRICE_MAX_AGE() view returns (uint256)',
-  'function FALLBACK_MAX_AGE() view returns (uint256)',
-  'function FEED_CHANGE_DELAY() view returns (uint256)',
-  'function tierUsd(uint8 tier) view returns (uint256)',
-  'function tierWeight(uint8 tier) view returns (uint256)',
-  'function feed() view returns (address)',
-  'function pendingFeed() view returns (address)',
-  'function pendingFeedEffectiveAt() view returns (uint256)',
-  'function fallbackPrice() view returns (uint256)',
-  'function fallbackPriceSetAt() view returns (uint256)',
-  'function priceStatus() view returns (uint256 price, uint8 source, uint256 updatedAt)',
-  'function vaultPriceWei(uint8 tier) view returns (uint256)',
-  'function upgradePriceWei(address wallet, uint8 newTier) view returns (uint256)',
-  'function positionOf(address wallet) view returns (uint8 tier, uint256 amount)',
+  'function POKE_GAS_FLOOR() view returns (uint256)',
+  'function treasury() view returns (address)',
+  'function weth() view returns (address)',
+  'function stakeOf(address wallet) view returns (uint256)',
   'function totalStaked() view returns (uint256)',
-  'function tierStaked(uint8 tier) view returns (uint256)',
-  'function tierVaults(uint8 tier) view returns (uint256)',
   'function earned(address wallet) view returns (uint256)',
   'struct StreamInfo { uint256 rewardRate; uint256 periodFinish; uint256 lastUpdateTime; uint256 rewardPerTokenStored; }',
-  'function streamInfo(uint8 tier) view returns (StreamInfo)',
+  'function streamInfo() view returns (StreamInfo)',
   'function totalRewardsNotified() view returns (uint256)',
   'function totalRewardsPaid() view returns (uint256)',
-  'function tierNotified(uint8 tier) view returns (uint256)',
-  'function tierPaid(uint8 tier) view returns (uint256)',
-  'function totalVaultFees() view returns (uint256)',
-  'function openVault(uint8 tier, uint256 amount) payable',
-  'function addStake(uint256 amount)',
-  'function upgradeVault(uint8 newTier) payable',
-  'function unstake()',
+  'function stake(uint256 amount)',
+  'function unstake(uint256 amount)',
   'function claim()',
-  // The owner's two price powers and the public apply, sent only from the owner page (CR-64).
-  'function setFallbackPrice(uint256 price)',
-  'function announceFeed(address newFeed)',
-  'function applyFeed()',
-  ...OWNABLE_2STEP,
-  ...UPTOWN_ERRORS,
+  ...PROJECT_ERRORS,
   ...OTHER_ERRORS,
 ]);
 
@@ -253,17 +226,44 @@ export const LPVAULT_ABI = parseAbi([
   'function lockDuration() view returns (uint256)',
   'function tokenId() view returns (uint256)',
   'function MIN_LOCK_DURATION() view returns (uint256)',
-  // The owner functions, sent only from the owner page (CR-64).
+  // The second position (CR-102): its NFT, its 14-day lock and whether it has been withdrawn.
+  'function SECOND_LOCK() view returns (uint256)',
+  'function secondTokenId() view returns (uint256)',
+  'function secondUnlockTime() view returns (uint256)',
+  'function secondWithdrawn() view returns (bool)',
+  // The owner functions, sent only from the owner page (CR-64, CR-102).
   'function collectFees(address recipient)',
+  'function collectSecondFees(address recipient)',
+  'function withdrawSecondPosition(address to)',
   'function extendLock(uint256 newUnlockTime)',
   'function withdrawPosition(address to)',
   ...OWNABLE_2STEP,
-  ...UPTOWN_ERRORS,
+  ...PROJECT_ERRORS,
   ...OTHER_ERRORS,
 ]);
 
-/** The Launcher: its owner, whether it has run, and the one launch call (CR-64, before launch only). */
-export const LAUNCHER_ABI = parseAbi(['function owner() view returns (address)', 'function launched() view returns (bool)', 'function launch()', ...UPTOWN_ERRORS, ...OTHER_ERRORS]);
+/**
+ * The Launcher: its owner, whether it has run, the launch figures (CR-102: the 0.1 ETH launch buy and
+ * the 0.03 ETH second position, so `launch()` is sent with exactly 0.13 ETH), and the one launch call
+ * (CR-64, before launch only).
+ */
+export const LAUNCHER_ABI = parseAbi([
+  'function owner() view returns (address)',
+  'function launched() view returns (bool)',
+  'function LAUNCH_BUY_ETH() view returns (uint256)',
+  'function SECOND_POSITION_ETH() view returns (uint256)',
+  'function launch() payable',
+  ...PROJECT_ERRORS,
+  ...OTHER_ERRORS,
+]);
+
+/**
+ * Chainlink's ETH/USD feed (R1b A1, R1c): the dollar figures read it directly (CR-102, spec "Frontend
+ * -> Dollar figures"): `latestRoundData()`, 8 decimals.
+ */
+export const CHAINLINK_ABI = parseAbi([
+  'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
+]);
 
 /**
  * A Safe multisig's signers and how many must approve (CR-64): asked of an owner address that has
@@ -286,7 +286,7 @@ export const QUOTER_ABI = parseAbi([
   ...OTHER_ERRORS,
 ]);
 
-/** Permit2 (R1b A1): the router's allowance to move a wallet's TOWN, set by an on-chain approval (CR-43). */
+/** Permit2 (R1b A1): the router's allowance to move a wallet's SKYLINE, set by an on-chain approval (CR-43). */
 export const PERMIT2_ABI = parseAbi([
   'function allowance(address user, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)',
   'function approve(address token, address spender, uint160 amount, uint48 expiration)',
@@ -294,11 +294,11 @@ export const PERMIT2_ABI = parseAbi([
 ]);
 
 /** Universal Router 2.1.2 (R1b A2): `execute(commands, inputs, deadline)`. */
-export const ROUTER_ABI = parseAbi(['function execute(bytes commands, bytes[] inputs, uint256 deadline) payable', ...UPTOWN_ERRORS, ...OTHER_ERRORS]);
+export const ROUTER_ABI = parseAbi(['function execute(bytes commands, bytes[] inputs, uint256 deadline) payable', ...PROJECT_ERRORS, ...OTHER_ERRORS]);
 
 /**
  * Uniswap v4 StateView (R1b A1, A6): the pool's current price, for the dollar figures (CR-95). The
- * price is TOWN per ETH (spec "Pool and launch position -> Price direction"): currency0 is ETH,
- * currency1 is TOWN, so (sqrtPriceX96 / 2^96)^2 is TOWN units per wei.
+ * price is SKYLINE per ETH (spec "Pool and launch position -> Price direction"): currency0 is ETH,
+ * currency1 is SKYLINE, so (sqrtPriceX96 / 2^96)^2 is SKYLINE units per wei.
  */
 export const STATEVIEW_ABI = parseAbi(['function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)']);

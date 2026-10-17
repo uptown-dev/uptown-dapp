@@ -17,6 +17,7 @@ const PLAIN: Record<string, string> = {
   NotLater: 'A new unlock time must be later than the current one: the lock can be extended, never shortened.',
   StillLocked: 'The liquidity is still locked; it cannot be withdrawn before the unlock time.',
   InvalidRecipient: 'That address cannot receive the pool fees.',
+  SecondAlreadyWithdrawn: 'The second position has already been withdrawn from LPVault, so it can be neither withdrawn again nor have its fees collected there.',
   RenounceDisabled: 'Ownership cannot be given up; it can only be handed over in two steps.',
   SpendRateOutOfBounds: 'The daily payout rate must be between 1% and 25%.',
   InsufficientOwnerEth: 'That is more than the owner reserve holds.',
@@ -39,33 +40,23 @@ const PLAIN: Record<string, string> = {
   // Launcher
   OnlyOwner: 'Only the owner can do this.',
   AlreadyLaunched: 'UpTown has already launched; the launch cannot be repeated.',
-  // TownHook
-  OnlyPoolManager: 'Only Uniswap’s pool manager can call TownHook.',
-  WrongPool: 'This is not the TOWN pool that TownHook serves.',
-  AlreadyInitialized: 'The TOWN pool already exists.',
-  LiquidityLocked: 'The TOWN pool accepts no liquidity besides the launch position.',
+  WrongLaunchValue: 'The launch must be sent with exactly 0.13 ETH: 0.1 ETH for the launch buy and 0.03 ETH for the second position.',
+  EthTransferFailed: 'The launch could not send the unused ETH back to the owner wallet, so nothing happened.',
+  // SkylineHook
+  OnlyPoolManager: 'Only Uniswap’s pool manager can call SkylineHook.',
+  WrongPool: 'This is not the SKYLINE pool that SkylineHook serves.',
+  AlreadyInitialized: 'The SKYLINE pool already exists.',
+  LiquidityLocked: 'The SKYLINE pool accepts no liquidity besides the two positions added at the launch.',
   PartialFill: 'The pool could not fill the whole buy, so it was cancelled and you keep your ETH. Try a smaller amount.',
-  // TownStaking
+  // SkylineStaking (CR-102)
   OnlyTreasury: 'Only the Treasury can send rewards to staking.',
   ZeroAmount: 'Enter an amount above zero.',
-  InvalidTier: 'That tier does not exist: tiers are 1 to 5.',
-  NoPosition: 'This wallet has no open vault. Open one first.',
-  PositionExists: 'This wallet already has an open vault. Add TOWN to it or upgrade it instead.',
-  NotAnUpgrade: 'A vault can only move to a higher tier; there is no downgrade.',
-  InsufficientPayment: 'Not enough ETH was sent for the vault price, which may have just changed. Refresh and try again.',
-  StalePrice:
-    'No ETH/USD price is available right now, so vaults cannot be opened or upgraded. Adding TOWN, unstaking and claiming still work.',
-  ZeroPrice: 'The ETH/USD price in use would make this vault cost nothing, which the contract refuses.',
-  WrongFeedDecimals: 'That price feed does not use 8 decimals, so it cannot be used.',
-  RefundFailed: 'The staking contract could not send the extra ETH back to this wallet, so nothing happened.',
-  ForwardFailed: 'The vault price could not be passed on to the treasury, so nothing happened.',
-  FeedChangeNotReady: 'The announced price feed cannot take effect yet: the 7-day wait has not passed.',
-  NoPendingFeed: 'No price feed change has been announced.',
+  InsufficientStake: 'That is more SKYLINE than this wallet has staked. Unstake at most your stake.',
   // OpenZeppelin
-  ERC20InsufficientBalance: 'This wallet does not hold enough TOWN for that.',
-  ERC20InsufficientAllowance: 'The staking contract may not move that much of your TOWN yet. Press the button again: it asks for the approval first.',
-  ERC20InvalidSpender: 'That address cannot be approved to move TOWN.',
-  ERC20InvalidReceiver: 'That address cannot receive TOWN.',
+  ERC20InsufficientBalance: 'This wallet does not hold enough SKYLINE for that.',
+  ERC20InsufficientAllowance: 'The staking contract may not move that much of your SKYLINE yet. Press the button again: it asks for the approval first.',
+  ERC20InvalidSpender: 'That address cannot be approved to move SKYLINE.',
+  ERC20InvalidReceiver: 'That address cannot receive SKYLINE.',
   ReentrancyGuardReentrantCall: 'The contract refused a call made from inside another call.',
   OwnableUnauthorizedAccount: 'Only the owner can do this.',
   OwnableInvalidOwner: 'That address cannot become the owner.',
@@ -75,25 +66,25 @@ const PLAIN: Record<string, string> = {
   TransactionDeadlinePassed: 'The buy waited too long to be included and was cancelled. Try again.',
   DeadlinePassed: 'The buy waited too long to be included and was cancelled. Try again.',
   PriceLimitAlreadyExceeded: 'The pool’s price moved past the limit, so the buy was cancelled.',
-  NotEnoughLiquidity: 'The pool does not hold enough TOWN for this buy. Try a smaller amount.',
+  NotEnoughLiquidity: 'The pool does not hold enough SKYLINE for this buy. Try a smaller amount.',
   InsufficientETH: 'Not enough ETH was sent with the buy.',
   // Permit2 (a sell's second approval)
-  AllowanceExpired: 'The router’s permission to move your TOWN has expired. Press the sell button again: it renews the permission, then sells.',
-  InsufficientAllowance: 'The router may not move your TOWN yet. Press the sell button again: it asks for the permission first, then sells.',
+  AllowanceExpired: 'The router’s permission to move your SKYLINE has expired. Press the sell button again: it renews the permission, then sells.',
+  InsufficientAllowance: 'The router may not move your SKYLINE yet. Press the sell button again: it asks for the permission first, then sells.',
 };
 
 /** What a trade is, for the errors that read differently on a sell (CR-43). */
 export type TradeKind = 'buy' | 'sell';
 
-/** Sentences that differ on a sell: the seller keeps TOWN, not ETH. */
+/** Sentences that differ on a sell: the seller keeps SKYLINE, not ETH. */
 const SELL: Record<string, string> = {
-  PartialFill: 'The pool could not fill the whole sale, so it was cancelled and you keep your TOWN. Try a smaller amount.',
-  V4TooMuchRequested: 'The sale would take more TOWN than allowed, so it was cancelled and you keep your TOWN.',
+  PartialFill: 'The pool could not fill the whole sale, so it was cancelled and you keep your SKYLINE. Try a smaller amount.',
+  V4TooMuchRequested: 'The sale would take more SKYLINE than allowed, so it was cancelled and you keep your SKYLINE.',
   TransactionDeadlinePassed: 'The sale waited too long to be included and was cancelled. Try again.',
   DeadlinePassed: 'The sale waited too long to be included and was cancelled. Try again.',
   PriceLimitAlreadyExceeded: 'The pool’s price moved past the limit, so the sale was cancelled.',
   NotEnoughLiquidity: 'The pool does not hold enough ETH for this sale. Try a smaller amount.',
-  ERC20InsufficientAllowance: 'Permit2 may not move your TOWN yet. Press the sell button again: it asks for the approval first, then sells.',
+  ERC20InsufficientAllowance: 'Permit2 may not move your SKYLINE yet. Press the sell button again: it asks for the approval first, then sells.',
 };
 
 /** The custom error inside a revert, unwrapping the Universal Router's and the pool manager's wrappers. */
@@ -115,21 +106,21 @@ function sentence(name: string, args: readonly unknown[], kind?: TradeKind): str
   if (name === 'V4TooLittleReceived') {
     const [min, got] = args as [bigint, bigint];
     if (kind === 'sell')
-      return `You would receive ${fmtEth(got, 6)} ETH, less than your minimum of ${fmtEth(min, 6)} ETH, so the sale was cancelled and you keep your TOWN. Lower the minimum or try again.`;
-    return `You would receive ${fmtTown(got)} TOWN, less than your minimum of ${fmtTown(min)} TOWN, so the buy was cancelled and you keep your ETH. Lower the minimum or try again.`;
+      return `You would receive ${fmtEth(got, 6)} ETH, less than your minimum of ${fmtEth(min, 6)} ETH, so the sale was cancelled and you keep your SKYLINE. Lower the minimum or try again.`;
+    return `You would receive ${fmtTown(got)} SKYLINE, less than your minimum of ${fmtTown(min)} SKYLINE, so the buy was cancelled and you keep your ETH. Lower the minimum or try again.`;
   }
   if (kind === 'sell' && SELL[name]) return SELL[name];
   return PLAIN[name] ?? `The contract refused this (${name}). Nothing was changed.`;
 }
 
 /**
- * Permit2 moves TOWN with a transfer that hides the token's own error and reverts with the text
- * TRANSFER_FROM_FAILED: on a sell, TOWN is not approved for Permit2 or the wallet holds less TOWN.
+ * Permit2 moves SKYLINE with a transfer that hides the token's own error and reverts with the text
+ * TRANSFER_FROM_FAILED: on a sell, SKYLINE is not approved for Permit2 or the wallet holds less SKYLINE.
  */
 function reasonSentence(reason: string, kind?: TradeKind): { message: string; name: string } {
   if (reason === 'TRANSFER_FROM_FAILED' && kind === 'sell')
     return {
-      message: 'Permit2 could not move your TOWN: TOWN is not approved for Permit2, or the wallet holds less TOWN than this. Check the amount, then press the sell button again.',
+      message: 'Permit2 could not move your SKYLINE: SKYLINE is not approved for Permit2, or the wallet holds less SKYLINE than this. Check the amount, then press the sell button again.',
       name: 'TRANSFER_FROM_FAILED',
     };
   return { message: `The contract refused this: ${reason}.`, name: 'Error' };

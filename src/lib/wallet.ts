@@ -152,7 +152,7 @@ const same = (a: unknown, b: string) => typeof a === 'string' && a.toLowerCase()
 /**
  * The last check before anything is checked, prepared or sent (CR-72): the target is one of the
  * site's own addresses (the seven contracts, the listed staking contracts, the Universal Router,
- * Permit2), and a TOWN approval names only Permit2 or a listed staking contract. Gives the reason
+ * Permit2), and a SKYLINE approval names only Permit2 or a listed staking contract. Gives the reason
  * when it is not, else null.
  */
 export function targetProblem(n: Network, req: TxRequest): string | null {

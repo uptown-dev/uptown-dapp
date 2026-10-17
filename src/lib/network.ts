@@ -25,9 +25,17 @@ export type { ChainId } from './chains';
 interface AddressFile {
   chainId: number;
   source: string | null;
+  /**
+   * The token's symbol, from the deployment record (CR-102, D12a): "SKYLINE" for this generation of
+   * the contracts. A file without it is the retired first deployment's (TOWN) or older, and the site
+   * reads it as "not deployed" (see `readFile`).
+   */
+  tokenSymbol?: string | null;
   contracts: Record<string, string> | null;
   owner: string | null;
   positionTokenId: string | null;
+  /** The second position's token ID (CR-102); null before the launch, or absent in an older file. */
+  secondPositionTokenId?: string | null;
   /**
    * Mainnet only (F12a): the launch time and the pool ID, null after phase 1 and filled after phase 2.
    * Not used to decide whether UpTown has launched: the site asks Launcher.launched() (CR-86).
@@ -52,7 +60,12 @@ export interface Network {
   uniswapChain: string | null;
   /** Uniswap v4 and helper contracts (PositionManager, V4Quoter, Universal Router 2.1.2, Permit2, Multicall3, WETH). */
   uniswap: ChainContracts | null;
-  /** The seven contracts, the owner and the locked position; `null`: not deployed on this chain yet. */
+  /**
+   * Chainlink's ETH/USD feed on this chain, the site's own (`src/lib/chains.ts`, CR-102): every dollar
+   * figure reads it directly. `null` where the chain has none: no dollar figure is then shown.
+   */
+  ethUsdFeed: Address | null;
+  /** The seven contracts, the owner and the locked positions; `null`: not deployed on this chain yet. */
   deployment: Deployment | null;
   /** The private local chain: transactions go to the node from a test wallet, without a key. */
   local: boolean;
@@ -75,28 +88,28 @@ export interface StakingRecord {
 // ---------------------------------------------------------------------------------------------
 // THE STAKING CONTRACTS, KEPT BY HAND (CR-50). The site reads no events, so it cannot find a
 // staking contract the Treasury no longer pays. This list names every one it has ever paid on
-// each chain, oldest first. "TownStaking" stands for the address file's TownStaking. When a
-// replacement is applied (Treasury.applyStaking, event StakingReplaced), add the new contract
-// at the end and write the date of the application as `replacedOn` of the one before it, in
-// UTC, for example '2027-03-01 14:05'. The site offers vaults only in the contract
-// Treasury.staking() names; every other contract here is shown, to a wallet with a vault in it,
-// as "replaced on <date>: no new rewards; unstake and claim only".
+// each chain, oldest first. "SkylineStaking" stands for the address file's SkylineStaking (CR-102).
+// When a replacement is applied (Treasury.applyStaking, event StakingReplaced; the NFT staking
+// contract for the "Uptowners" collection is the one planned), add the new contract at the end and
+// write the date of the application as `replacedOn` of the one before it, in UTC, for example
+// '2027-03-01 14:05'. The site stakes only in the contract Treasury.staking() names; every other
+// contract here is shown, to a wallet with a stake in it, as "replaced on <date>: no new rewards;
+// unstake and claim only".
 //
 // CR-72: this list is also the only place a staking transaction's address comes from. Add a new
 // staking contract here (with `replacedOn: null`) as soon as the owner announces it, and publish the
 // site before the replacement can be applied (the 2-day wait). Until the site lists the contract
-// Treasury.staking() names, the Stake page shows its figures but turns off opening, adding and
-// upgrading with "This site has not been updated for the new staking contract yet"; unstaking and
-// claiming stay available in the contracts listed here.
+// Treasury.staking() names, the Stake page shows its figures but turns off staking with "This site
+// has not been updated for the new staking contract yet"; unstaking and claiming stay available in
+// the contracts listed here.
 //
-// CR-73: the replacement date also puts a card on the Owner page for each replaced contract, with
-// that contract's own owner powers (fallback price, announce, cancel or apply a feed, ownership).
-// So the date here is what tells the owner page which contracts to offer those powers for.
+// (CR-73's owner-page cards for replaced staking contracts are gone with CR-102: SkylineStaking has
+// no owner, so a replaced one leaves the owner nothing to do there.)
 // ---------------------------------------------------------------------------------------------
-const STAKING_HISTORY: Record<ChainId, { address: 'TownStaking' | Address; replacedOn: string | null }[]> = {
-  1: [{ address: 'TownStaking', replacedOn: null }],
-  11155111: [{ address: 'TownStaking', replacedOn: null }],
-  31337: [{ address: 'TownStaking', replacedOn: null }],
+const STAKING_HISTORY: Record<ChainId, { address: 'SkylineStaking' | Address; replacedOn: string | null }[]> = {
+  1: [{ address: 'SkylineStaking', replacedOn: null }],
+  11155111: [{ address: 'SkylineStaking', replacedOn: null }],
+  31337: [{ address: 'SkylineStaking', replacedOn: null }],
 };
 
 /** '2027-03-01 14:05' (UTC) to seconds since 1970. */
@@ -109,7 +122,7 @@ function utcSeconds(text: string): number {
 function stakingContracts(chainId: ChainId, deployment: Deployment | null): StakingRecord[] {
   if (!deployment) return [];
   return STAKING_HISTORY[chainId].map((r) => ({
-    address: r.address === 'TownStaking' ? deployment.contracts.TownStaking : getAddress(r.address),
+    address: r.address === 'SkylineStaking' ? deployment.contracts.SkylineStaking : getAddress(r.address),
     replacedOn: r.replacedOn === null ? null : utcSeconds(r.replacedOn),
   }));
 }
@@ -117,9 +130,9 @@ function stakingContracts(chainId: ChainId, deployment: Deployment | null): Stak
 // ---------------------------------------------------------------------------------------------
 // Staking transactions go only to listed contracts (CR-72, spec "Frontend -> Stake"). The site
 // reads Treasury.staking() and shows what it says, but an address from the RPC alone is never a
-// transaction's target: every staking transaction (the TOWN approval, opening, adding, upgrading,
-// unstaking, claiming) and every TownStaking owner power goes to an address from the list above,
-// the site's own files. A contract the RPC names that the list does not hold gets no transaction.
+// transaction's target: every staking transaction (the SKYLINE approval, staking, unstaking,
+// claiming) goes to an address from the list above, the site's own files. A contract the RPC names
+// that the list does not hold gets no transaction.
 // ---------------------------------------------------------------------------------------------
 
 /** The sentence shown wherever a staking action is off because the Treasury pays a contract the site does not list. */
@@ -132,10 +145,8 @@ export function listedStaking(n: Network, address: string | null | undefined): A
 }
 
 /**
- * The staking contracts the site's own list marks as replaced (a replacement date), oldest first
- * (CR-73). The Treasury no longer pays them, but the owner still owns them and still holds their
- * price and feed powers there, so the owner page shows a card for each one. The list is the only
- * source: an address the RPC alone names never appears here.
+ * The staking contracts the site's own list marks as replaced (a replacement date), oldest first.
+ * The list is the only source: an address the RPC alone names never appears here.
  */
 export function replacedStaking(n: Network): StakingRecord[] {
   return n.stakingContracts.filter((r) => r.replacedOn !== null);
@@ -153,17 +164,31 @@ export function transactionTargets(n: Network): Address[] {
   return out;
 }
 
+/** The symbol of the token this site is built for (CR-102). */
+export const TOKEN_SYMBOL = 'SKYLINE';
+
+/**
+ * Whether an address file names this generation's contracts (CR-102): its `tokenSymbol` is
+ * "SKYLINE". The retired first deployment's file (TOWN, launched 15 October 2026) has no such field,
+ * and neither has any file written before the redeployment; the site reads those as "not deployed",
+ * so it can never show, or send a transaction to, the retired contracts as if they were SKYLINE's.
+ */
+export function isSkylineFile(file: { tokenSymbol?: string | null; contracts: unknown }): boolean {
+  return !!file.contracts && file.tokenSymbol === TOKEN_SYMBOL;
+}
+
 function readFile(chainId: ChainId, info: ChainInfo, file: AddressFile): Network {
   if (info.chainId !== chainId) throw new Error(`network entry for chain ${chainId} names chain ${info.chainId}`);
   if (file.chainId !== chainId) throw new Error(`address file for chain ${chainId} names chain ${file.chainId}`);
   let deployment: Deployment | null = null;
-  if (file.contracts) {
+  if (isSkylineFile(file)) {
     const contracts = {} as Record<ContractName, Address>;
-    for (const name of CONTRACT_NAMES) contracts[name] = getAddress(file.contracts[name]);
+    for (const name of CONTRACT_NAMES) contracts[name] = getAddress(file.contracts![name]);
     deployment = {
       contracts,
       owner: file.owner ? getAddress(file.owner) : null,
       lpTokenId: file.positionTokenId !== null ? BigInt(file.positionTokenId) : null,
+      secondTokenId: file.secondPositionTokenId ? BigInt(file.secondPositionTokenId) : null,
     };
   }
   const u = file.uniswap;
@@ -179,7 +204,7 @@ function readFile(chainId: ChainId, info: ChainInfo, file: AddressFile): Network
           multicall3: getAddress(u.multicall3),
           weth: getAddress(u.weth),
           // CR-95 (F9v): the local address file copies StateView from the deployment file; an older
-          // file without it leaves the TOWN dollar figures hidden rather than stopping the site.
+          // file without it leaves the SKYLINE dollar figures hidden rather than stopping the site.
           stateView: u.stateView ? getAddress(u.stateView) : null,
         }
       : null);
@@ -197,6 +222,7 @@ function readFile(chainId: ChainId, info: ChainInfo, file: AddressFile): Network
     explorerName: info.explorerName,
     uniswapChain: info.uniswapChain,
     uniswap,
+    ethUsdFeed: info.ethUsdFeed ? getAddress(info.ethUsdFeed) : null,
     deployment,
     local: info.local,
     testWallets,
@@ -269,5 +295,11 @@ export function contractUrl(n: Network, name: ContractName, page: 'address' | 'c
  */
 export function positionUrl(n: Network, onChain?: bigint | null): string | null {
   const id = n.deployment?.lpTokenId ?? (onChain ? onChain : null);
+  return nftUrl(n, n.uniswap?.positionManager ?? null, id);
+}
+
+/** The second position's NFT (CR-102): from the address file, or LPVault.secondTokenId() on chain. */
+export function secondPositionUrl(n: Network, onChain?: bigint | null): string | null {
+  const id = n.deployment?.secondTokenId ?? (onChain ? onChain : null);
   return nftUrl(n, n.uniswap?.positionManager ?? null, id);
 }

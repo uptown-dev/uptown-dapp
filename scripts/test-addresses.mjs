@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tests scripts/addresses.mjs (CR-63, F9a; chain 1 since F12a, CR-86). Runs the script as the Deployer's rehearsal does and as
+// Tests scripts/addresses.mjs (CR-63, F9a; chain 1 since F12a, CR-86; SKYLINE records only since F13a, CR-102). Runs the script as the Deployer's rehearsal does and as
 // `npm run dev` does, with sample Sepolia deployment files written to a temporary folder outside
 // the project. No network, no chain, nothing sent.
 //
@@ -44,6 +44,7 @@ const fake = (n) => `0x${n.repeat(40)}`;
 const P = CHAINS[11155111].contracts;
 const deployFile = {
   chainId: 11155111,
+  tokenSymbol: 'SKYLINE',
   deployer: fake('d'),
   deployerStartNonce: 0,
   owner: fake('e'),
@@ -79,22 +80,24 @@ const fullFile = {
   universalRouter_2_1_2: P.universalRouter,
   testWallets: [fake('9')],
 };
-const expected = (src, tokenId) =>
+const expected = (src, tokenId, secondId = null) =>
   JSON.stringify(
     {
       chainId: 11155111,
       source: 'script/deployments/11155111.json',
+      tokenSymbol: src.tokenSymbol ?? null,
       contracts: {
         UpTownToken: src.townToken,
-        TownHook: src.townHook,
+        SkylineHook: src.townHook,
         BuyerRewards: src.buyerRewards,
         Treasury: src.treasury,
-        TownStaking: src.townStaking,
+        SkylineStaking: src.townStaking,
         LPVault: src.lpVault,
         Launcher: src.launcher,
       },
       owner: src.owner,
       positionTokenId: tokenId,
+      secondPositionTokenId: secondId,
       uniswap: { ...P },
       testWallets: [],
     },
@@ -125,6 +128,17 @@ try {
   check('from the project root, node frontend/scripts/addresses.mjs --chain 11155111 <file>: exit 0', r.code === 0, r.out);
   check('the fuller file: same contracts, router 2.1.2 checked, position ID copied, no test wallets', bytes(SEPOLIA_FILE) === expected(fullFile, '12345'), bytes(SEPOLIA_FILE));
   check('the fuller file: the message lists the Uniswap fields checked against it', /v4Quoter, universalRouter_2_1_2, permit2, multicall3, weth/.test(r.out), r.out);
+  restoreSepolia();
+
+  // 2b. CR-102: a Sepolia record without "tokenSymbol" (from before the redeployment) is copied with
+  // tokenSymbol null, which the site reads as "not deployed", and the message says so; the second
+  // position's token ID is copied when the record has it.
+  const { tokenSymbol: _sym, ...oldSepolia } = deployFile;
+  r = run([SCRIPT, '--chain', '11155111', sample('old-11155111.json', oldSepolia)]);
+  check('CR-102: a Sepolia record without "tokenSymbol" is copied with tokenSymbol null, and the message says the site shows "not deployed"', r.code === 0 && bytes(SEPOLIA_FILE) === expected(oldSepolia, null) && /not deployed/.test(r.out), `${r.out}\n${bytes(SEPOLIA_FILE)}`);
+  restoreSepolia();
+  r = run([SCRIPT, '--chain', '11155111', sample('second-11155111.json', { ...fullFile, secondPositionTokenId: 12346 })]);
+  check('CR-102: a Sepolia record with "secondPositionTokenId": copied as a string beside the position', r.code === 0 && bytes(SEPOLIA_FILE) === expected(fullFile, '12345', '12346'), `${r.out}\n${bytes(SEPOLIA_FILE)}`);
   restoreSepolia();
 
   // 3. --chain=11155111 form.
@@ -188,6 +202,7 @@ try {
   // Deploy.s.sol's broadcast file on chain 1 (UpTownScript._writeDeployment): the phase-1 record.
   const phase1 = {
     chainId: 1,
+    tokenSymbol: 'SKYLINE',
     deployer: fake('d'),
     deployerStartNonce: 3,
     owner: fake('e'),
@@ -210,23 +225,25 @@ try {
   };
   // The same after phase 2: script/mainnet-file.mjs adds the launch time, the position, the pool ID and the explorer.
   const POOL_ID = `0x${'ab'.repeat(32)}`;
-  const phase2 = { ...phase1, launchTime: 1792540800, positionTokenId: 123456, poolId: POOL_ID, explorer: 'https://etherscan.io' };
+  const phase2 = { ...phase1, launchTime: 1792540800, positionTokenId: 123456, secondPositionTokenId: 123457, poolId: POOL_ID, explorer: 'https://etherscan.io' };
   const expectedMainnet = (s, launch) =>
     JSON.stringify(
       {
         chainId: 1,
         source: 'script/deployments/1.json',
+        tokenSymbol: 'SKYLINE',
         contracts: {
           UpTownToken: s.townToken,
-          TownHook: s.townHook,
+          SkylineHook: s.townHook,
           BuyerRewards: s.buyerRewards,
           Treasury: s.treasury,
-          TownStaking: s.townStaking,
+          SkylineStaking: s.townStaking,
           LPVault: s.lpVault,
           Launcher: s.launcher,
         },
         owner: s.owner,
         positionTokenId: launch ? String(s.positionTokenId) : null,
+        secondPositionTokenId: launch && s.secondPositionTokenId !== undefined ? String(s.secondPositionTokenId) : null,
         launchTime: launch ? String(s.launchTime) : null,
         poolId: launch ? s.poolId : null,
         uniswap: { ...M },
@@ -246,8 +263,36 @@ try {
 
   const p2 = sample('phase2-1.json', phase2);
   r = run([SCRIPT, '--chain=1', p2]);
-  check('mainnet phase 2: exit 0; launch time, pool ID and position copied', r.code === 0 && bytes(MAINNET_FILE) === expectedMainnet(phase2, true) && /launched: launch time, pool ID and position copied/.test(r.out), `${r.out}\n${bytes(MAINNET_FILE)}`);
+  check('mainnet phase 2: exit 0; launch time, pool ID and position copied, and the second position (CR-102)', r.code === 0 && bytes(MAINNET_FILE) === expectedMainnet(phase2, true) && /launched: launch time, pool ID and position copied, with the second position/.test(r.out), `${r.out}\n${bytes(MAINNET_FILE)}`);
   restoreMainnet();
+
+  // The mainnet command's file without the optional second position (script/mainnet-file.mjs takes it as optional).
+  const { secondPositionTokenId: _s2, ...phase2NoSecond } = phase2;
+  r = run([SCRIPT, '--chain', '1', sample('phase2-nosecond-1.json', phase2NoSecond)]);
+  check('mainnet phase 2 without "secondPositionTokenId": exit 0, written as null (the site reads LPVault.secondTokenId() itself)', r.code === 0 && bytes(MAINNET_FILE) === expectedMainnet(phase2NoSecond, true), `${r.out}\n${bytes(MAINNET_FILE)}`);
+  restoreMainnet();
+
+  // CR-102: the retired first deployment's record (TOWN) must never be copied as chain 1.
+  const { tokenSymbol: _t, ...townRecord } = phase2;
+  for (const [label, data] of [
+    ['a chain-1 record without "tokenSymbol" (as the retired TOWN record is)', townRecord],
+    ['a chain-1 record with "tokenSymbol": "TOWN"', { ...phase2, tokenSymbol: 'TOWN' }],
+    ['a chain-1 record with "tokenSymbol": "skyline" (the symbol is exact)', { ...phase2, tokenSymbol: 'skyline' }],
+  ]) {
+    r = run([SCRIPT, '--chain', '1', sample('town-1.json', data)]);
+    check(
+      `CR-102 refused: ${label} (exit 1, target unchanged, plain message naming SKYLINE and the retired TOWN)`,
+      r.code === 1 && bytes(MAINNET_FILE) === mainnetBefore && /not a record of the SKYLINE deployment/.test(r.out) && /TOWN, 0x994d362B403a5AbE6D815749f63c23B8e807fCF5/.test(r.out) && /Nothing was changed/.test(r.out),
+      r.out,
+    );
+  }
+  const realMainnet = join(PROJECT, 'script', 'deployments', '1.json');
+  if (existsSync(realMainnet) && JSON.parse(readFileSync(realMainnet, 'utf8')).tokenSymbol !== 'SKYLINE') {
+    r = run(['frontend/scripts/addresses.mjs', '--chain', '1'], PROJECT);
+    check('CR-102 refused: the real script/deployments/1.json of today, the retired TOWN record, as script/mainnet-deploy.sh would run it (exit 1, target unchanged)', r.code === 1 && bytes(MAINNET_FILE) === mainnetBefore && /not a record of the SKYLINE deployment/.test(r.out), r.out);
+  } else {
+    check('CR-102: the real script/deployments/1.json (skipped: it is absent or already SKYLINE\'s)', true);
+  }
 
   // A phase-2 file that also names the pool key and the local-style helper fields, all agreeing.
   const p2key = sample('phase2-key-1.json', {
@@ -302,6 +347,9 @@ try {
     ['a zero pool ID', { ...phase2, poolId: `0x${'00'.repeat(32)}` }],
     ['a pool key naming another hook', { ...phase2, poolHooks: fake('8') }],
     ['Sepolia\'s explorer', { ...phase2, explorer: 'https://sepolia.etherscan.io' }],
+    ['a second position with the launch position\'s own token ID', { ...phase2, secondPositionTokenId: phase2.positionTokenId }],
+    ['a second position before the launch facts', { ...phase1, secondPositionTokenId: 7 }],
+    ['a second position that is not a number', { ...phase2, secondPositionTokenId: 'x7' }],
   ];
   for (const [label, data] of badMainnet) {
     r = run([SCRIPT, '--chain', '1', sample('bad-1.json', data)]);

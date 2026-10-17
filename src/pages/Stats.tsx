@@ -1,22 +1,25 @@
 import { useApp, useChain, useTx, Card, Fig, Figures, Notice, PageHead, TxStatus, Usd, Verify } from '../components/ui';
 import { applyStakingTx, pokeTx } from '../lib/actions';
-import { TIERS, type CandidateCheck } from '../data/types';
+import type { CandidateCheck } from '../data/types';
 import {
   budgetState,
   burned,
   daysUntil,
   forStakers,
-  hookFeesReceived,
   leftToBurn,
   nextDayStart,
   pausePending,
+  poolEmpty,
+  secondPositionState,
   sellFeeMode,
   stakingChange,
   stakingPaidSince,
   stakingReplaced,
+  streamEnd,
+  streamPerDay,
 } from '../lib/derive';
 import { dayName, fmtBps, fmtDate, fmtDateTime, fmtDelay, fmtDuration, fmtEth, fmtInt, fmtTown, fmtUntil, shortAddress } from '../lib/format';
-import { codeUrl, contractUrl, positionUrl, readUrl, tokenUrl } from '../lib/network';
+import { codeUrl, contractUrl, positionUrl, readUrl, secondPositionUrl, tokenUrl } from '../lib/network';
 import { sellFeeWords } from './Trade';
 
 export function Stats() {
@@ -25,11 +28,15 @@ export function Stats() {
       <PageHead title="Stats" lead="The treasury and the running totals, read straight from the contracts." />
       <Treasury />
       <TradingVolume />
+      {/* CR-102: the ETH card lost its two vault rows, so Staking stands under it, beside the taller SKYLINE card. */}
       <div class="grid-2">
-        <EthFlows />
-        <TownTotals />
+        <div class="grid-col">
+          <EthFlows />
+          <Staking />
+        </div>
+        <TokenTotals />
       </div>
-      <Staking />
+      <Liquidity />
     </div>
   );
 }
@@ -165,8 +172,8 @@ export function OwnerChanges() {
   const tx = useTx();
   const t = chain.treasury;
   const now = chain.blockTimestamp;
-  const townStaking = network.deployment?.contracts.TownStaking;
-  const replaced = stakingReplaced(chain, townStaking);
+  const skylineStaking = network.deployment?.contracts.SkylineStaking;
+  const replaced = stakingReplaced(chain, skylineStaking);
   const since = stakingPaidSince(network.stakingContracts, t.staking);
   const pauseAt = pausePending(chain);
   const change = stakingChange(chain);
@@ -179,7 +186,7 @@ export function OwnerChanges() {
       <div class="staking-target">
         <p class="poke-title">Staking contract the treasury pays</p>
         <p class="staking-target-line">
-          <span>{replaced ? 'A replacement contract' : 'TownStaking'}</span>{' '}
+          <span>{replaced ? 'A replacement contract' : 'SkylineStaking'}</span>{' '}
           <code data-view="Treasury.staking" title={t.staking}>
             {shortAddress(t.staking)}
           </code>{' '}
@@ -193,8 +200,8 @@ export function OwnerChanges() {
         </p>
         {replaced && (
           <p class="small muted">
-            The owner replaced TownStaking{since !== null ? ` on ${fmtDate(since)}` : ''}. Every payout from now on goes to this contract, and the Stake page
-            offers vaults only in it; what TownStaking already received keeps streaming there.
+            The owner replaced SkylineStaking{since !== null ? ` on ${fmtDate(since)}` : ''}. Every payout from now on goes to this contract, and the Stake page
+            stakes only in it; what SkylineStaking already received keeps streaming there.
           </p>
         )}
       </div>
@@ -214,7 +221,7 @@ export function OwnerChanges() {
               <li class={`pending-item${change.phase === 'expired' ? ' expired' : ''}`} data-view="Treasury.pendingStaking, stakingEffectiveAt, APPLY_WINDOW">
                 <p class="pending-title">
                   New staking contract <code title={t.pendingStaking}>{shortAddress(t.pendingStaking)}</code>
-                  {townStaking && t.pendingStaking.toLowerCase() === townStaking.toLowerCase() ? ' (TownStaking again)' : ''}{' '}
+                  {skylineStaking && t.pendingStaking.toLowerCase() === skylineStaking.toLowerCase() ? ' (SkylineStaking again)' : ''}{' '}
                   <Verify inline links={[{ what: 'the announced staking contract’s code', href: codeUrl(network, t.pendingStaking) }]} />
                 </p>
                 {t.candidate && <CandidateMark check={t.candidate} />}
@@ -329,8 +336,8 @@ export function CandidateMark({ check }: { check: CandidateCheck }) {
 }
 
 /**
- * CR-61: the TOWN bought and sold yesterday and today so far, each shown on its own, from TownHook's
- * daily totals (`cycleTotal(c)`: TOWN received by buyers; `sold(c)`: TOWN given up by sellers, before
+ * CR-61: the SKYLINE bought and sold yesterday and today so far, each shown on its own, from SkylineHook's
+ * daily totals (`cycleTotal(c)`: SKYLINE received by buyers; `sold(c)`: SKYLINE given up by sellers, before
  * the 2% sell fee). Read with the other figures in the one Multicall3 batch; nothing comes from events,
  * and no volume in ETH is shown, since no contract keeps one.
  */
@@ -346,17 +353,17 @@ export function TradingVolume() {
     <Fig
       label={label}
       value={y !== null ? fmtTown(h[what][y] ?? 0n) : 'None yet'}
-      unit={y !== null ? 'TOWN' : undefined}
+      unit={y !== null ? 'SKYLINE' : undefined}
       amount={y !== null ? (h[what][y] ?? 0n) : null}
-      view={y !== null ? `TownHook.${what}(${y})` : `TownHook.${what}(c - 1)`}
+      view={y !== null ? `SkylineHook.${what}(${y})` : `SkylineHook.${what}(c - 1)`}
       note={y !== null ? dayName(y) : `${dayName(0)} has no day before it`}
     />
   );
   const today = (what: 'cycleTotal' | 'sold', label: string) => (
-    <Fig label={label} value={fmtTown(h[what][c] ?? 0n)} unit="TOWN" amount={h[what][c] ?? 0n} view={`TownHook.${what}(${c})`} note={`${dayName(c)}, still counting`} />
+    <Fig label={label} value={fmtTown(h[what][c] ?? 0n)} unit="SKYLINE" amount={h[what][c] ?? 0n} view={`SkylineHook.${what}(${c})`} note={`${dayName(c)}, still counting`} />
   );
   return (
-    <Card title="Trading volume, in TOWN" class="volume">
+    <Card title="Trading volume, in SKYLINE" class="volume">
       <Figures cols={4}>
         {past('cycleTotal', 'Bought yesterday')}
         {past('sold', 'Sold yesterday')}
@@ -364,10 +371,10 @@ export function TradingVolume() {
         {today('sold', 'Sold today so far')}
       </Figures>
       <p class="small faint card-foot">
-        Bought is the TOWN buyers received from the pool; sold is the TOWN sellers gave up, before the 2% sell fee. Today’s figures keep counting until{' '}
+        Bought is the SKYLINE buyers received from the pool; sold is the SKYLINE sellers gave up, before the 2% sell fee. Today’s figures keep counting until{' '}
         {dayName(c)} ends on <span class="num">{fmtDateTime(endsAt)}</span>.
       </p>
-      <Verify links={[{ label: 'daily totals', what: 'TownHook’s TOWN bought and sold per day', href: contractUrl(network, 'TownHook', 'read') }]} />
+      <Verify links={[{ label: 'daily totals', what: 'SkylineHook’s SKYLINE bought and sold per day', href: contractUrl(network, 'SkylineHook', 'read') }]} />
     </Card>
   );
 }
@@ -381,16 +388,14 @@ function EthFlows() {
   return (
     <Card title="ETH in and out, since launch">
       <Figures cols={2}>
-        <Fig label="ETH received by the treasury" value={fmtEth(t.totalEthReceived)} unit="ETH" amount={t.totalEthReceived} view="Treasury.totalEthReceived" />
         <Fig
-          label="from TownHook fees"
-          value={fmtEth(hookFeesReceived(chain))}
+          label="ETH received by the treasury"
+          value={fmtEth(t.totalEthReceived)}
           unit="ETH"
-          amount={hookFeesReceived(chain)}
-          view="totalEthReceived - TownStaking.totalVaultFees"
-          note="buy fees, and sell fees paid in ETH"
+          amount={t.totalEthReceived}
+          view="Treasury.totalEthReceived"
+          note="SkylineHook’s buy fees, and sell fees paid in ETH"
         />
-        <Fig label="from vault purchases" value={fmtEth(chain.staking.totalVaultFees)} unit="ETH" amount={chain.staking.totalVaultFees} view="TownStaking.totalVaultFees" />
         <Fig label="Paid to stakers" value={fmtEth(t.totalDistributed)} unit="WETH" amount={t.totalDistributed} view="Treasury.totalDistributed" accent />
         <Fig label="Withdrawn by the owner" value={fmtEth(t.totalOwnerEthWithdrawn)} unit="ETH" amount={t.totalOwnerEthWithdrawn} view="Treasury.totalOwnerEthWithdrawn" />
       </Figures>
@@ -401,20 +406,15 @@ function EthFlows() {
             action.{' '}
           </>
         )}
-        ETH leaves the treasury only two ways: to the current staking contract and the owner’s 10% reserve. “From TownHook fees” also counts any other ETH
-        sent in.
+        ETH leaves the treasury only two ways: to the current staking contract and the owner’s 10% reserve. “ETH received” also counts any other ETH sent
+        in.
       </p>
-      <Verify
-        links={[
-          { label: 'Treasury', what: 'the Treasury’s running totals', href: contractUrl(network, 'Treasury', 'read') },
-          { label: 'staking', what: 'the staking contract’s vault purchases', href: readUrl(network, chain.staking.address) },
-        ]}
-      />
+      <Verify links={[{ label: 'Treasury', what: 'the Treasury’s running totals', href: contractUrl(network, 'Treasury', 'read') }]} />
     </Card>
   );
 }
 
-function TownTotals() {
+function TokenTotals() {
   const chain = useChain();
   const { network } = useApp();
   const r = chain.rewards;
@@ -422,49 +422,49 @@ function TownTotals() {
   const words = sellFeeWords(chain);
   const y = m.yesterday;
   return (
-    <Card title="TOWN">
+    <Card title="SKYLINE">
       <Figures cols={2}>
-        <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="TOWN" amount={chain.token.totalSupply} view="UpTownToken.totalSupply" />
-        <Fig label="Burned" value={fmtTown(burned(chain))} unit="TOWN" amount={burned(chain)} view="1,000,000,000 - totalSupply" />
-        <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="TOWN" amount={leftToBurn(chain)} view="totalSupply - TownHook.BURN_FLOOR" />
-        <Fig label="Sell fee today" value={words.mode} view="TownHook.sellFeeShares" note={words.reason} accent />
+        <Fig label="Total supply" value={fmtTown(chain.token.totalSupply)} unit="SKYLINE" amount={chain.token.totalSupply} view="UpTownToken.totalSupply" />
+        <Fig label="Burned" value={fmtTown(burned(chain))} unit="SKYLINE" amount={burned(chain)} view="1,000,000,000 - totalSupply" />
+        <Fig label="Left to burn before the floor" value={fmtTown(leftToBurn(chain))} unit="SKYLINE" amount={leftToBurn(chain)} view="totalSupply - SkylineHook.BURN_FLOOR" />
+        <Fig label="Sell fee today" value={words.mode} view="SkylineHook.sellFeeShares" note={words.reason} accent />
         <Fig
-          label="TOWN burned yesterday"
+          label="SKYLINE burned yesterday"
           value={m.burnedYesterday !== null ? fmtTown(m.burnedYesterday) : '—'}
-          unit={m.burnedYesterday !== null ? 'TOWN' : undefined}
+          unit={m.burnedYesterday !== null ? 'SKYLINE' : undefined}
           amount={m.burnedYesterday}
-          view={y !== null ? `TownHook.burned(${y})` : 'TownHook.burned(c - 1)'}
+          view={y !== null ? `SkylineHook.burned(${y})` : 'SkylineHook.burned(c - 1)'}
           note={y !== null ? `by sell fees on ${dayName(y)}` : `${dayName(0)} has no day before it`}
         />
         <Fig
           label="Rebates paid out yesterday"
           value={m.rebatesYesterday !== null ? fmtTown(m.rebatesYesterday) : '—'}
-          unit={m.rebatesYesterday !== null ? 'TOWN' : undefined}
+          unit={m.rebatesYesterday !== null ? 'SKYLINE' : undefined}
           amount={m.rebatesYesterday}
           view={y !== null ? `BuyerRewards.emissionEstimate(${y})` : 'BuyerRewards.emissionEstimate(c - 1)'}
           note={y !== null ? `${dayName(y)}’s rebate pot; the fee is in ETH today only if the burn was larger` : undefined}
         />
-        <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="TOWN" amount={r.totalEmitted} view="BuyerRewards.totalEmitted" />
+        <Fig label="Rebates emitted" value={fmtTown(r.totalEmitted)} unit="SKYLINE" amount={r.totalEmitted} view="BuyerRewards.totalEmitted" />
         <Fig
           label="Rebate reserve available"
           value={fmtTown(r.available)}
-          unit="TOWN"
+          unit="SKYLINE"
           amount={r.available}
           view="BuyerRewards.available"
           note="what the reserve holds, less rebates settled and not yet claimed"
         />
-        <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="TOWN" amount={r.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" accent />
-        <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="TOWN" amount={r.totalFeesToTreasury} view="BuyerRewards.totalFeesToTreasury" />
+        <Fig label="Rebates paid to buyers" value={fmtTown(r.totalPaidToBuyers)} unit="SKYLINE" amount={r.totalPaidToBuyers} view="BuyerRewards.totalPaidToBuyers" accent />
+        <Fig label="Claim fees to the treasury" value={fmtTown(r.totalFeesToTreasury)} unit="SKYLINE" amount={r.totalFeesToTreasury} view="BuyerRewards.totalFeesToTreasury" />
       </Figures>
       <p class="small faint card-foot">
-        Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> TOWN of supply;
-        from there every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the treasury.
+        Burned counts sell fees and any voluntary burns. The burn stops at <span class="num">{fmtTown(chain.hook.BURN_FLOOR)}</span> SKYLINE of supply;
+        from there every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the treasury.
       </p>
       <Verify
         links={[
-          { label: 'total supply', what: 'TOWN’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },
-          { label: 'sell fee', what: 'TownHook’s sell-fee mode and burn per day', href: contractUrl(network, 'TownHook', 'read') },
-          { label: 'reserve balance', what: 'BuyerRewards’ TOWN balance', href: contractUrl(network, 'BuyerRewards') },
+          { label: 'total supply', what: 'SKYLINE’s total supply', href: tokenUrl(network, network.deployment?.contracts.UpTownToken) },
+          { label: 'sell fee', what: 'SkylineHook’s sell-fee mode and burn per day', href: contractUrl(network, 'SkylineHook', 'read') },
+          { label: 'reserve balance', what: 'BuyerRewards’ SKYLINE balance', href: contractUrl(network, 'BuyerRewards') },
           { label: 'rebate totals', what: 'BuyerRewards’ running totals', href: contractUrl(network, 'BuyerRewards', 'read') },
         ]}
       />
@@ -472,74 +472,95 @@ function TownTotals() {
   );
 }
 
+/**
+ * SkylineStaking's figures (CR-102 amended): the SKYLINE staked, the stream, and the WETH the
+ * staking contract has received from the treasury and paid to stakers (its running totals, CR-30).
+ */
 function Staking() {
   const chain = useChain();
-  const { network, owner } = useApp();
+  const { network } = useApp();
   const st = chain.staking;
-  const vaults = TIERS.reduce((a, t) => a + st.tierVaults[t], 0);
-  const unlock = chain.lpVault.unlockTime;
+  const end = streamEnd(chain);
+  const perDay = streamPerDay(chain);
   return (
-    <Card title="Staking and liquidity">
+    <Card title="Staking">
       <p class="small muted card-lead">
         Staking figures come from the contract the treasury pays now,{' '}
         <code data-view="Treasury.staking" title={st.address}>
-          {stakingReplaced(chain, network.deployment?.contracts.TownStaking) ? shortAddress(st.address) : 'TownStaking'}
+          {stakingReplaced(chain, network.deployment?.contracts.SkylineStaking) ? shortAddress(st.address) : 'SkylineStaking'}
         </code>
-        .
+        : free staking, one pool, rewards in proportion to the SKYLINE staked.
       </p>
-      <Figures cols={4}>
-        <Fig label="TOWN staked" value={fmtTown(st.totalStaked)} unit="TOWN" amount={st.totalStaked} view="TownStaking.totalStaked" />
-        <Fig label="Vaults" value={fmtInt(vaults)} view="sum of TownStaking.tierVaults" />
-        <Fig label="WETH received by staking" value={fmtEth(st.totalRewardsNotified)} unit="WETH" amount={st.totalRewardsNotified} view="TownStaking.totalRewardsNotified" />
-        <Fig label="WETH claimed by stakers" value={fmtEth(st.totalRewardsPaid)} unit="WETH" amount={st.totalRewardsPaid} view="TownStaking.totalRewardsPaid" />
+      <Figures cols={2}>
+        <Fig label="SKYLINE staked" value={fmtTown(st.totalStaked)} unit="SKYLINE" amount={st.totalStaked} view="SkylineStaking.totalStaked" />
+        <Fig
+          label="Streaming now"
+          value={perDay > 0n ? fmtEth(perDay, 6) : poolEmpty(chain) ? 'Paused' : 'None'}
+          unit={perDay > 0n ? 'WETH' : undefined}
+          amount={perDay > 0n ? perDay : null}
+          view="SkylineStaking.streamInfo()"
+          note={end !== null ? `a day, until ${fmtDate(end)}` : poolEmpty(chain) ? 'nothing is staked' : 'no stream running'}
+        />
+        <Fig label="WETH received by staking" value={fmtEth(st.totalRewardsNotified)} unit="WETH" amount={st.totalRewardsNotified} view="SkylineStaking.totalRewardsNotified" />
+        <Fig label="WETH claimed by stakers" value={fmtEth(st.totalRewardsPaid)} unit="WETH" amount={st.totalRewardsPaid} view="SkylineStaking.totalRewardsPaid" accent />
       </Figures>
-      <table class="table compact per-tier">
-        <caption class="visually-hidden">Each tier’s figures</caption>
-        <thead>
-          <tr>
-            <th scope="col">Tier</th>
-            <th scope="col" class="r">
-              Vaults
-            </th>
-            <th scope="col" class="r">
-              WETH received
-            </th>
-            <th scope="col" class="r">
-              WETH claimed
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {TIERS.map((t) => (
-            <tr key={t}>
-              <td>Tier {t}</td>
-              <td class="r num" data-view={`TownStaking.tierVaults(${t})`}>
-                {fmtInt(st.tierVaults[t])}
-              </td>
-              <td class="r num" data-view={`TownStaking.tierNotified(${t})`}>
-                {fmtEth(st.tierNotified[t])}
-                <Usd amount={st.tierNotified[t]} unit="WETH" block />
-              </td>
-              <td class="r num" data-view={`TownStaking.tierPaid(${t})`}>
-                {fmtEth(st.tierPaid[t])}
-                <Usd amount={st.tierPaid[t]} unit="WETH" block />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div class="lock-line">
-        <span class="muted">Liquidity locked until</span>
-        <strong class="num" data-view="LPVault.unlockTime">
-          {fmtDate(unlock)}
-        </strong>
-        <span class="muted small">({fmtInt(daysUntil(chain, unlock))} days from now; can be extended, never shortened)</span>
-      </div>
+      <Verify links={[{ label: 'staking totals', what: 'the staking contract’s totals', href: readUrl(network, st.address) }]} />
+    </Card>
+  );
+}
+
+/**
+ * The liquidity (CR-102): the launch position, locked 10 years; the owner's second position, locked
+ * 14 days and then withdrawable by the owner; and the launch buy, 0.1 ETH bought for the owner in
+ * the launch transaction. The launch buy's figures are the Launcher's constants, never an event.
+ */
+function Liquidity() {
+  const chain = useChain();
+  const { network, owner } = useApp();
+  const v = chain.lpVault;
+  const unlock = v.unlockTime;
+  const second = secondPositionState(v, chain.blockTimestamp);
+  return (
+    <Card title="Liquidity and the launch">
+      <Figures cols={3}>
+        <Fig
+          label="Launch position locked until"
+          value={fmtDate(unlock)}
+          view="LPVault.unlockTime"
+          note={`${fmtInt(daysUntil(chain, unlock))} days from now; can be extended, never shortened`}
+        />
+        <Fig
+          label="Second position"
+          value={second === 'withdrawn' ? 'Withdrawn' : second === 'withdrawable' ? 'Unlocked' : `Locked until ${fmtDate(v.secondUnlockTime)}`}
+          view="LPVault.secondUnlockTime, LPVault.secondWithdrawn"
+          note={
+            second === 'withdrawn'
+              ? 'the owner has taken it out of LPVault'
+              : second === 'withdrawable'
+                ? `its 14 days ended on ${fmtDate(v.secondUnlockTime)}; the owner may withdraw it`
+                : `${fmtInt(daysUntil(chain, v.secondUnlockTime))} days from now; then the owner may withdraw it`
+          }
+        />
+        <Fig
+          label="Launch buy"
+          value={fmtEth(chain.launch.LAUNCH_BUY_ETH, 2)}
+          unit="ETH"
+          amount={chain.launch.LAUNCH_BUY_ETH}
+          view="Launcher.LAUNCH_BUY_ETH"
+          note="bought in the launch transaction, credited to the owner"
+        />
+      </Figures>
+      <p class="small faint card-foot">
+        The launch position holds the 500,000,000 SKYLINE the pool opened with. The second position is the owner’s: full range, funded at the launch with{' '}
+        {fmtEth(chain.launch.SECOND_POSITION_ETH, 2)} ETH and part of the SKYLINE the launch buy received; the rest of that SKYLINE went to the owner wallet.
+        While the second position is in the pool, the price can dip below the opening price by at most what its ETH absorbs.
+      </p>
       <Verify
         links={[
-          { label: 'staking totals', what: 'the staking contract’s totals per tier', href: readUrl(network, st.address) },
-          { label: 'unlock time', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
-          { label: 'position NFT', what: 'the liquidity position NFT', href: positionUrl(network, owner?.lpVault.tokenId) },
+          { label: 'unlock times', what: 'LPVault’s unlock times and the second position’s state', href: contractUrl(network, 'LPVault', 'read') },
+          { label: 'launch position NFT', what: 'the launch position NFT', href: positionUrl(network, owner?.lpVault.tokenId) },
+          { label: 'second position NFT', what: 'the second position NFT', href: secondPositionUrl(network, v.secondTokenId) },
+          { label: 'launch buy', what: 'the Launcher’s launch-buy figures', href: contractUrl(network, 'Launcher', 'read') },
         ]}
       />
     </Card>

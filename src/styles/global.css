@@ -720,14 +720,14 @@ main:focus {
   line-height: 1.15;
   margin-bottom: 16px;
 }
-/* "Why $TOWN?" uses the hero description's text size, line height and colour (CR-69). */
+/* "Why $SKYLINE?" uses the hero description's text size, line height and colour (CR-69). */
 .hero-summary,
 .why p {
   color: var(--text-2);
   max-width: 720px;
   margin-bottom: 0;
 }
-/* CR-70: the "Why $TOWN?" paragraphs run the full width of the content area; only the hero description keeps the 720px line length. */
+/* CR-70: the "Why $SKYLINE?" paragraphs run the full width of the content area; only the hero description keeps the 720px line length. */
 .why p {
   max-width: none;
 }
@@ -994,6 +994,18 @@ main:focus {
     gap: 20px;
   }
 }
+/* Two cards stacked in one column of .grid-2 (CR-102: Stats' ETH and Staking cards). */
+.grid-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+@media (min-width: 900px) {
+  .grid-col {
+    gap: 20px;
+  }
+}
 
 /* ---------- cards ---------- */
 
@@ -1227,20 +1239,6 @@ main:focus {
   border-style: dashed;
   border-color: var(--border-strong);
 }
-.meter {
-  margin-top: 10px;
-  height: 6px;
-  border-radius: 0;
-  background: var(--warn-line);
-  overflow: hidden;
-}
-.meter span {
-  display: block;
-  height: 100%;
-  background: var(--warn-text);
-  border-radius: 0;
-}
-
 .details {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1603,9 +1601,6 @@ main:focus {
 .table-note {
   margin-top: 8px;
 }
-.tier-name {
-  white-space: nowrap;
-}
 .powers th[scope='row'] {
   font-weight: 550;
   min-width: 200px;
@@ -1671,13 +1666,6 @@ main:focus {
   }
   .table.stack tr.mine {
     background: var(--accent-soft);
-  }
-  .table.tiers td > span {
-    display: inline;
-  }
-  .table.tiers td .sub {
-    display: inline;
-    margin-left: 6px;
   }
   .table.powers td {
     display: block;
@@ -1840,9 +1828,6 @@ main:focus {
 .pending-status .tx-status {
   margin-top: 10px;
 }
-.per-tier {
-  margin: 4px 0 12px;
-}
 .lock-line {
   display: flex;
   flex-wrap: wrap;
@@ -1924,6 +1909,26 @@ main:focus {
   margin-top: 8px;
   max-width: 360px;
 }
+/* CR-102: the one short notice that the first deployment, TOWN, is retired. Quiet, small, and the
+   full address may break anywhere so it never pushes the page sideways on a phone. */
+.retired-note {
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.footer-brand-main p.retired-note {
+  margin-top: 6px;
+}
+.retired-note code {
+  font-size: 11px;
+}
+.retired-docs {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
 .site-footer nav ul {
   list-style: none;
   margin: 0;
@@ -1947,7 +1952,7 @@ main:focus {
 }
 /* The project's places (CR-84, CR-87, CR-88): the drawn platform marks. Every mark is drawn at full
    strength (CR-87 took the dimming away) and in its platform's own brand colour (CR-88 item 6); the
-   two that are not links (GMGN until TOWN exists on Ethereum, and OpenSea) differ only in their
+   two that are not links (GMGN until SKYLINE exists on Ethereum, and OpenSea) differ only in their
    cursor and in the word they show.
 
    This is the narrow-screen shape, and the one the footer keeps wherever a third column does not
@@ -2209,32 +2214,6 @@ a.place:hover {
   }
 }
 @media (max-width: 759px) {
-  /* Tier rows: a compact two-column card per tier. */
-  .table.tiers.stack tr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px 16px;
-  }
-  .table.tiers.stack tbody th {
-    grid-column: 1 / -1;
-    padding: 0;
-  }
-  .table.tiers.stack td {
-    display: block;
-    text-align: left;
-    padding: 0;
-    white-space: normal;
-  }
-  .table.tiers.stack td::before {
-    display: block;
-    font-size: 11.5px;
-    color: var(--text-3);
-  }
-  .table.tiers.stack td .cell,
-  .table.tiers.stack td .sub {
-    display: block;
-    margin-left: 0;
-  }
   .feature {
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr);
@@ -2308,8 +2287,7 @@ a.place:hover {
     padding-right: 4px;
   }
 }
-.details-body .table,
-.table.per-tier {
+.details-body .table {
   max-width: 680px;
 }
 
@@ -2615,8 +2593,8 @@ code.break {
   text-decoration: underline;
 }
 
-/* CR-48 to CR-50: the window of an announced staking contract, its verified mark, a vault in a
-   replaced staking contract, and "Payouts paused" beside the vault purchases. */
+/* CR-48 to CR-50: the window of an announced staking contract, its verified mark, a stake in a
+   replaced staking contract, and "Payouts paused" beside the stake button. */
 .verified-tag,
 .unverified-tag,
 .expired-tag,
@@ -2648,15 +2626,19 @@ code.break {
 .pending-item.expired {
   border-left-color: var(--warn-line);
 }
-.old-vault-line {
+.old-stake-line {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 8px;
   margin-bottom: 6px;
 }
-.old-vault .figs {
+.old-stake .figs {
   margin: 12px 0;
+}
+/* CR-102: the Stake page's pool card, what is left of the running stream. */
+.stream-left {
+  margin-top: 10px;
 }
 .paused-beside {
   display: flex;
@@ -3031,7 +3013,7 @@ code.break {
   margin: 0;
 }
 
-/* ---- F9v (CR-95): dollar estimates beside ETH, WETH and TOWN amounts ---- */
+/* ---- F9v (CR-95): dollar estimates beside ETH, WETH and SKYLINE amounts ---- */
 /* Secondary and muted, never in place of the amount: smaller, lighter, the third text colour. */
 .usd {
   font-size: 11.5px;
@@ -3052,13 +3034,6 @@ code.break {
 .fig.accent .fig-value .usd {
   color: var(--text-3);
 }
-/* The owner's fallback price: the fallback notice's warning mark, in its colour. */
-.usd.fallback svg {
-  display: inline-block;
-  color: var(--warn-text);
-  margin-left: 3px;
-  vertical-align: -1px;
-}
 .row dd .usd.block,
 .table .usd.block {
   font-weight: 400;
@@ -3071,7 +3046,7 @@ code.break {
 .swap-box-top > :last-child:not(:first-child) {
   text-align: right;
 }
-/* F9u (CR-93): under a TOWN sell fee, how much of it is burned and how much goes to the rebate reserve. */
+/* F9u (CR-93): under a SKYLINE sell fee, how much of it is burned and how much goes to the rebate reserve. */
 .fee-parts {
   display: block;
   font-weight: 400;
@@ -3081,7 +3056,7 @@ code.break {
   margin: 0 2px;
   min-height: 15px;
 }
-/* Trade: TOWN's price, at the top of the swap card. */
+/* Trade: SKYLINE's price, at the top of the swap card. */
 .price-line {
   display: flex;
   flex-wrap: wrap;

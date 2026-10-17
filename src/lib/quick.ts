@@ -1,5 +1,5 @@
 // The quick amounts on both sides of the trade panel (CR-82 item 4): 25%, 50%, 75% and 100% of
-// the wallet's balance, in whole units (wei), never through a decimal number, so 100% of the TOWN is
+// the wallet's balance, in whole units (wei), never through a decimal number, so 100% of the SKYLINE is
 // the balance to the last unit. A buy keeps back enough ETH to pay for its own gas.
 import { formatUnits } from 'viem';
 

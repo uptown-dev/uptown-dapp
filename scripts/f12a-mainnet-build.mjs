@@ -1,4 +1,5 @@
-// F12a item 5 (CR-86, CR-98): the mainnet build with a phase-1 address file.
+// F12a item 5 (CR-86, CR-98): the mainnet build with a phase-1 address file. F13a (CR-102): the file
+// is a SKYLINE record ("tokenSymbol": "SKYLINE"), as the redeployment's phase 1 writes it.
 //
 // Makes a phase-1 shaped mainnet deployment file (chain 1, a real broadcast, the seven contracts and
 // the owner, no launch time, pool or position: exactly what `bash script/mainnet-deploy.sh` writes
@@ -36,6 +37,7 @@ const M = CHAINS[1].contracts;
 const OWNER = '0x00000000000000000000000000000000000f12a0';
 const phase1 = {
   chainId: 1,
+  tokenSymbol: 'SKYLINE',
   deployer: '0x0000000000000000000000000000000000d12a01',
   deployerStartNonce: 0,
   owner: OWNER,
@@ -69,7 +71,7 @@ try {
   const written = JSON.parse(readFileSync(TARGET, 'utf8'));
   check(
     'src/addresses/1.json now names the seven contracts and the owner, with no launch time, pool ID or position',
-    written.chainId === 1 && written.contracts.UpTownToken === local.townToken && written.owner === OWNER && written.launchTime === null && written.poolId === null && written.positionTokenId === null,
+    written.chainId === 1 && written.tokenSymbol === 'SKYLINE' && written.contracts.UpTownToken === local.townToken && written.owner === OWNER && written.launchTime === null && written.poolId === null && written.positionTokenId === null,
     JSON.stringify(written),
   );
 

@@ -2,13 +2,14 @@
 //
 // X and Telegram are the project's own accounts, so they are fixed text, written once here.
 //
-// GMGN is different: its page is a token page on Ethereum mainnet, so its address is the TOWN
+// GMGN is different: its page is a token page on Ethereum mainnet, so its address is the SKYLINE
 // address from the site's own chain-1 address file, `src/addresses/1.json` — the same file the rest
-// of the site reads for mainnet, never typed in by hand. Today that file says "not deployed"
-// (`contracts: null`), so there is no address and no link: the mark is shown all the same (CR-88
-// item 3, which replaced the owner's earlier decision to hide it), at full strength, not a link,
-// and saying "at launch". When the mainnet deployment fills that file at milestone 12 the same mark
-// becomes a working link to the token's page there, with no further change here.
+// of the site reads for mainnet, never typed in by hand. Only a file that names SKYLINE counts
+// (CR-102: `"tokenSymbol": "SKYLINE"`). Until the owner's SKYLINE phase 1 rewrites it, that file
+// still holds the retired first deployment's addresses (TOWN, with no `tokenSymbol`), so there is no
+// address and no link: the mark is shown all the same (CR-88 item 3), at full strength, not a link,
+// and saying "at launch". When the SKYLINE deployment fills that file the same mark becomes a
+// working link to the token's page there, with no further change here.
 //
 // The chain-1 file is imported straight, not through `virtual:uptown-site-chains` (which carries
 // only the chain the build is for, F9h/CL-53), so a Sepolia or local build shows exactly the same
@@ -18,6 +19,7 @@
 import { getAddress } from 'viem';
 import MAINNET_FILE from '../addresses/1.json';
 import type { Address } from '../data/types';
+import { isSkylineFile } from './network';
 
 /** The project's account on X. */
 export const X_URL = 'https://x.com/UpTownHook';
@@ -26,15 +28,17 @@ export const X_URL = 'https://x.com/UpTownHook';
 export const TELEGRAM_URL = 'https://t.me/uptownhook';
 
 /** The part of the chain-1 address file this module reads; every field is null before the deployment. */
-const FILE = MAINNET_FILE as { chainId: number; contracts: Record<string, string> | null };
+const FILE = MAINNET_FILE as { chainId: number; tokenSymbol?: string | null; contracts: Record<string, string> | null };
 if (FILE.chainId !== 1) throw new Error(`src/addresses/1.json names chain ${FILE.chainId}, not Ethereum mainnet`);
 
 /**
- * TOWN's address on Ethereum mainnet, from the site's own chain-1 address file; `null` while that
- * file names no contracts (today) or names something that is not an address.
+ * SKYLINE's address on Ethereum mainnet, from the site's own chain-1 address file; `null` while that
+ * file names no SKYLINE contracts (today: it still holds the retired TOWN deployment's) or names
+ * something that is not an address. `file` is a parameter only so a test can try other files.
  */
-export function mainnetTownAddress(): Address | null {
-  const a = FILE.contracts?.UpTownToken;
+export function mainnetSkylineAddress(file: { tokenSymbol?: string | null; contracts: Record<string, string> | null } = FILE): Address | null {
+  if (!isSkylineFile(file)) return null;
+  const a = file.contracts?.UpTownToken;
   if (!a) return null;
   try {
     return getAddress(a);
@@ -43,7 +47,7 @@ export function mainnetTownAddress(): Address | null {
   }
 }
 
-/** GMGN's page for TOWN on Ethereum; `null` while the site has no mainnet TOWN address, and the mark then says "at launch". */
-export function gmgnUrl(town: Address | null): string | null {
-  return town ? `https://gmgn.ai/eth/token/${town}` : null;
+/** GMGN's page for SKYLINE on Ethereum; `null` while the site has no mainnet SKYLINE address, and the mark then says "at launch". */
+export function gmgnUrl(token: Address | null): string | null {
+  return token ? `https://gmgn.ai/eth/token/${token}` : null;
 }

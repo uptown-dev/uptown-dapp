@@ -350,9 +350,9 @@ export const OpenSeaMark = (p: IconProps) => (
 
 // ---------------------------------------------------------------------------------------------
 // The one flow graphic, shown in the home page's hero, with the hook at its top (CR-69: no "Buy
-// or sell TOWN" box or ETH in / TOWN out arrows above it): every trade passes through TownHook,
+// or sell SKYLINE" box or ETH in / SKYLINE out arrows above it): every trade passes through SkylineHook,
 // which sends 2% of a buy's ETH to the treasury and records the buy in the tally. The 2% of a
-// sell goes to the "Dynamic" box (CR-66): charged in TOWN and burned, or, on a day after one
+// sell goes to the "Dynamic" box (CR-66): charged in SKYLINE and burned, or, on a day after one
 // whose burn exceeded its rebates (and always at the burn floor), charged in ETH and sent to the
 // treasury like the buy fee (CR-55 to CR-57). So the treasury sits in the middle column, where
 // the buy fee and the sell fee's ETH-day path both reach it. The treasury keeps 10% of its ETH
@@ -401,7 +401,7 @@ function Down({ ax, y1, y2, kind, lines }: { ax: number; y1: number; y2: number;
 
 // The sell fee's box (CR-66): the owner's text only (CR-68: no floor line).
 const DYN = { x: 230, y: 134, w: 122 };
-const DYN_TEXT = ['charged in TOWN', 'and burnt from', 'day 1, switches', 'to ETH when a', 'previous day’s burn', 'exceeds rebates'];
+const DYN_TEXT = ['charged in SKYLINE', 'and burnt from', 'day 1, switches', 'to ETH when a', 'previous day’s burn', 'exceeds rebates'];
 
 export function FlowGraphic() {
   const dynBottom = DYN.y + nodeHeight(DYN_TEXT);
@@ -410,7 +410,7 @@ export function FlowGraphic() {
       viewBox="0 0 360 412"
       class="flow-graphic"
       role="img"
-      aria-label={`Flow: every trade in the TOWN pool passes through TownHook on Uniswap v4. On a buy TownHook sends 2% of the ETH to the treasury and records the TOWN bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in TOWN and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the TOWN they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
+      aria-label={`Flow: every trade in the SKYLINE pool passes through SkylineHook on Uniswap v4. On a buy SkylineHook sends 2% of the ETH to the treasury and records the SKYLINE bought in the day's tally for the buyer's wallet. On a sell it takes 2%, and this fee is dynamic: charged in SKYLINE and burnt from day 1, it switches to ETH, sent to the treasury like the buy fee, when a previous day's burn exceeds rebates. The treasury keeps 10% of its ETH for the owner; the other 90% goes to stakers, paid every day as WETH and streamed over seven days. From the tally, buyers claim 5% to 5.5% of the SKYLINE they bought from the reserve, from the next day; the rate moves with the last three days' trading.`}
     >
       <defs>
         <marker id="fg-arrow-eth" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -421,24 +421,25 @@ export function FlowGraphic() {
         </marker>
       </defs>
 
-      {/* The hook, at the top (CR-69: no "Buy or sell TOWN" box above it) */}
+      {/* The hook, at the top (CR-69: no "Buy or sell SKYLINE" box above it) */}
       <rect x="8" y="8" width="344" height="64" class="fg-hook" />
-      <text x="180" y="36" class="fg-hook-title" text-anchor="middle">TownHook</text>
-      <text x="180" y="56" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the TOWN pool</text>
+      <text x="180" y="36" class="fg-hook-title" text-anchor="middle">SkylineHook</text>
+      <text x="180" y="56" class="fg-sub" text-anchor="middle">Uniswap v4 · every trade in the SKYLINE pool</text>
 
       {/* Hook to the tally, the treasury and the sell fee */}
       <Down ax={28} y1={76} y2={130} kind="data" lines={['records', 'each buy']} />
       <path d="M146 76V200" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
       <text x="156" y="102" class="fg-label">2% of ETH</text>
       <text x="156" y="116" class="fg-label">on buys</text>
-      {/* The sell fee leaves the hook in one of two currencies: its label sits between an ETH line and a TOWN line (CR-68) */}
+      {/* The sell fee leaves the hook in one of two currencies: its label sits between an ETH line and a SKYLINE line (CR-68) */}
       <path d="M244 76V130" class="fg-eth" marker-end="url(#fg-arrow-eth)" />
       <text x="291" y="107" class="fg-label" text-anchor="middle">
         2% of sells
       </text>
       <path d="M338 76V130" class="fg-town" marker-end="url(#fg-arrow-town)" />
 
-      <Node x={8} y={134} w={108} title="Buy tally" sub={['TOWN per wallet,', 'per day']} />
+      {/* CR-102: "SKYLINE per wallet," is wider than the box, so the owner's words break over three lines, unchanged. */}
+      <Node x={8} y={134} w={108} title="Buy tally" sub={['SKYLINE', 'per wallet,', 'per day']} />
       <Node x={126} y={204} w={94} title="Treasury" sub={['90% to stakers', '10% owner']} />
 
       {/* The sell fee (CR-66) */}
@@ -448,7 +449,7 @@ export function FlowGraphic() {
       <text x={DYN.x - 4} y="159" class="fg-label" text-anchor="end">
         on ETH days
       </text>
-      {/* Burning days: the TOWN is destroyed */}
+      {/* Burning days: the SKYLINE is destroyed */}
       <Down ax={258} y1={dynBottom + 4} y2={dynBottom + 54} kind="town" lines={['on burning', 'days']} />
       <rect x={DYN.x} y={dynBottom + 58} width={DYN.w} height="36" class="fg-burn" />
       <text x={DYN.x + DYN.w / 2} y={dynBottom + 81} class="fg-title" text-anchor="middle">
@@ -465,7 +466,7 @@ export function FlowGraphic() {
       <path d="M16 364h22" class="fg-eth" />
       <text x="44" y="368" class="fg-sub">ETH, WETH</text>
       <path d="M16 384h22" class="fg-town" />
-      <text x="44" y="388" class="fg-sub">TOWN</text>
+      <text x="44" y="388" class="fg-sub">SKYLINE</text>
       <path d="M16 404h22" class="fg-data" />
       <text x="44" y="408" class="fg-sub">record</text>
     </svg>

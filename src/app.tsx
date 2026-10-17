@@ -4,7 +4,8 @@ import { AppContext, Notice, PageHead, SOURCE_NOTE, useApp, useBeforeLaunch, typ
 import { CloseIcon, ExternalIcon, GmgnMark, MenuIcon, DarkModeIcon, LightModeIcon, OpenSeaMark, SkylineMark, TelegramMark, XMark } from './components/icons';
 import { CONTRACT_NAMES, type Address, type ChainState, type OwnerState, type PrelaunchState, type WalletState } from './data/types';
 import { NETWORK, contractUrl, type Network } from './lib/network';
-import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetTownAddress } from './lib/places';
+import { TELEGRAM_URL, X_URL, gmgnUrl, mainnetSkylineAddress } from './lib/places';
+import { RetiredNotice } from './components/retired';
 import { makeClient, readAll } from './lib/reads';
 import { activeProvider, chooseWallet, chosenWallet, rememberedWallet, switchWalletChain, watchWallets, type Eip1193, type WalletInfo } from './lib/wallet';
 import { explainError } from './lib/errors';
@@ -25,10 +26,10 @@ import { showsOwnerLink } from './lib/owner';
 const NAV: { page: string; label: string; title: string }[] = [
   // The homepage keeps its entry for its address and title but has no item in the navigation bar:
   // the "UpTown" name at the top left is its link (CR-71).
-  { page: '', label: 'Home', title: 'UpTown (TOWN)' },
-  { page: 'trade', label: 'Trade', title: 'Trade TOWN · UpTown' },
+  { page: '', label: 'Home', title: 'UpTown (SKYLINE)' },
+  { page: 'trade', label: 'Trade', title: 'Trade SKYLINE · UpTown' },
   { page: 'rewards', label: 'Rewards', title: 'Buyer rebates · UpTown' },
-  { page: 'stake', label: 'Stake', title: 'Stake TOWN · UpTown' },
+  { page: 'stake', label: 'Stake', title: 'Stake SKYLINE · UpTown' },
   { page: 'stats', label: 'Stats', title: 'Treasury and stats · UpTown' },
   { page: 'docs', label: 'Docs', title: 'Docs · UpTown' },
   // Shown in the navigation only to the owner wallet (CR-64); anyone else who opens it sees a notice.
@@ -37,7 +38,7 @@ const NAV: { page: string; label: string; title: string }[] = [
 
 // ---- the day and the countdown to the next one (CR-95 item 1) -----------------------------------
 // Beside the day number, the time left until the next day begins: the next midnight UTC as the
-// contracts define it, `(launchTime / 86400 + currentCycle + 1) × 86400` (CR-94), from TownHook's
+// contracts define it, `(launchTime / 86400 + currentCycle + 1) × 86400` (CR-94), from SkylineHook's
 // launchTime() and currentCycle(), not from the Treasury's nextDistributionTime() (which is "now"
 // before the day's first payout trigger and 0 while payouts are paused). "Now" is the RPC's latest
 // block time, the clock the rest of the site uses, stepped forward each second in the page
@@ -237,7 +238,7 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
 // One block in the page, in one place in the markup, at every width: nothing is duplicated and a
 // screen reader meets the row exactly once.
 //
-// X, Telegram and (once TOWN exists on Ethereum) GMGN are links: a new tab, `rel="noopener
+// X, Telegram and (once SKYLINE exists on Ethereum) GMGN are links: a new tab, `rel="noopener
 // noreferrer"`, and an accessible name that names the platform and says it opens in a new tab,
 // exactly as the footer's contract links do.
 //
@@ -253,12 +254,13 @@ export function WrongNetworkNote({ network, walletChain, onSwitch }: { network: 
 // "at launch" form shares it); the links keep theirs.
 //
 // GMGN is shown from today (CR-88 item 3), which replaces F9q's hiding rule — the owner withdrew it
-// after seeing the mark. With no TOWN address on Ethereum it gets exactly OpenSea's treatment with
+// after seeing the mark. With no SKYLINE address on Ethereum it gets exactly OpenSea's treatment with
 // its own word: full strength, not a link, no href, and "at launch" on hover and on keyboard focus.
-// Its address is never typed in: it is TOWN's address on Ethereum from the site's own chain-1
+// Its address is never typed in: it is SKYLINE's address on Ethereum from the site's own chain-1
 // address file (`lib/places.ts`), which is read whatever network this build is for, so every build
-// shows the same state. The mainnet deployment at milestone 12 turns the mark into an ordinary link
-// to its TOWN page, with no word and no further change here.
+// shows the same state; a file of the retired TOWN deployment counts as no address (CR-102). The
+// SKYLINE mainnet deployment turns the mark into an ordinary link to its SKYLINE page, with no word
+// and no further change here.
 // ---------------------------------------------------------------------------------------------
 
 /** One mark: a link that opens in a new tab, or a mark that leads nowhere and shows `word` (CR-87: not dimmed; CR-101: no `title`, so `word` is its only message). */
@@ -300,13 +302,13 @@ export function PlaceMark({
 }
 
 /**
- * The row: X, Telegram, GMGN, OpenSea, under the heading "Official Links" (CR-88). `town` is TOWN's
- * address on Ethereum; it comes from the site's own chain-1 address file and is a prop only so a
- * test can render the row with a stand-in address. The block is written once, inside the brand
+ * The row: X, Telegram, GMGN, OpenSea, under the heading "Official Links" (CR-88). `token` is
+ * SKYLINE's address on Ethereum; it comes from the site's own chain-1 address file and is a prop only
+ * so a test can render the row with a stand-in address. The block is written once, inside the brand
  * block after the page links; the stylesheet puts it in its own third column where there is room.
  */
-export function PlaceRow({ town = mainnetTownAddress() }: { town?: Address | null }) {
-  const gmgn = gmgnUrl(town);
+export function PlaceRow({ token = mainnetSkylineAddress() }: { token?: Address | null }) {
+  const gmgn = gmgnUrl(token);
   return (
     <div class="footer-places">
       <p class="footer-head">Official Links</p>
@@ -317,8 +319,8 @@ export function PlaceRow({ town = mainnetTownAddress() }: { town?: Address | nul
         <PlaceMark name="Telegram" what="UpTown on Telegram" href={TELEGRAM_URL}>
           <TelegramMark />
         </PlaceMark>
-        {/* Always shown (CR-88 item 3): "at launch" until the chain-1 address file names TOWN, then a link. */}
-        <PlaceMark name="GMGN" what="TOWN on GMGN" href={gmgn} word="at launch">
+        {/* Always shown (CR-88 item 3): "at launch" until the chain-1 address file names SKYLINE, then a link. */}
+        <PlaceMark name="GMGN" what="SKYLINE on GMGN" href={gmgn} word="at launch">
           <GmgnMark />
         </PlaceMark>
         {/* One message, the owner's words exactly (CR-101). */}
@@ -663,7 +665,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    document.title = NAV.find((n) => n.page === page)?.title ?? 'UpTown (TOWN)';
+    document.title = NAV.find((n) => n.page === page)?.title ?? 'UpTown (SKYLINE)';
     setNavOpen(false);
     if (firstRender.current) {
       firstRender.current = false;
@@ -846,7 +848,9 @@ export function App() {
                 <SkylineMark />
                 <span>UpTown</span>
               </a>
-              <p>UpTown Token (TOWN), an experiment on Ethereum.</p>
+              <p>UpTown Token (SKYLINE), an experiment on Ethereum.</p>
+              {/* CR-102: the one short notice on the site that the first deployment, TOWN, is retired. */}
+              <RetiredNotice where="footer" />
               <nav aria-label="Footer">
                 <ul>
                   {NAV.slice(1, 5).map((n) => (

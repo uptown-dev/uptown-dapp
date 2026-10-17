@@ -2,18 +2,19 @@ import type { ComponentChildren } from 'preact';
 import { useApp, useRules, Details, Fig, Figures, Notice, PageHead, Verify } from '../components/ui';
 import { OWNER_CANNOT, OWNER_POWERS, ROUTING_NOTE, THINGS_TO_KNOW } from '../content/docs';
 import { buyerHookData } from '../lib/reads';
-import { PriceSource } from '../data/types';
-import { afterFeeBps, burnFloor, claimFeeBps, fallbackExpiresAt, pausePending, rateRange, reserveFeeStart, stakingChange, stakingReplaced } from '../lib/derive';
-import { dayName, fmtBps, fmtDate, fmtDateTime, fmtTown, fmtUsd8, shortAddress, fmtRate } from '../lib/format';
-import { addressUrl, contractUrl, positionUrl, readUrl, tokenUrl } from '../lib/network';
+import { afterFeeBps, burnFloor, claimFeeBps, pausePending, rateRange, reserveFeeStart, secondPositionState, stakingChange, stakingReplaced } from '../lib/derive';
+import { dayName, fmtBps, fmtDate, fmtDateTime, fmtTown, shortAddress, fmtRate } from '../lib/format';
+import { addressUrl, contractUrl, positionUrl, readUrl, secondPositionUrl, tokenUrl } from '../lib/network';
+import { RetiredNotice } from '../components/retired';
 
 /** The table of contents, in order (CR-40). Each section is reachable as #/docs/<id>. */
 const SECTIONS: { id: string; title: string }[] = [
-  { id: 'hook', title: 'TownHook' },
+  { id: 'hook', title: 'SkylineHook' },
   { id: 'rebates', title: 'Rebates for buyers' },
   { id: 'staking', title: 'Staking' },
   { id: 'treasury', title: 'The treasury' },
   { id: 'burn', title: 'The burn' },
+  { id: 'launch', title: 'The launch' },
   { id: 'liquidity', title: 'Locked liquidity' },
   { id: 'rules', title: 'Fixed rules' },
   { id: 'owner', title: 'The owner' },
@@ -24,11 +25,12 @@ const titleOf = (id: string) => SECTIONS.find((s) => s.id === id)!.title;
 
 export function Docs() {
   const { network, chain, owner } = useApp();
+  const positions = chain?.lpVault ?? null;
   // The fixed rules from the contracts, before the launch too (CR-86); the spec's figures only where nothing is deployed.
   const rules = useRules();
   const town = network.deployment?.contracts.UpTownToken;
   const r = rateRange(rules);
-  // From this day a TOWN sell fee is half burned and half sent to the rebate reserve (CR-93): day 401.
+  // From this day a SKYLINE sell fee is half burned and half sent to the rebate reserve (CR-93): day 401.
   const fromDay = dayName(reserveFeeStart(rules));
   const floor = fmtTown(burnFloor(rules));
   return (
@@ -55,37 +57,41 @@ export function Docs() {
         </nav>
 
         <div class="docs-body">
+          <RetiredNotice where="docs" />
           <Section id="hook">
             <ul class="doc-list">
               <li>
-                Every trade in the TOWN pool on Uniswap v4 passes through TownHook, the pool’s hook contract. It has no owner: nobody can change it or switch it off.{' '}
-                <Verify inline links={[{ what: 'TownHook’s code', href: contractUrl(network, 'TownHook', 'code') }]} />
+                Every trade in the SKYLINE pool on Uniswap v4 passes through SkylineHook, the pool’s hook contract. It has no owner: nobody can change it or switch it off.{' '}
+                <Verify inline links={[{ what: 'SkylineHook’s code', href: contractUrl(network, 'SkylineHook', 'code') }]} />
               </li>
               <li>
-                <strong>On a buy</strong> it takes 2% of the ETH for the treasury and records how much TOWN the buyer received that day. Rebates are paid from
+                <strong>On a buy</strong> it takes 2% of the ETH for the treasury and records how much SKYLINE the buyer received that day. Rebates are paid from
                 this record.
               </li>
               <li>
-                <strong>On a sell</strong> it takes 2%: burned in TOWN, partly sent to the rebate reserve in TOWN, or sent to the treasury in ETH, as{' '}
+                <strong>On a sell</strong> it takes 2%: burned in SKYLINE, partly sent to the rebate reserve in SKYLINE, or sent to the treasury in ETH, as{' '}
                 <a href="#/docs/burn">The burn</a> explains.
               </li>
-              <li>
-                <strong>In the first 15 minutes after launch</strong> the buy fee starts at 90% and falls in a straight line to 2%, to discourage bots.
+              <li data-item="no-launch-fee">
+                <strong>From the first second</strong> the buy fee is 2%: there is no higher fee at the launch.
               </li>
-              <li>It accepts the launch liquidity once and refuses any later addition. It keeps no funds.</li>
+              <li>
+                It accepts exactly two liquidity additions, both in the launch transaction: the launch position and the owner’s second position. It refuses
+                every later addition, and it keeps no funds.
+              </li>
             </ul>
           </Section>
 
           <Section id="rebates">
             <ul class="doc-list">
               <li data-item="reserve">
-                BuyerRewards holds the rebate reserve: 500,000,000 TOWN at launch, half the supply. It counts what it holds, so TOWN that reaches it later
-                adds to it: from {fromDay} half of every sell fee paid in TOWN, at the burn floor 1% of every sell, and any TOWN anyone sends it. TOWN leaves
+                BuyerRewards holds the rebate reserve: 500,000,000 SKYLINE at launch, half the supply. It counts what it holds, so SKYLINE that reaches it later
+                adds to it: from {fromDay} half of every sell fee paid in SKYLINE, at the burn floor 1% of every sell, and any SKYLINE anyone sends it. SKYLINE leaves
                 it only through claims.{' '}
                 <Verify
                   inline
                   links={[
-                    { label: 'TOWN balance', what: 'BuyerRewards’ TOWN balance', href: contractUrl(network, 'BuyerRewards') },
+                    { label: 'SKYLINE balance', what: 'BuyerRewards’ SKYLINE balance', href: contractUrl(network, 'BuyerRewards') },
                     { label: 'running totals', what: 'BuyerRewards’ running totals', href: contractUrl(network, 'BuyerRewards', 'read') },
                   ]}
                 />
@@ -94,7 +100,7 @@ export function Docs() {
                 Days are calendar days in UTC: each runs from midnight to midnight UTC. Day 1, the launch day, began at launch, so it was shorter than 24
                 hours. The header shows today’s day and the time left until the next one begins.
               </li>
-              <li>For each day you buy, you can claim the day’s rate of the TOWN you bought, from the next day. Rebates never expire.</li>
+              <li>For each day you buy, you can claim the day’s rate of the SKYLINE you bought, from the next day. Rebates never expire.</li>
               <li>
                 Each day’s rate is set when the day begins, from the last three days’ trading in the pool, and does not change during the day. It is{' '}
                 {fmtBps(r.low)} when buying and selling balance, rising in a straight line to {fmtBps(r.buyTop)} after days of only buying and to{' '}
@@ -105,36 +111,39 @@ export function Docs() {
                 reaches you.
               </li>
               <li data-item="limit">
-                Each day has a limit: 2,500,000 TOWN a day for the first 100 days, halving every 100 days down to 39,062.5 for days 601 to 700, then
-                25,000 TOWN a day from day 701 for as long as the reserve has TOWN. On a busy day everyone’s rate falls in proportion.
+                Each day has a limit: 2,500,000 SKYLINE a day for the first 100 days, halving every 100 days down to 39,062.5 for days 601 to 700, then
+                25,000 SKYLINE a day from day 701 for as long as the reserve has SKYLINE. On a busy day everyone’s rate falls in proportion.
               </li>
               <li data-item="empty">
                 A day’s rebates are settled when the day is first claimed. When the reserve runs low, days are paid in the order they are settled. If it is
-                empty, rebates pause until TOWN arrives, and a day settled while it is empty gets nothing, even if TOWN arrives later.
+                empty, rebates pause until SKYLINE arrives, and a day settled while it is empty gets nothing, even if SKYLINE arrives later.
               </li>
             </ul>
           </Section>
 
           <Section id="staking">
             <ul class="doc-list">
-              <li>
-                Open a vault in one of five tiers ($5, $10, $20, $30 or $50, paid once in ETH to the treasury) and stake TOWN in it.{' '}
+              <li data-item="free">
+                Stake SKYLINE in SkylineStaking, for free: there is nothing to buy first and no fee, only the network’s gas.{' '}
                 <Verify
                   inline
-                  links={[{ what: 'the staking contract’s tiers and totals', href: chain ? readUrl(network, chain.staking.address) : contractUrl(network, 'TownStaking', 'read') }]}
+                  links={[{ what: 'the staking contract’s totals', href: chain ? readUrl(network, chain.staking.address) : contractUrl(network, 'SkylineStaking', 'read') }]}
                 />
               </li>
-              <li>Each daily payout is split between the tiers by fixed shares (1x to 2x), then within a tier by TOWN staked.</li>
-              <li>The WETH streams to stakers over seven days; claim it any time. There is no lock: unstaking gives back all your TOWN.</li>
-              <li>Vault prices follow Chainlink’s ETH/USD price.</li>
+              <li data-item="share">Each daily payout is shared by everyone staked, in proportion to the SKYLINE each address has staked: one pool.</li>
+              <li>The WETH streams to stakers over seven days; claim it any time. Unstake any amount at any time: there is no lock and no minimum.</li>
+              <li data-item="nft">
+                SkylineStaking is temporary. An NFT staking contract for holders of the owner’s “Uptowners” collection replaces it later, through the
+                treasury’s 2-day public switch; a stake left in SkylineStaking then earns nothing new and can still be unstaked and claimed.
+              </li>
             </ul>
           </Section>
 
           <Section id="treasury">
             <ul class="doc-list">
               <li>
-                The treasury receives TownHook’s 2% buy fee, its 2% sell fee on the days it is charged in ETH and 1% of every sell at the burn floor, and the
-                vault prices in ETH, and the claim fees in TOWN.{' '}
+                The treasury receives SkylineHook’s 2% buy fee, its 2% sell fee on the days it is charged in ETH and 1% of every sell at the burn floor, and
+                the claim fees in SKYLINE.{' '}
                 <Verify
                   inline
                   links={[
@@ -145,8 +154,8 @@ export function Docs() {
               </li>
               <li>10% of all ETH arriving is kept for the owner. The rest is for stakers.</li>
               <li>
-                Once a day it sends a share of the stakers’ ETH (10% at launch; the owner can set 1% to 25%) to the staking contract as WETH: TownStaking,
-                unless the owner replaces it after a 2-day public wait. A share under 0.001 ETH waits for a later day.
+                Once a day it sends a share of the stakers’ ETH (10% at launch; the owner can set 1% to 25%) to the staking contract as WETH: SkylineStaking,
+                until the owner replaces it after a 2-day public wait. A share under 0.001 ETH waits for a later day.
               </li>
               <li>ETH leaves only two ways: to the current staking contract and the owner’s 10% reserve.</li>
             </ul>
@@ -155,33 +164,55 @@ export function Docs() {
           <Section id="burn">
             <ul class="doc-list">
               <li>
-                1,000,000,000 TOWN were minted once; no one can mint more.{' '}
-                <Verify inline links={[{ what: 'TOWN’s total supply', href: tokenUrl(network, town) }]} />
+                1,000,000,000 SKYLINE were minted once; no one can mint more.{' '}
+                <Verify inline links={[{ what: 'SKYLINE’s total supply', href: tokenUrl(network, town) }]} />
               </li>
               <li data-item="sell-fee">
-                Every sell pays a 2% fee, in TOWN, and it is burned. From {fromDay} half of it is burned and the other half goes to the rebate reserve, so
+                Every sell pays a 2% fee, in SKYLINE, and it is burned. From {fromDay} half of it is burned and the other half goes to the rebate reserve, so
                 sells help pay later rebates.
               </li>
               <li data-item="eth-day">
-                On a day after one that burned more TOWN than it paid out in rebates, the whole 2% goes to the treasury in ETH instead, and nothing is burned
-                or sent to the reserve. While the rebate reserve is empty, the fee is in TOWN.
+                On a day after one that burned more SKYLINE than it paid out in rebates, the whole 2% goes to the treasury in ETH instead, and nothing is burned
+                or sent to the reserve. While the rebate reserve is empty, the fee is in SKYLINE.
               </li>
               <li data-item="floor">
-                The burn stops at the floor of {floor} TOWN of supply. The sell that reaches the floor pays its whole 2% in TOWN: what fits above the
-                floor is burned and the rest goes to the rebate reserve. From then on every sell pays 1% in TOWN to the rebate reserve and 1% in ETH to the
+                The burn stops at the floor of {floor} SKYLINE of supply. The sell that reaches the floor pays its whole 2% in SKYLINE: what fits above the
+                floor is burned and the rest goes to the rebate reserve. From then on every sell pays 1% in SKYLINE to the rebate reserve and 1% in ETH to the
                 treasury.
               </li>
               <li>
                 Above the floor the mode is fixed for the whole day. The <a href="#/trade/sell">Trade page</a> and the <a href="#/stats">Stats page</a> show
                 how today’s 2% divides and yesterday’s two figures behind it.{' '}
-                <Verify inline links={[{ what: 'TownHook’s sell-fee mode and burn per day', href: contractUrl(network, 'TownHook', 'read') }]} />
+                <Verify inline links={[{ what: 'SkylineHook’s sell-fee mode and burn per day', href: contractUrl(network, 'SkylineHook', 'read') }]} />
+              </li>
+            </ul>
+          </Section>
+
+          <Section id="launch">
+            <ul class="doc-list">
+              {/* Told in the past once UpTown has launched, in the future before (CR-86). */}
+              <li data-item="launch-buy">
+                <strong>The launch buy.</strong> In the launch transaction, right after the launch position {chain ? 'was placed' : 'is placed'}, the Launcher{' '}
+                {chain ? 'bought' : 'buys'} SKYLINE with 0.1 ETH at the opening price for the owner wallet. It {chain ? 'paid' : 'pays'} the ordinary 2% buy fee
+                and is counted for the owner like any buy, so it earns a rebate within the launch day’s limit.{' '}
+                <Verify inline links={[{ what: 'the Launcher’s launch-buy figures', href: contractUrl(network, 'Launcher', 'read') }]} />
+              </li>
+              <li data-item="second-position">
+                <strong>The owner’s second position.</strong> Right after the buy, the Launcher {chain ? 'added' : 'adds'} a second, full-range position with
+                0.03 ETH and as much of the bought SKYLINE as it {chain ? 'needed' : 'needs'}, locked in LPVault for 14 days; the rest of the bought SKYLINE{' '}
+                {chain ? 'went' : 'goes'} to the owner wallet. After the 14 days the owner may withdraw that position. While it is in the pool, the price can dip
+                below the opening price by at most what its 0.03 ETH absorbs.
+              </li>
+              <li data-item="no-launch-fee">
+                <strong>No higher fee at the launch.</strong> The buy fee is 2% from the first second, so anyone, bots included, can buy in the launch block at
+                the opening price, right after the owner’s launch buy.
               </li>
             </ul>
           </Section>
 
           <Section id="liquidity">
             <ul class="doc-list">
-              <li>At launch the other 500,000,000 TOWN form the pool’s single liquidity position.</li>
+              <li>At launch the other 500,000,000 SKYLINE form the pool’s launch position.</li>
               <li>
                 LPVault holds that position, locked for at least 10 years
                 {chain && (
@@ -192,11 +223,35 @@ export function Docs() {
                 .{' '}
                 <Verify inline links={[{ what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') }]} />
               </li>
-              <li>
-                The position is an NFT on Uniswap’s v4 PositionManager, owned by LPVault.{' '}
-                <Verify inline links={[{ what: 'the liquidity position NFT', href: positionUrl(network, owner?.lpVault.tokenId) }]} />
+              <li data-item="second-lock">
+                LPVault also holds the owner’s second position, locked for 14 days from the launch
+                {positions && (
+                  <>
+                    {secondPositionState(positions, chain!.blockTimestamp) === 'withdrawn' ? (
+                      <>: the owner has withdrawn it</>
+                    ) : (
+                      <>
+                        : until <strong class="num">{fmtDate(positions.secondUnlockTime)}</strong>
+                      </>
+                    )}
+                  </>
+                )}
+                . Then the owner may withdraw it.
               </li>
-              <li>The owner can extend the lock, never shorten it, and can collect the 0.5% pool fee, but cannot remove liquidity before the unlock time.</li>
+              <li>
+                Each position is an NFT on Uniswap’s v4 PositionManager, owned by LPVault.{' '}
+                <Verify
+                  inline
+                  links={[
+                    { label: 'launch position', what: 'the launch position NFT', href: positionUrl(network, owner?.lpVault.tokenId) },
+                    { label: 'second position', what: 'the second position NFT', href: secondPositionUrl(network, owner?.lpVault.secondTokenId) },
+                  ]}
+                />
+              </li>
+              <li>
+                The owner can extend the launch position’s lock, never shorten it, and can collect the 0.5% pool fee from both positions, but cannot remove the
+                launch position’s liquidity before its unlock time.
+              </li>
             </ul>
           </Section>
 
@@ -207,15 +262,16 @@ export function Docs() {
                 new staking contract, each after a 2-day public wait.
               </li>
               <li>The fees are fixed: 2% on buys, 2% on sells, the 0.5% pool fee and the {fmtBps(claimFeeBps(rules))} claim fee.</li>
-              <li>The supply (1,000,000,000 TOWN), the vault tiers and their dollar prices are fixed.</li>
+              <li>The supply, 1,000,000,000 SKYLINE, is fixed.</li>
               <li>
-                UpTownToken, TownHook and BuyerRewards have no owner at all.{' '}
+                UpTownToken, SkylineHook, BuyerRewards and SkylineStaking have no owner at all.{' '}
                 <Verify
                   inline
                   links={[
                     { label: 'UpTownToken', what: 'UpTownToken’s code', href: contractUrl(network, 'UpTownToken', 'code') },
-                    { label: 'TownHook', what: 'TownHook’s code', href: contractUrl(network, 'TownHook', 'code') },
+                    { label: 'SkylineHook', what: 'SkylineHook’s code', href: contractUrl(network, 'SkylineHook', 'code') },
                     { label: 'BuyerRewards', what: 'BuyerRewards’ code', href: contractUrl(network, 'BuyerRewards', 'code') },
+                    { label: 'SkylineStaking', what: 'SkylineStaking’s code', href: contractUrl(network, 'SkylineStaking', 'code') },
                   ]}
                 />
               </li>
@@ -270,14 +326,13 @@ function Owner() {
   return (
     <Section id="owner">
       <p class="doc-text">
-        One address holds the owner’s powers on LPVault, the Treasury and TownStaking, and makes the single launch call. Ownership can be handed over in two
-        steps but not given up.{' '}
+        One address holds the owner’s powers on LPVault and the Treasury, and makes the single launch call. Ownership can be handed over in two steps but
+        not given up.{' '}
         <Verify
           inline
           links={[
             { label: 'LPVault', what: 'LPVault’s owner', href: contractUrl(network, 'LPVault', 'read') },
             { label: 'Treasury', what: 'the Treasury’s owner', href: contractUrl(network, 'Treasury', 'read') },
-            { label: 'TownStaking', what: 'TownStaking’s owner', href: contractUrl(network, 'TownStaking', 'read') },
             { label: 'Launcher', what: 'the Launcher’s owner', href: contractUrl(network, 'Launcher', 'read') },
           ]}
         />
@@ -352,34 +407,22 @@ function Owner() {
 function Settings() {
   const { chain: read, network } = useApp();
   const chain = read!;
-  const st = chain.staking;
   const t = chain.treasury;
+  const v = chain.lpVault;
   const pauseAt = pausePending(chain);
   const change = stakingChange(chain);
-  const fallbackLive = st.priceStatus.source === PriceSource.Fallback;
+  const second = secondPositionState(v, chain.blockTimestamp);
   return (
     <>
       <Figures cols={2}>
         <Fig label="Daily payout rate" value={fmtBps(chain.treasury.spendBps)} view="Treasury.spendBps" note="Settable from 1% to 25%; a change applies from the next day." />
+        <Fig label="Launch position locked until" value={fmtDate(v.unlockTime)} view="LPVault.unlockTime" note="Can be extended, never shortened." />
         <Fig
-          label="Fallback ETH/USD price"
-          value={st.fallbackPrice === 0n ? 'None set' : fmtUsd8(st.fallbackPrice)}
-          view="TownStaking.fallbackPrice"
-          note={
-            st.fallbackPrice === 0n
-              ? undefined
-              : fallbackLive
-                ? `In use; valid until ${fmtDateTime(fallbackExpiresAt(chain))}.`
-                : `Set ${fmtDateTime(st.fallbackPriceSetAt)}; not in use.`
-          }
+          label="Second position"
+          value={second === 'withdrawn' ? 'Withdrawn' : second === 'withdrawable' ? 'Unlocked' : `Locked until ${fmtDate(v.secondUnlockTime)}`}
+          view="LPVault.secondUnlockTime, LPVault.secondWithdrawn"
+          note={second === 'withdrawn' ? 'The owner has taken it out of LPVault.' : 'The owner may withdraw it once its 14 days have passed.'}
         />
-        <Fig
-          label="Announced feed change"
-          value={st.pendingFeed ? shortAddress(st.pendingFeed) : 'None'}
-          view="TownStaking.pendingFeed"
-          note={st.pendingFeed ? `From ${fmtDateTime(st.pendingFeedEffectiveAt)}.` : undefined}
-        />
-        <Fig label="Liquidity locked until" value={fmtDate(chain.lpVault.unlockTime)} view="LPVault.unlockTime" note="Can be extended, never shortened." />
         <Fig
           label="Treasury payouts"
           value={t.paused ? 'Paused' : 'Running'}
@@ -399,17 +442,16 @@ function Settings() {
                       ? `${t.candidate.verified ? ' (verified' : ' (does not look like a staking contract'}${t.candidate.upgradeable ? '; upgradeable: its code can change)' : ')'}`
                       : ''
                   }.`
-              : stakingReplaced(chain, network.deployment?.contracts.TownStaking)
-                ? 'A replacement for TownStaking; no change announced.'
-                : 'TownStaking; no change announced.'
+              : stakingReplaced(chain, network.deployment?.contracts.SkylineStaking)
+                ? 'A replacement for SkylineStaking; no change announced.'
+                : 'SkylineStaking; no change announced.'
           }
         />
       </Figures>
       <Verify
         links={[
           { label: 'payout rate and target', what: 'the Treasury’s payout rate, pause and staking contract', href: contractUrl(network, 'Treasury', 'read') },
-          { label: 'prices and feed', what: 'the staking contract’s fallback price and feed', href: readUrl(network, st.address) },
-          { label: 'unlock time', what: 'LPVault’s unlock time', href: contractUrl(network, 'LPVault', 'read') },
+          { label: 'unlock times', what: 'LPVault’s unlock times', href: contractUrl(network, 'LPVault', 'read') },
         ]}
       />
     </>

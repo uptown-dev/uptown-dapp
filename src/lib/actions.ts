@@ -5,9 +5,14 @@ import { LAUNCHER_ABI, LPVAULT_ABI, PERMIT2_ABI, REWARDS_ABI, ROUTER_ABI, STAKIN
 import { UNLISTED_STAKING, listedStaking, type Network } from './network';
 import { buyerHookData, poolKey } from './reads';
 import type { TxRequest } from './wallet';
-import type { Address, Tier } from '../data/types';
+import type { Address } from '../data/types';
 
-/** Staking transactions carry this gas limit so the day's payout can run alongside (spec "Frontend -> Stake"; CR-25, CR-32, CR-35). */
+/**
+ * Staking transactions carry this gas limit so the day's payout can run alongside (spec "Frontend ->
+ * Stake"; CR-25, CR-32, CR-35). It also covers the Deployer's finding (D12a): a staking call priced on
+ * one block and sent a few blocks later can find the day's payout due and need more gas than its
+ * estimate said; with the limit set here no estimate is used at all.
+ */
 export const STAKING_GAS_LIMIT = 700_000n;
 
 /** How long a buy or a sell may wait to be included before the router refuses it. */
@@ -18,7 +23,7 @@ export const ROUTER_ALLOWANCE_SECONDS = 30 * 24 * 60 * 60;
 
 /** The largest Permit2 allowance (uint160): the router's permission, without a limit (CR-83). */
 export const MAX_UINT160 = 2n ** 160n - 1n;
-/** The largest token allowance (uint256): TOWN's approval of Permit2, without a limit, once ever (CR-83). */
+/** The largest token allowance (uint256): SKYLINE's approval of Permit2, without a limit, once ever (CR-83). */
 export const MAX_UINT256 = 2n ** 256n - 1n;
 
 // Universal Router command and action codes (R1b A2).
@@ -54,10 +59,10 @@ const EXACT_INPUT_SINGLE = [
 const CURRENCY_AMOUNT = [{ type: 'address' }, { type: 'uint256' }] as const;
 
 /**
- * Buy TOWN: Universal Router 2.1.2 `execute(0x10, [abi.encode(actions, params)], deadline)`, one
- * exact-input single swap of ETH for TOWN with the buyer's address as `hookData`, the minimum
+ * Buy SKYLINE: Universal Router 2.1.2 `execute(0x10, [abi.encode(actions, params)], deadline)`, one
+ * exact-input single swap of ETH for SKYLINE with the buyer's address as `hookData`, the minimum
  * received as `amountOutMinimum` (and as TAKE_ALL's minimum), `minHopPriceX36 = 0`, then
- * SETTLE_ALL (ETH in) and TAKE_ALL (TOWN out). `msg.value` is the ETH paid.
+ * SETTLE_ALL (ETH in) and TAKE_ALL (SKYLINE out). `msg.value` is the ETH paid.
  */
 export function buyTx(n: Network, buyer: Address, amountIn: bigint, minOut: bigint, deadline: bigint): TxRequest {
   const key = poolKey(n);
@@ -77,9 +82,9 @@ export function buyTx(n: Network, buyer: Address, amountIn: bigint, minOut: bigi
 }
 
 /**
- * Sell TOWN: Universal Router 2.1.2 `execute(0x10, [abi.encode(actions, params)], deadline)`, one
- * exact-input single swap of TOWN for ETH (`zeroForOne = false`, no `hookData`), the minimum ETH
- * as `amountOutMinimum` (and as TAKE_ALL's minimum), `minHopPriceX36 = 0`, then SETTLE_ALL (TOWN
+ * Sell SKYLINE: Universal Router 2.1.2 `execute(0x10, [abi.encode(actions, params)], deadline)`, one
+ * exact-input single swap of SKYLINE for ETH (`zeroForOne = false`, no `hookData`), the minimum ETH
+ * as `amountOutMinimum` (and as TAKE_ALL's minimum), `minHopPriceX36 = 0`, then SETTLE_ALL (SKYLINE
  * in, paid through Permit2 after the swap, spec "Known risks -> Pay-first routers") and TAKE_ALL
  * (ETH out to the seller). No ETH is sent with it.
  */
@@ -99,7 +104,7 @@ export function sellTx(n: Network, amountIn: bigint, minOut: bigint, deadline: b
 
 /**
  * A sell's first approval (CR-83): `UpTownToken.approve(Permit2, type(uint256).max)`, without a
- * limit, once ever, as the Uniswap app does. Permit2 then moves the wallet's TOWN only for a spender
+ * limit, once ever, as the Uniswap app does. Permit2 then moves the wallet's SKYLINE only for a spender
  * the wallet itself has allowed in Permit2 (the router, below).
  */
 export function approvePermit2Tx(n: Network): TxRequest {
@@ -107,9 +112,9 @@ export function approvePermit2Tx(n: Network): TxRequest {
 }
 
 /**
- * A sell's second approval (CR-83): `Permit2.approve(TOWN, Universal Router, type(uint160).max,
+ * A sell's second approval (CR-83): `Permit2.approve(SKYLINE, Universal Router, type(uint160).max,
  * expiration)`, without a limit until `expiration` (30 days on), an on-chain approval (no signed
- * message). The router moves a wallet's TOWN only in a trade that wallet itself sends.
+ * message). The router moves a wallet's SKYLINE only in a trade that wallet itself sends.
  */
 export function allowRouterTx(n: Network, expiration: bigint): TxRequest {
   return {
@@ -143,8 +148,8 @@ function listed(n: Network, address: Address): Address {
 }
 
 /**
- * Approve TOWN: `UpTownToken.approve(staking, amount)`, the exact amount, never unlimited. The
- * spender is the staking contract the Treasury pays now, `Treasury.staking()` (CR-50), and only
+ * Approve SKYLINE: `UpTownToken.approve(staking, amount)`, the exact amount, never unlimited (CR-82).
+ * The spender is the staking contract the Treasury pays now, `Treasury.staking()` (CR-50), and only
  * when the site lists it (CR-72).
  */
 export function approveTx(n: Network, stakingAddress: Address, amount: bigint): TxRequest {
@@ -153,27 +158,17 @@ export function approveTx(n: Network, stakingAddress: Address, amount: bigint): 
 
 /**
  * A staking action, sent to the given staking contract, which must be listed in the site's own files
- * (CR-72): purchases and additions only ever to the one the Treasury pays now (CR-50); unstake and
- * claim also to a replaced one, for a vault left there.
+ * (CR-72): staking only ever to the one the Treasury pays now (CR-50); unstake and claim also to a
+ * replaced one, for a stake left there. Every one carries the 700,000 gas limit.
  */
-function staking(n: Network, stakingAddress: Address, functionName: string, args: readonly unknown[] = [], value?: bigint): TxRequest {
-  return { address: listed(n, stakingAddress), abi: STAKING_ABI as Abi, functionName, args, value, gas: STAKING_GAS_LIMIT };
+function staking(n: Network, stakingAddress: Address, functionName: string, args: readonly unknown[] = []): TxRequest {
+  return { address: listed(n, stakingAddress), abi: STAKING_ABI as Abi, functionName, args, gas: STAKING_GAS_LIMIT };
 }
 
-/** The ETH sent with a purchase or upgrade: about 1% above the quote; the contract refunds the rest. */
-export function withMargin(wei: bigint): bigint {
-  return (wei * 101n) / 100n;
-}
-
-/** Open a vault: `openVault(tier, amount)` with `vaultPriceWei(tier)` plus about 1%, in the current staking contract only. */
-export const openVaultTx = (n: Network, stakingAddress: Address, tier: Tier, amount: bigint, priceWei: bigint) =>
-  staking(n, stakingAddress, 'openVault', [tier, amount], withMargin(priceWei));
-/** Add TOWN: `addStake(amount)`, in the current staking contract only. */
-export const addStakeTx = (n: Network, stakingAddress: Address, amount: bigint) => staking(n, stakingAddress, 'addStake', [amount]);
-/** Upgrade: `upgradeVault(newTier)` with `upgradePriceWei(wallet, newTier)` plus about 1%, in the current staking contract only. */
-export const upgradeTx = (n: Network, stakingAddress: Address, tier: Tier, priceWei: bigint) => staking(n, stakingAddress, 'upgradeVault', [tier], withMargin(priceWei));
-/** Unstake: `unstake()`, a full exit; also in a replaced staking contract (CR-50). */
-export const unstakeTx = (n: Network, stakingAddress: Address) => staking(n, stakingAddress, 'unstake');
+/** Stake: `stake(amount)`, in the current staking contract only. Free: no ETH is sent (CR-102 amended). */
+export const stakeTx = (n: Network, stakingAddress: Address, amount: bigint) => staking(n, stakingAddress, 'stake', [amount]);
+/** Unstake: `unstake(amount)`, any amount up to the stake; also in a replaced staking contract (CR-50). */
+export const unstakeTx = (n: Network, stakingAddress: Address, amount: bigint) => staking(n, stakingAddress, 'unstake', [amount]);
 /** Claim WETH: `claim()`; also in a replaced staking contract (CR-50). */
 export const claimWethTx = (n: Network, stakingAddress: Address) => staking(n, stakingAddress, 'claim');
 
@@ -192,17 +187,12 @@ export function applyStakingTx(n: Network): TxRequest {
 // contracts refuse each owner-only call from anyone but the owner; the page only arranges them.
 // ---------------------------------------------------------------------------------------------
 
-/** The contract each owner action goes to. */
-export type OwnerTarget = 'Treasury' | 'TownStaking' | 'LPVault' | 'Launcher';
+/** The contract each owner action goes to (CR-102: SkylineStaking has no owner). */
+export type OwnerTarget = 'Treasury' | 'LPVault' | 'Launcher';
 
-const OWNER_ABIS = { Treasury: TREASURY_ABI, TownStaking: STAKING_ABI, LPVault: LPVAULT_ABI, Launcher: LAUNCHER_ABI } as const;
+const OWNER_ABIS = { Treasury: TREASURY_ABI, LPVault: LPVAULT_ABI, Launcher: LAUNCHER_ABI } as const;
 
-/**
- * One owner call. `stakingAddress` is the staking contract the Treasury pays now (`Treasury.staking()`),
- * whose owner holds the two price powers; it must be listed in the site's own files (CR-72). The
- * other targets come from the address file.
- */
-export function ownerTx(n: Network, target: OwnerTarget, functionName: string, args: readonly unknown[] = [], stakingAddress?: Address): TxRequest {
-  const address = target === 'TownStaking' ? listed(n, stakingAddress ?? n.deployment!.contracts.TownStaking) : n.deployment!.contracts[target];
-  return { address, abi: OWNER_ABIS[target] as Abi, functionName, args };
+/** One owner call, to a contract from the address file; `value` only for the launch (CR-102: 0.13 ETH). */
+export function ownerTx(n: Network, target: OwnerTarget, functionName: string, args: readonly unknown[] = [], value?: bigint): TxRequest {
+  return { address: n.deployment!.contracts[target], abi: OWNER_ABIS[target] as Abi, functionName, args, ...(value !== undefined ? { value } : {}) };
 }
