@@ -28,7 +28,7 @@ export function Stats() {
       <PageHead title="Stats" lead="The treasury and the running totals, read straight from the contracts." />
       <Treasury />
       <TradingVolume />
-      {/* CR-102: the ETH card lost its two vault rows, so Staking stands under it, beside the taller SKYLINE card. */}
+      {/* CR-102: the ETH card lost two rows with TownStaking, so Staking stands under it, beside the taller SKYLINE card. */}
       <div class="grid-2">
         <div class="grid-col">
           <EthFlows />
